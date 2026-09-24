@@ -2,7 +2,7 @@
 
 ## Brand
 
-Use the KySignOn shield mark with the `KyAuth` wordmark. Do not use `KyAuthenticator` in user-visible text.
+Use the Busnes.app-site KyAuth Systems stamp shield mark with the `KyAuth` wordmark. Do not use `KyAuthenticator` in user-visible text.
 
 ## Themes
 
