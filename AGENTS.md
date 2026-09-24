@@ -103,7 +103,7 @@ KyAuth pairs an Android device with KySignOn. It stores TOTP entries in an encry
 ## UI contract
 
 - Use the `KyAuth` name in user-visible text.
-- Keep the KySignOn mark and KyAuth wordmark in the header and lock screen.
+- Keep the KyAuth Systems stamp shield and KyAuth wordmark in the header and lock screen.
 - Use the five-part bottom pill: TOTP Vault, Push MFA, lock shield, Passwords, Settings.
 - The TOTP Vault screen provides a + icon to scan QR or add accounts manually with optional Website and Notes fields.
 - Use the 15 suite themes from `ThemeManager`. The default is Patina Ky.
@@ -194,3 +194,7 @@ Recorded so it is not mistaken for done:
 ## Child DOX Index
 
 No child `AGENTS.md` files exist.
+
+## Product icon
+
+App/launcher assets use the Busnes.app-site Systems stamp family. Regenerate platform sizes from the matching master in `../Busnes.app-site`; preserve resource names and adaptive foreground safe margins. This asset update does not change native theme defaults.
