@@ -12,6 +12,7 @@ KyAuth pairs an Android device with KyIdentity. It stores TOTP entries in an enc
 - Release builds require HTTPS. Debug builds permit loopback HTTP only.
 - The optional registration URL must use the same origin as the pairing server.
 - The app generates a hardware-backed P-256 device signing key.
+- Frozen identifiers, kept through the KyIdentity rename: the signed push prefix `kysignon-push-v1` (must equal what `kyidentity-server` `internal/mfa/mfa.go` verifies) and the Keystore alias `kysignon-device-signing-v1` (renaming it orphans every paired device's key). Rename nothing the server or the Keystore already holds.
 - TOTP entries use KeePass `TimeOtp-*` fields in `totp_vault.kdbx`, along with standard KeePass title, URL, and notes.
 - The TOTP vault uses an app-private file and an independent random vault key.
 - Both vault keys are wrapped by `VaultKek`, an authentication-bound Keystore RSA-OAEP key
