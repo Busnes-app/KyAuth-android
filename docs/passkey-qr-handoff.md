@@ -1,0 +1,8 @@
+**Repo:** kyauth-android
+**Worktree:** /home/yoshi/busness.app/kyauth-android (branch main)
+
+Implemented standard browser passkey QR scanning in Passwords on Android 14+. MainActivity scans with the existing Google scanner, PasskeyQr accepts bounded FIDO:/ ASCII-digit URI framing, and ACTION_VIEW explicitly targets com.google.android.gms. Play services handles the hybrid session; KyAuth's existing Credential Provider handles key access and authentication. No new dependencies or Bluetooth permissions. Changes are uncommitted.
+
+Validation passed: ./gradlew test lintDebug assembleDebug compileDebugAndroidTestSources; npm ci --prefix tools --ignore-scripts; argon2-cffi 25.1.0 installed in /tmp/kyauth-qr-verify-venv; Node vault-preservation verifier passed with that venv on PATH. Emulator resolve-activity confirmed com.google.android.gms/.fido.authenticator.ui.QRBounceActivity handles the intent. PasskeyQrTest covers URI framing rejection, including arbitrary links and intent URIs.
+
+Remaining: physical-device end-to-end validation. Enable KyAuth as a credential provider on Android 14+ with Google Play services. With a passkey in KyAuth, trigger the desktop browser's use-another-device QR flow, select Passwords > Scan passkey QR code, scan, choose KyAuth, authenticate, and confirm the desktop signs in. Keep Bluetooth and internet enabled on both devices. Check cancellation and a locked-vault provider unlock too. Only an emulator is attached here; intent resolution does not prove the full authentication flow. Preserve RP/origin and clientDataHash checks if troubleshooting provider routing. The QR parser validates framing only; Play services validates the payload/session.

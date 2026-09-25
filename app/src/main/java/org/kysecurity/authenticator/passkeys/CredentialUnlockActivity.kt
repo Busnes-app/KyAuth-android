@@ -52,16 +52,16 @@ class CredentialUnlockActivity : AppCompatActivity() {
                 val entries = runCatching {
                     KdbxPasswordVault.loadEntries(File(filesDir, KyAuthAutofillService.VAULT_FILE_NAME), vaultKey)
                 }.getOrNull() ?: return@useVaultKeys null
-                // signOnPasskey is null: the service already surfaced it alongside the
+                // identityPasskey is null: the service already surfaced it alongside the
                 // authentication action, and offering it again here would duplicate it.
                 CredentialEntryBuilder.build(
                     context = this,
                     request = request,
                     entries = entries,
-                    signOnPasskey = null,
+                    identityPasskey = null,
                     // EncryptedSharedPreferences can throw; this is a background Thread so a
                     // crash here would silently kill enumeration rather than fail closed.
-                    signOnServerUrl = runCatching { PairingStore(this).account()?.serverUrl }.getOrNull(),
+                    identityServerUrl = runCatching { PairingStore(this).account()?.serverUrl }.getOrNull(),
                 )
             }
             runOnUiThread {
@@ -70,7 +70,7 @@ class CredentialUnlockActivity : AppCompatActivity() {
                     return@runOnUiThread
                 }
                 setResult(
-                    Activity.RESULT_OK,
+                    RESULT_OK,
                     Intent().putExtra(CredentialProviderService.EXTRA_BEGIN_GET_CREDENTIAL_RESPONSE, response),
                 )
                 finish()
@@ -79,7 +79,7 @@ class CredentialUnlockActivity : AppCompatActivity() {
     }
 
     private fun finishCancelled() {
-        setResult(Activity.RESULT_CANCELED)
+        setResult(RESULT_CANCELED)
         finish()
     }
 }

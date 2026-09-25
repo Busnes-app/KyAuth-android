@@ -12,7 +12,7 @@ import java.security.interfaces.ECPublicKey
 import java.security.spec.ECGenParameterSpec
 
 /**
- * The KySignOn login passkey's private key: generated in, and never leaving, the device's secure
+ * The KyIdentity login passkey's private key: generated in, and never leaving, the device's secure
  * hardware. StrongBox where the device has a discrete secure element, the TEE otherwise.
  *
  * There is deliberately no software fallback. A software-backed key would be exportable, which is
@@ -23,16 +23,16 @@ import java.security.spec.ECGenParameterSpec
  * the server has already registered. A new key goes into the spare and the caller flips the
  * pointer only once the response is built.
  */
-object SignOnPasskeyKey {
+object IdentityPasskeyKey {
 
-    const val ALIAS_A = "kyauth_signon_passkey_a"
-    const val ALIAS_B = "kyauth_signon_passkey_b"
+    const val ALIAS_A = "kyauth_identity_passkey_a"
+    const val ALIAS_B = "kyauth_identity_passkey_b"
 
     private const val ANDROID_KEYSTORE = "AndroidKeyStore"
 
     /** Raised when the device cannot hold the key in hardware. Enrolment must not proceed. */
     class NoHardwareKeystore :
-        IllegalStateException("KyAuth needs hardware-backed key storage for a KySignOn passkey.")
+        IllegalStateException("KyAuth needs hardware-backed key storage for a KyIdentity passkey.")
 
     class Generated(val publicKey: ECPublicKey, val alias: String, val strongBoxBacked: Boolean)
 
@@ -108,7 +108,7 @@ object SignOnPasskeyKey {
      *
      * True only for the three levels that assert secure hardware. `SECURITY_LEVEL_UNKNOWN` means
      * the platform could not determine the level at all, and "I don't know" must not pass the one
-     * check standing between a KySignOn login passkey and a key that could be exportable.
+     * check standing between a KyIdentity login passkey and a key that could be exportable.
      * `SECURITY_LEVEL_UNKNOWN_SECURE` is accepted: it asserts secure hardware of an unspecified
      * kind, which is what some pre-KeyMint devices report, and refusing it would fail enrolment on
      * hardware that is genuinely fine.

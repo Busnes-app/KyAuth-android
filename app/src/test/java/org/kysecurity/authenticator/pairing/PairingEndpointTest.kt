@@ -4,7 +4,7 @@ import org.junit.Assert.assertEquals
 import org.junit.Test
 
 class PairingEndpointTest {
-    @Test fun `builds the KySignOn registration endpoint`() {
+    @Test fun `builds the KyIdentity registration endpoint`() {
         assertEquals(
             "https://signin.example.com/api/notifications/native/register",
             PairingEndpoint.registrationUrl("https://signin.example.com/").toString(),

@@ -9,14 +9,14 @@ class MfaResponseClientTest {
     private val client = MfaResponseClient()
 
     @Test
-    fun parseResponse_acceptsKySignOnSuccessField() {
+    fun parseResponse_acceptsKyIdentitySuccessField() {
         val result = client.parseResponse(200, JSONObject("""{"success":true}"""), "ch-1")
 
         assertTrue((result as MfaResponseResult.Success).approved)
     }
 
     @Test
-    fun parseResponse_acceptsKySignOnDeniedFieldAsHandledResponse() {
+    fun parseResponse_acceptsKyIdentityDeniedFieldAsHandledResponse() {
         val result = client.parseResponse(200, JSONObject("""{"success":false}"""), "ch-1")
 
         assertEquals(false, (result as MfaResponseResult.Success).approved)

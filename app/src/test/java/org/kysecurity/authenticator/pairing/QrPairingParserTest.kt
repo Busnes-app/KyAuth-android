@@ -8,10 +8,10 @@ import java.net.URLEncoder
 
 class QrPairingParserTest {
     @Test
-    fun parse_kySignOnJsonPayload_parsesAllFields() {
+    fun parse_kyIdentityJsonPayload_parsesAllFields() {
         val json = """
             {
-                "type": "kysignon_device_pairing",
+                "type": "kyidentity_device_pairing",
                 "serverUrl": "https://auth.example.com",
                 "pairingToken": "abc123token",
                 "pinCode": "123456",
@@ -38,7 +38,7 @@ class QrPairingParserTest {
             "UTF-8",
         )
 
-        val pairing = QrPairingParser.parse("kysignon://native-pair?srv=$server&reg=$registration&pt=one-time-token&sub=user-123&user=bob")
+        val pairing = QrPairingParser.parse("kyidentity://native-pair?srv=$server&reg=$registration&pt=one-time-token&sub=user-123&user=bob")
 
         assertEquals("https://signin.example.com", pairing.serverUrl)
         assertEquals("https://signin.example.com/api/notifications/native/register", pairing.registrationUrl)
@@ -59,7 +59,7 @@ class QrPairingParserTest {
     fun parse_rejectsRegistrationEndpointOnAnotherOrigin() {
         assertThrows(IllegalArgumentException::class.java) {
             QrPairingParser.parse(
-                "kysignon://native-pair?srv=https%3A%2F%2Fsignin.example.com" +
+                "kyidentity://native-pair?srv=https%3A%2F%2Fsignin.example.com" +
                     "&reg=https%3A%2F%2Fevil.example%2Fregister&pt=one-time-token",
             )
         }
@@ -79,7 +79,7 @@ class QrPairingParserTest {
     fun parse_rejectsExpiredPayload() {
         assertThrows(IllegalArgumentException::class.java) {
             QrPairingParser.parse(
-                """{"type":"kysignon_device_pairing","serverUrl":"https://auth.example.com","pairingToken":"token","expiresAt":1}""",
+                """{"type":"kyidentity_device_pairing","serverUrl":"https://auth.example.com","pairingToken":"token","expiresAt":1}""",
             )
         }
     }

@@ -25,7 +25,7 @@ data class MfaChallenge(
 }
 
 object MfaMessage {
-    private const val PREFIX = "kysignon-push-v1"
+    private const val PREFIX = "kyidentity-push-v1"
 
     /**
      * Builds the exact domain-separated byte array that the device must sign with its
@@ -33,7 +33,7 @@ object MfaMessage {
      *
      * The payload does not yet bind the server origin, account or expiry. Doing so is the right
      * fix for a compromised push sender, but changes the wire format and needs a matching
-     * KySignOn change; until then the client refuses to answer any server but the paired one.
+     * KyIdentity change; until then the client refuses to answer any server but the paired one.
      * Tracked in AGENTS.md.
      */
     fun formatPayload(challengeId: String, approve: Boolean, selectedDigits: String): ByteArray {

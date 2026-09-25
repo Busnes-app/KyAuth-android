@@ -8,19 +8,20 @@ import org.junit.Assert.assertNull
 import org.junit.Before
 import org.junit.Test
 import org.junit.runner.RunWith
+import org.kysecurity.authenticator.security.SecurityWipe
 
 @RunWith(AndroidJUnit4::class)
-class SignOnPasskeyStoreTest {
+class IdentityPasskeyStoreTest {
 
-    private val store = SignOnPasskeyStore(ApplicationProvider.getApplicationContext())
+    private val store = IdentityPasskeyStore(ApplicationProvider.getApplicationContext())
 
-    private fun record() = SignOnPasskeyRecord(
-        rpId = "signon.example.com",
+    private fun record() = IdentityPasskeyRecord(
+        rpId = "identity.example.com",
         username = "yoshi",
         userHandle = byteArrayOf(1, 2, 3),
         credentialId = byteArrayOf(9, 8, 7, 6),
         signCount = 0,
-        alias = "kyauth_signon_passkey_a",
+        alias = "kyauth_identity_passkey_a",
         strongBoxBacked = false,
     )
 
@@ -59,7 +60,7 @@ class SignOnPasskeyStoreTest {
         // SecurityWipe must clear it explicitly or a wipe leaves metadata pointing at a key that
         // step 5 of the same wipe has already deleted.
         store.save(record())
-        org.kysecurity.authenticator.security.SecurityWipe.wipe(
+        SecurityWipe.wipe(
             ApplicationProvider.getApplicationContext(),
         )
         assertNull(store.record())

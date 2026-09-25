@@ -14,7 +14,7 @@ internal fun MainActivity.dp(value: Int): Int = (value * resources.displayMetric
 internal fun MainActivity.title(value: String) = TextView(this).apply {
     text = value
     textSize = 22f
-    setTextColor(ThemeManager.color(context, R.color.ky_text))
+    setTextColor(ThemeManager.color(context, R.color.ky_heading))
     typeface = Typeface.DEFAULT_BOLD
     setPadding(0, dp(16), 0, dp(8))
 }

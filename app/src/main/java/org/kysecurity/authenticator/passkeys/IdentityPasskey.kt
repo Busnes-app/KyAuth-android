@@ -5,23 +5,23 @@ import java.util.Base64
 import org.json.JSONObject
 
 /**
- * Decides whether a relying party is the paired KySignOn server.
+ * Decides whether a relying party is the paired KyIdentity server.
  *
- * A KySignOn login passkey must not live in `passwords_vault.kdbx`, because that vault syncs to
- * KyPasswords: a KyPasswords compromise plus the master password would otherwise yield a KySignOn
+ * A KyIdentity login passkey must not live in `passwords_vault.kdbx`, because that vault syncs to
+ * KyPasswords: a KyPasswords compromise plus the master password would otherwise yield a KyIdentity
  * authentication factor. This predicate is the single place that decision is made.
  *
  * The paired server URL is a locally held fact, never a caller assertion, so a hostile relying
  * party cannot route itself into the local store by naming an RP ID.
  */
-object SignOnPasskey {
+object IdentityPasskey {
 
-    /** The RP ID of the paired KySignOn server, or null when unpaired or unusable as an RP ID.
+    /** The RP ID of the paired KyIdentity server, or null when unpaired or unusable as an RP ID.
      *
      * Deliberately does not use DomainMatcher.extractDomain: that helper strips a leading "www."
      * for autofill leniency, which would silently widen this match to the parent domain.
      */
-    fun signOnRpId(serverUrl: String?): String? {
+    fun identityRpId(serverUrl: String?): String? {
         if (serverUrl.isNullOrBlank()) return null
         val trimmed = serverUrl.trim()
         val withScheme = if (trimmed.contains("://")) trimmed else "https://$trimmed"
@@ -30,18 +30,18 @@ object SignOnPasskey {
     }
 
     /** Exact match only; a passkey for `example.com` is not a passkey for `login.example.com`. */
-    fun isSignOnRpId(rpId: String?, serverUrl: String?): Boolean {
-        val paired = signOnRpId(serverUrl) ?: return false
+    fun isIdentityRpId(rpId: String?, serverUrl: String?): Boolean {
+        val paired = identityRpId(serverUrl) ?: return false
         return RpId.normalize(rpId) == paired
     }
 }
 
 /**
- * Everything about a KySignOn passkey except the private key, which is non-exportable and lives in
+ * Everything about a KyIdentity passkey except the private key, which is non-exportable and lives in
  * AndroidKeyStore under [alias]. None of these fields is key material, so this record is what gets
  * persisted; there is no secret left to put in a vault.
  */
-data class SignOnPasskeyRecord(
+data class IdentityPasskeyRecord(
     val rpId: String,
     val username: String,
     val userHandle: ByteArray,
@@ -62,7 +62,7 @@ data class SignOnPasskeyRecord(
 
     override fun equals(other: Any?): Boolean {
         if (this === other) return true
-        if (other !is SignOnPasskeyRecord) return false
+        if (other !is IdentityPasskeyRecord) return false
         return rpId == other.rpId &&
             username == other.username &&
             userHandle.contentEquals(other.userHandle) &&
@@ -92,11 +92,11 @@ data class SignOnPasskeyRecord(
         private const val F_ALIAS = "alias"
         private const val F_STRONGBOX = "strongBox"
 
-        fun fromJson(serialized: String?): SignOnPasskeyRecord? {
+        fun fromJson(serialized: String?): IdentityPasskeyRecord? {
             if (serialized.isNullOrBlank()) return null
             return runCatching {
                 val json = JSONObject(serialized)
-                SignOnPasskeyRecord(
+                IdentityPasskeyRecord(
                     rpId = json.getString(F_RP_ID),
                     username = json.getString(F_USERNAME),
                     userHandle = unb64(json.getString(F_USER_HANDLE)),

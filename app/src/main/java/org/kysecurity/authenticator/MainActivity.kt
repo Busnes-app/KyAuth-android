@@ -2,6 +2,7 @@ package org.kysecurity.authenticator
 
 import android.Manifest
 import android.content.ClipData
+import android.content.ActivityNotFoundException
 import android.content.ClipDescription
 import android.content.ClipboardManager
 import android.content.Context
@@ -58,8 +59,9 @@ import org.kysecurity.authenticator.pairing.PairingStore
 import org.kysecurity.authenticator.pairing.QrPairing
 import org.kysecurity.authenticator.pairing.QrPairingParser
 import org.kysecurity.authenticator.pairing.PushTokenProvider
-import org.kysecurity.authenticator.passkeys.SignOnPasskeyKey
-import org.kysecurity.authenticator.passkeys.SignOnPasskeyStore
+import org.kysecurity.authenticator.passkeys.IdentityPasskeyKey
+import org.kysecurity.authenticator.passkeys.PasskeyQr
+import org.kysecurity.authenticator.passkeys.IdentityPasskeyStore
 import org.kysecurity.authenticator.passkeys.suppressesVaultPasskeys
 import org.kysecurity.authenticator.passwords.KdbxPasswordVault
 import org.kysecurity.authenticator.passwords.OfflineVaultKey
@@ -252,7 +254,7 @@ class MainActivity : AppCompatActivity() {
 
         root.addView(brand("KyAuth", "SECURE ACCESS"))
         root.addView(title("Connect your account"))
-        root.addView(message("Scan the 90-second QR code from KySignOn. The pairing credential is used once and never stored."))
+        root.addView(message("Scan the 90-second QR code from KyIdentity. The pairing credential is used once and never stored."))
 
         val error = message("").apply { setTextColor(ThemeManager.color(context, R.color.ky_error)) }
         val progress = ProgressBar(this).apply { visibility = ProgressBar.GONE }
@@ -264,7 +266,7 @@ class MainActivity : AppCompatActivity() {
                     .addOnSuccessListener { result ->
                         val pairing = runCatching { QrPairingParser.parse(result.rawValue.orEmpty()) }
                         pairing.onSuccess { showPairingConfirmation(it, this, progress, error) }
-                            .onFailure { error.text = it.message ?: "Invalid KySignOn QR code" }
+                            .onFailure { error.text = it.message ?: "Invalid KyIdentity QR code" }
                     }
                     .addOnFailureListener { error.text = getString(R.string.scan_failed) }
             }
@@ -306,13 +308,13 @@ class MainActivity : AppCompatActivity() {
                                 progress.visibility = ProgressBar.GONE
                                 triggerBtn?.isEnabled = true
                                 result.onSuccess { account ->
-                                    // Pairing to a different server strands the old KySignOn
+                                    // Pairing to a different server strands the old KyIdentity
                                     // passkey: its key and record belong to a server this device
                                     // no longer talks to. Clear the same pair the Unpair path does.
                                     val previous = runCatching { store.account()?.serverUrl }.getOrNull()
                                     if (previous != null && previous != account.serverUrl) {
-                                        SignOnPasskeyKey.deleteAll()
-                                        runCatching { SignOnPasskeyStore(this@MainActivity).clear() }
+                                        IdentityPasskeyKey.deleteAll()
+                                        runCatching { IdentityPasskeyStore(this@MainActivity).clear() }
                                     }
                                     store.save(account)
                                     unlockWithPrompt()
@@ -340,7 +342,7 @@ class MainActivity : AppCompatActivity() {
         container.addView(userInput)
 
         AlertDialog.Builder(this)
-            .setTitle("Manual KySignOn Pairing")
+            .setTitle("Manual KyIdentity Pairing")
             .setView(container)
             .setNegativeButton("Cancel", null)
             .setPositiveButton("Pair") { _, _ ->
@@ -376,7 +378,7 @@ class MainActivity : AppCompatActivity() {
             typeface = Typeface.MONOSPACE
             gravity = Gravity.CENTER
             letterSpacing = 0.18f
-            setTextColor(ThemeManager.color(context, R.color.ky_cyan_dim))
+            setTextColor(ThemeManager.color(context, R.color.ky_cyan))
             setPadding(0, dp(4), 0, dp(24))
         })
         root.addView(TextView(this).apply {
@@ -384,7 +386,7 @@ class MainActivity : AppCompatActivity() {
             textSize = 24f
             typeface = Typeface.DEFAULT_BOLD
             gravity = Gravity.CENTER
-            setTextColor(ThemeManager.color(context, R.color.ky_text))
+            setTextColor(ThemeManager.color(context, R.color.ky_heading))
         })
         root.addView(TextView(this).apply {
             text = getString(R.string.paired_to, account.serverUrl)
@@ -503,7 +505,7 @@ class MainActivity : AppCompatActivity() {
             text = getString(R.string.tab_totp)
             textSize = 20f
             typeface = Typeface.DEFAULT_BOLD
-            setTextColor(ThemeManager.color(context, R.color.ky_text))
+            setTextColor(ThemeManager.color(context, R.color.ky_heading))
             layoutParams = LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f)
         }
         val addButton = Button(this).apply {
@@ -547,7 +549,7 @@ class MainActivity : AppCompatActivity() {
                 text = entry.title
                 textSize = 17f
                 typeface = Typeface.DEFAULT_BOLD
-                setTextColor(ThemeManager.color(context, R.color.ky_text))
+                setTextColor(ThemeManager.color(context, R.color.ky_heading))
             }
             card.addView(titleView)
 
@@ -631,7 +633,7 @@ class MainActivity : AppCompatActivity() {
             text = getString(R.string.add_to_totp_vault)
             textSize = 20f
             typeface = Typeface.DEFAULT_BOLD
-            setTextColor(ThemeManager.color(context, R.color.ky_text))
+            setTextColor(ThemeManager.color(context, R.color.ky_heading))
             setPadding(0, 0, 0, dp(4))
         }
         val messageView = TextView(this).apply {
@@ -688,7 +690,7 @@ class MainActivity : AppCompatActivity() {
             text = getString(R.string.add_manually)
             textSize = 20f
             typeface = Typeface.DEFAULT_BOLD
-            setTextColor(ThemeManager.color(context, R.color.ky_text))
+            setTextColor(ThemeManager.color(context, R.color.ky_heading))
             setPadding(0, 0, 0, dp(4))
         }
         val subtitleView = TextView(this).apply {
@@ -773,7 +775,7 @@ class MainActivity : AppCompatActivity() {
             text = getString(R.string.edit_account)
             textSize = 20f
             typeface = Typeface.DEFAULT_BOLD
-            setTextColor(ThemeManager.color(context, R.color.ky_text))
+            setTextColor(ThemeManager.color(context, R.color.ky_heading))
             setPadding(0, 0, 0, dp(4))
         }
         val subtitleView = TextView(this).apply {
@@ -878,7 +880,7 @@ class MainActivity : AppCompatActivity() {
             text = entry.title
             textSize = 20f
             typeface = Typeface.DEFAULT_BOLD
-            setTextColor(ThemeManager.color(context, R.color.ky_text))
+            setTextColor(ThemeManager.color(context, R.color.ky_heading))
             setPadding(0, 0, 0, dp(4))
         }
         container.addView(titleView)
@@ -964,6 +966,47 @@ class MainActivity : AppCompatActivity() {
         }.start()
     }
 
+    private fun showPasskeyQrDialog() {
+        AlertDialog.Builder(this)
+            .setTitle("Sign in on another device")
+            .setMessage("On the other device, choose to use a passkey from a phone or tablet. " +
+                "Scan that QR code here, then choose KyAuth when Android asks for a passkey.\n\n" +
+                "Enable KyAuth in Android’s password and passkey provider settings. " +
+                "Keep both devices nearby with Bluetooth and internet enabled. " +
+                "Requires Android 14 or later and Google Play services.")
+            .setPositiveButton("Scan QR code") { _, _ -> scanPasskeyQr() }
+            .setNegativeButton("Cancel", null)
+            .showKyDialog()
+    }
+
+    private fun scanPasskeyQr() {
+        GmsBarcodeScanning.getClient(this).startScan()
+            .addOnSuccessListener { result ->
+                if (isFinishing || isDestroyed) return@addOnSuccessListener
+                val uri = PasskeyQr.parse(result.rawValue)
+                if (uri == null) {
+                    Toast.makeText(this, "This is not a passkey sign-in QR code", Toast.LENGTH_LONG).show()
+                    return@addOnSuccessListener
+                }
+                try {
+                    // ponytail: Play services owns hybrid transport and proximity verification;
+                    // our existing Credential Provider owns key access and user verification.
+                    // Pin the handler so an arbitrary FIDO URI receiver cannot intercept the session.
+                    startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(uri))
+                        .setPackage("com.google.android.gms"))
+                } catch (_: ActivityNotFoundException) {
+                    Toast.makeText(this, "Passkey QR sign-in is unavailable. Update Google Play services.", Toast.LENGTH_LONG).show()
+                } catch (_: SecurityException) {
+                    Toast.makeText(this, "Android could not open passkey QR sign-in", Toast.LENGTH_LONG).show()
+                }
+            }
+            .addOnFailureListener {
+                if (!isFinishing && !isDestroyed) {
+                    Toast.makeText(this, "Could not scan the QR code. Try again.", Toast.LENGTH_LONG).show()
+                }
+            }
+    }
+
     private fun loadPasswordEntries() {
         readPasswordVault(operation = { KdbxPasswordVault.loadEntries(passwordVaultFile, it) }, onSuccess = {
             passwordEntries = it.toMutableList()
@@ -1008,6 +1051,12 @@ class MainActivity : AppCompatActivity() {
     private fun renderPasswordsTab(container: LinearLayout) {
         val vaultKey = AppLockManager.getPasswordVaultKey()
         val kyAccount = kyPasswordStore.account()
+
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
+            container.addView(secondaryButton("Scan passkey QR code").apply {
+                setOnClickListener { showPasskeyQrDialog() }
+            }, fullWidthParams(bottom = 12))
+        }
 
         if (vaultKey == null) {
             if (kyAccount == null) {
@@ -1146,7 +1195,7 @@ class MainActivity : AppCompatActivity() {
                 text = entry.title
                 textSize = 18f
                 typeface = Typeface.DEFAULT_BOLD
-                setTextColor(ThemeManager.color(context, R.color.ky_text))
+                setTextColor(ThemeManager.color(context, R.color.ky_heading))
                 layoutParams = LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f)
             })
 
@@ -1160,7 +1209,7 @@ class MainActivity : AppCompatActivity() {
             if (entry.isPasskey) {
                 headerRow.addView(TextView(this).apply {
                     text = if (stranded) {
-                        getString(R.string.signon_passkey_restranded)
+                        getString(R.string.identity_passkey_restranded)
                     } else {
                         getString(R.string.passkey_badge)
                     }
@@ -1427,7 +1476,7 @@ class MainActivity : AppCompatActivity() {
             text = getString(R.string.pair_kypasswords_server)
             textSize = 20f
             typeface = Typeface.DEFAULT_BOLD
-            setTextColor(ThemeManager.color(context, R.color.ky_text))
+            setTextColor(ThemeManager.color(context, R.color.ky_heading))
             setPadding(0, 0, 0, dp(8))
         }
         val subtitleView = TextView(this).apply {
@@ -1488,7 +1537,7 @@ class MainActivity : AppCompatActivity() {
             text = getString(R.string.manual_kypasswords_pairing)
             textSize = 18f
             typeface = Typeface.DEFAULT_BOLD
-            setTextColor(ThemeManager.color(context, R.color.ky_text))
+            setTextColor(ThemeManager.color(context, R.color.ky_heading))
             setPadding(0, 0, 0, dp(12))
         }
         container.addView(titleView)
@@ -1624,7 +1673,7 @@ class MainActivity : AppCompatActivity() {
             text = getString(R.string.unlock_kypasswords_keyfile)
             textSize = 18f
             typeface = Typeface.DEFAULT_BOLD
-            setTextColor(ThemeManager.color(context, R.color.ky_text))
+            setTextColor(ThemeManager.color(context, R.color.ky_heading))
             setPadding(0, 0, 0, dp(4))
         }
         val subtitleView = TextView(this).apply {
@@ -1984,35 +2033,35 @@ class MainActivity : AppCompatActivity() {
         sections.add(providerSection)
 
         val signOnPasskeySection = settingsCard()
-        signOnPasskeySection.addView(title(getString(R.string.signon_passkey_title)))
+        signOnPasskeySection.addView(title(getString(R.string.identity_passkey_title)))
         // EncryptedSharedPreferences can throw after a device restore or keyset invalidation;
         // Settings must still render, showing "none" rather than crashing the app.
-        val signOnRecord = runCatching { SignOnPasskeyStore(this).record() }.getOrNull()
+        val signOnRecord = runCatching { IdentityPasskeyStore(this).record() }.getOrNull()
         if (signOnRecord == null) {
-            signOnPasskeySection.addView(message(getString(R.string.signon_passkey_none)))
+            signOnPasskeySection.addView(message(getString(R.string.identity_passkey_none)))
         } else {
             val backing = if (signOnRecord.strongBoxBacked) {
-                R.string.signon_passkey_strongbox
+                R.string.identity_passkey_strongbox
             } else {
-                R.string.signon_passkey_tee
+                R.string.identity_passkey_tee
             }
             signOnPasskeySection.addView(
                 message("${signOnRecord.username.ifBlank { signOnRecord.rpId }}\n${getString(backing)}"),
             )
-            val btnRemove = secondaryButton(getString(R.string.signon_passkey_remove)).apply {
+            val btnRemove = secondaryButton(getString(R.string.identity_passkey_remove)).apply {
                 setTextColor(ThemeManager.color(context, R.color.ky_error))
                 setOnClickListener {
                     AlertDialog.Builder(this@MainActivity)
-                        .setTitle(getString(R.string.signon_passkey_remove))
+                        .setTitle(getString(R.string.identity_passkey_remove))
                         .setMessage(
                             "This passkey only exists on this device and cannot be recovered. " +
-                                "You will need your KySignOn recovery codes or an admin reset to " +
+                                "You will need your KyIdentity recovery codes or an admin reset to " +
                                 "sign in without it.",
                         )
                         .setNegativeButton("Cancel", null)
                         .setPositiveButton("Remove") { _, _ ->
-                            SignOnPasskeyKey.deleteAll()
-                            SignOnPasskeyStore(this@MainActivity).clear()
+                            IdentityPasskeyKey.deleteAll()
+                            IdentityPasskeyStore(this@MainActivity).clear()
                             renderContent()
                         }
                         .showKyDialog()
@@ -2052,7 +2101,7 @@ class MainActivity : AppCompatActivity() {
             message(
                 "This key is the password of passwords_vault.kdbx. It opens a downloaded copy of " +
                     "your vault in KeePassXC or KeePassDX with no server involved, which is what " +
-                    "you have left if KySignOn is unreachable.",
+                    "you have left if KyIdentity is unreachable.",
             ),
         )
         offlineKeySection.addView(
@@ -2073,16 +2122,16 @@ class MainActivity : AppCompatActivity() {
                 AlertDialog.Builder(this@MainActivity)
                     .setTitle("Unpair Device")
                     .setMessage(
-                        "Are you sure you want to unpair this device from KySignOn? " +
-                            "This also deletes the KySignOn passkey held on this device.",
+                        "Are you sure you want to unpair this device from KyIdentity? " +
+                            "This also deletes the KyIdentity passkey held on this device.",
                     )
                     .setNegativeButton("Cancel", null)
                     .setPositiveButton("Unpair") { _, _ ->
                         store.clear()
                         // A passkey for a server we are no longer paired to is dead weight, and
                         // its key must not outlive the pairing.
-                        SignOnPasskeyKey.deleteAll()
-                        SignOnPasskeyStore(this@MainActivity).clear()
+                        IdentityPasskeyKey.deleteAll()
+                        IdentityPasskeyStore(this@MainActivity).clear()
                         lockSensitiveState()
                         renderContent()
                     }
@@ -2178,7 +2227,7 @@ class MainActivity : AppCompatActivity() {
             text = getString(R.string.select_theme)
             textSize = 20f
             typeface = Typeface.DEFAULT_BOLD
-            setTextColor(ThemeManager.color(context, R.color.ky_text))
+            setTextColor(ThemeManager.color(context, R.color.ky_heading))
             setPadding(0, 0, 0, dp(16))
         }
         container.addView(titleView)
@@ -2481,6 +2530,14 @@ class MainActivity : AppCompatActivity() {
 
     private fun setRootContentView(root: View) {
         setContentView(root)
+        val background = ThemeManager.color(this, R.color.ky_background)
+        window.statusBarColor = background
+        window.navigationBarColor = background
+        val lightBackground = androidx.core.graphics.ColorUtils.calculateLuminance(background) > 0.5
+        androidx.core.view.WindowCompat.getInsetsController(window, root).apply {
+            isAppearanceLightStatusBars = lightBackground
+            isAppearanceLightNavigationBars = lightBackground
+        }
         ViewCompat.requestApplyInsets(root)
     }
 
@@ -2504,7 +2561,7 @@ class MainActivity : AppCompatActivity() {
             text = subtitle
             textSize = 12f
             typeface = Typeface.MONOSPACE
-            setTextColor(ThemeManager.color(context, R.color.ky_cyan_dim))
+            setTextColor(ThemeManager.color(context, R.color.ky_cyan))
             gravity = Gravity.CENTER
             letterSpacing = 0.2f
         })
@@ -2520,7 +2577,7 @@ class MainActivity : AppCompatActivity() {
         gravity = if (centered) Gravity.CENTER else Gravity.CENTER_VERTICAL
         contentDescription = title
         addView(ImageView(context).apply {
-            setImageResource(R.drawable.ic_launcher_foreground)
+            setImageResource(R.drawable.kypost_hero)
             importantForAccessibility = View.IMPORTANT_FOR_ACCESSIBILITY_NO
             scaleType = ImageView.ScaleType.CENTER_INSIDE
         }, LinearLayout.LayoutParams(dp(iconSizeDp), dp(iconSizeDp)).apply { marginEnd = dp(10) })
@@ -2528,7 +2585,7 @@ class MainActivity : AppCompatActivity() {
             text = title
             this.textSize = textSize
             typeface = Typeface.DEFAULT_BOLD
-            setTextColor(ThemeManager.color(context, R.color.ky_text))
+            setTextColor(ThemeManager.color(context, R.color.ky_heading))
             includeFontPadding = false
         })
     }
@@ -2612,7 +2669,7 @@ class MainActivity : AppCompatActivity() {
             setOnShowListener {
                 window?.setBackgroundDrawable(background)
                 findViewById<TextView>(androidx.appcompat.R.id.alertTitle)?.apply {
-                    setTextColor(ThemeManager.color(this@MainActivity, R.color.ky_text))
+                    setTextColor(ThemeManager.color(this@MainActivity, R.color.ky_heading))
                     typeface = Typeface.DEFAULT_BOLD
                 }
                 findViewById<TextView>(android.R.id.message)?.apply {
@@ -2714,14 +2771,14 @@ class MainActivity : AppCompatActivity() {
             textSize = 58f
             typeface = Typeface.DEFAULT
             gravity = Gravity.CENTER
-            setTextColor(ThemeManager.color(context, R.color.ky_cyan_dim))
+            setTextColor(ThemeManager.color(context, R.color.ky_cyan))
         })
         addView(TextView(context).apply {
             text = getString(R.string.no_pending_challenges)
             textSize = 19f
             typeface = Typeface.DEFAULT_BOLD
             gravity = Gravity.CENTER
-            setTextColor(ThemeManager.color(context, R.color.ky_text))
+            setTextColor(ThemeManager.color(context, R.color.ky_heading))
             setPadding(0, dp(12), 0, dp(8))
         })
         addView(TextView(context).apply {

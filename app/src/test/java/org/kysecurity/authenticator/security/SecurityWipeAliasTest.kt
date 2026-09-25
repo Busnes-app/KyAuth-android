@@ -16,9 +16,12 @@ class SecurityWipeAliasTest {
             "kyauth_vault_kek",
             "kyauth_credential_pepper",
             "kyauth_pin_pepper",
+            "kyidentity-device-signing-v1",
             "kysignon-device-signing-v1",
-            // Both halves of the alternating KySignOn passkey pair; a key left behind here is a
+            // Both halves of the alternating KyIdentity passkey pair; a key left behind here is a
             // live authentication factor surviving a wipe.
+            "kyauth_identity_passkey_a",
+            "kyauth_identity_passkey_b",
             "kyauth_signon_passkey_a",
             "kyauth_signon_passkey_b",
         )
