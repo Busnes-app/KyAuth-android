@@ -25,7 +25,9 @@ data class MfaChallenge(
 }
 
 object MfaMessage {
-    private const val PREFIX = "kyidentity-push-v1"
+    // Wire contract: must equal the prefix kyidentity-server verifies (internal/mfa/mfa.go).
+    // The product was renamed; this string was not. Changing it breaks every push approval.
+    private const val PREFIX = "kysignon-push-v1"
 
     /**
      * Builds the exact domain-separated byte array that the device must sign with its

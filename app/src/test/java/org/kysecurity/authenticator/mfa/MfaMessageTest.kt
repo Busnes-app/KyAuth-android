@@ -8,7 +8,7 @@ class MfaMessageTest {
     fun formatsApprovedChallengeMessage() {
         val payload = MfaMessage.formatPayload("ch-1234", true, "42")
         assertEquals(
-            "kyidentity-push-v1|ch-1234|approve|42",
+            "kysignon-push-v1|ch-1234|approve|42",
             String(payload, Charsets.UTF_8),
         )
     }
@@ -17,7 +17,7 @@ class MfaMessageTest {
     fun formatsDeniedChallengeMessage() {
         val payload = MfaMessage.formatPayload("ch-5678", false, "99")
         assertEquals(
-            "kyidentity-push-v1|ch-5678|deny|99",
+            "kysignon-push-v1|ch-5678|deny|99",
             String(payload, Charsets.UTF_8),
         )
     }

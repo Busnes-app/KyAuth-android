@@ -14,7 +14,9 @@ import java.util.Base64
 
 object DeviceSigningKey {
     private const val ANDROID_KEY_STORE = "AndroidKeyStore"
-    private const val ALIAS = "kyidentity-device-signing-v1"
+    // Storage contract: the alias paired devices already hold. Renaming it makes the lookup miss,
+    // silently generates a fresh key the server never saw, and every push signature then fails.
+    private const val ALIAS = "kysignon-device-signing-v1"
 
     @Volatile
     private var testKeyPair: KeyPair? = null

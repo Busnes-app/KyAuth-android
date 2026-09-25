@@ -36,7 +36,7 @@ class DeviceSigningKeyTest {
 
     @Test
     fun signsMessageAndVerifiesCorrectly() {
-        val message = "kyidentity-push-v1|challenge-uuid-123|approve|42".toByteArray(Charsets.UTF_8)
+        val message = "kysignon-push-v1|challenge-uuid-123|approve|42".toByteArray(Charsets.UTF_8)
         val signatureB64 = DeviceSigningKey.sign(message)
         assertNotNull(signatureB64)
 
