@@ -1,5 +1,32 @@
+import java.util.Properties
+
 plugins {
     id("com.android.application")
+}
+
+val keystorePropertiesFile = rootProject.file("keystore.properties")
+val keystoreProperties = Properties().apply {
+    if (keystorePropertiesFile.exists()) {
+        keystorePropertiesFile.inputStream().use { load(it) }
+    }
+}
+
+fun signingValue(env: String, property: String): String? =
+    providers.environmentVariable(env).orNull
+        ?: providers.gradleProperty(env).orNull
+        ?: providers.gradleProperty(property).orNull
+        ?: keystoreProperties[property] as String?
+
+val signingMaterial: Map<String, String>? = run {
+    val store = signingValue("KYAUTH_KEYSTORE", "storeFile")
+    val storePassword = signingValue("KYAUTH_STORE_PASSWORD", "storePassword")
+    val alias = signingValue("KYAUTH_KEY_ALIAS", "keyAlias")
+    val keyPassword = signingValue("KYAUTH_KEY_PASSWORD", "keyPassword")
+    if (store != null && storePassword != null && alias != null && keyPassword != null) {
+        mapOf("storeFile" to store, "storePassword" to storePassword, "keyAlias" to alias, "keyPassword" to keyPassword)
+    } else {
+        null
+    }
 }
 
 android {
@@ -16,6 +43,17 @@ android {
         buildConfigField("boolean", "ALLOW_SCREENSHOTS", "false")
     }
 
+    signingConfigs {
+        signingMaterial?.let { material ->
+            create("release") {
+                storeFile = file(material.getValue("storeFile"))
+                storePassword = material.getValue("storePassword")
+                keyAlias = material.getValue("keyAlias")
+                keyPassword = material.getValue("keyPassword")
+            }
+        }
+    }
+
     buildFeatures { buildConfig = true }
 
     buildTypes {
@@ -26,6 +64,9 @@ android {
         release {
             isMinifyEnabled = true
             proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
+            if (signingMaterial != null) {
+                signingConfig = signingConfigs.getByName("release")
+            }
         }
     }
 

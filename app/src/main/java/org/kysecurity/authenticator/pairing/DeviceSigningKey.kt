@@ -14,7 +14,7 @@ import java.util.Base64
 
 object DeviceSigningKey {
     private const val ANDROID_KEY_STORE = "AndroidKeyStore"
-    private const val ALIAS = "kysignon-device-signing-v1"
+    private const val ALIAS = "kyidentity-device-signing-v1"
 
     @Volatile
     private var testKeyPair: KeyPair? = null

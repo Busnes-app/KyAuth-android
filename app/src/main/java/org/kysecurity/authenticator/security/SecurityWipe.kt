@@ -3,15 +3,16 @@ package org.kysecurity.authenticator.security
 import android.content.Context
 import org.kysecurity.authenticator.pairing.DeviceSigningKey
 import org.kysecurity.authenticator.pairing.PairingStore
+import org.kysecurity.authenticator.passwords.kypasswords.KyPasswordStore
 import java.io.File
 import java.security.KeyStore
 
 object SecurityWipe {
     fun wipe(context: Context) {
-        // 1. Wipe PairingStore, KyPasswordStore and the KySignOn passkey record
+        // 1. Wipe PairingStore, KyPasswordStore and the KyIdentity passkey record
         runCatching { PairingStore(context).clear() }
-        runCatching { org.kysecurity.authenticator.passwords.kypasswords.KyPasswordStore(context).clear() }
-        runCatching { org.kysecurity.authenticator.passkeys.SignOnPasskeyStore(context).clear() }
+        runCatching { KyPasswordStore(context).clear() }
+        runCatching { org.kysecurity.authenticator.passkeys.IdentityPasskeyStore(context).clear() }
 
         // 2. Wipe AppLock SharedPreferences
         runCatching {
@@ -54,10 +55,10 @@ object SecurityWipe {
 
     /**
      * KyAuth's own AndroidKeyStore entries, matched without pinning a separator: the aliases in use
-     * are a mix of `kyauth_` and `kysignon-`, and requiring one spelling silently left
+     * are a mix of `kyauth_`, `kysignon-`, and `kyidentity-`, and requiring one spelling silently left
      * [DeviceSigningKey]'s key behind. Deliberately does not match androidx's master key —
      * `EncryptedSharedPreferences` cannot re-open its files once that is gone.
      */
     internal fun isAppAlias(alias: String): Boolean =
-        alias.startsWith("kyauth") || alias.startsWith("kysignon")
+        alias.startsWith("kyauth") || alias.startsWith("kysignon") || alias.startsWith("kyidentity")
 }

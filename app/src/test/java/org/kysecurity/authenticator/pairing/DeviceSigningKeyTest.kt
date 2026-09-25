@@ -5,9 +5,11 @@ import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Test
+import java.security.KeyFactory
 import java.security.KeyPairGenerator
 import java.security.Signature
 import java.security.spec.ECGenParameterSpec
+import java.security.spec.X509EncodedKeySpec
 import java.util.Base64
 
 class DeviceSigningKeyTest {
@@ -34,7 +36,7 @@ class DeviceSigningKeyTest {
 
     @Test
     fun signsMessageAndVerifiesCorrectly() {
-        val message = "kysignon-push-v1|challenge-uuid-123|approve|42".toByteArray(Charsets.UTF_8)
+        val message = "kyidentity-push-v1|challenge-uuid-123|approve|42".toByteArray(Charsets.UTF_8)
         val signatureB64 = DeviceSigningKey.sign(message)
         assertNotNull(signatureB64)
 
@@ -45,8 +47,8 @@ class DeviceSigningKeyTest {
 
         // Verify with the test public key
         val pubBytes = Base64.getDecoder().decode(DeviceSigningKey.publicKeyBase64())
-        val keyFactory = java.security.KeyFactory.getInstance("EC")
-        val pubKey = keyFactory.generatePublic(java.security.spec.X509EncodedKeySpec(pubBytes))
+        val keyFactory = KeyFactory.getInstance("EC")
+        val pubKey = keyFactory.generatePublic(X509EncodedKeySpec(pubBytes))
 
         val verifier = Signature.getInstance("SHA256withECDSA").apply {
             initVerify(pubKey)

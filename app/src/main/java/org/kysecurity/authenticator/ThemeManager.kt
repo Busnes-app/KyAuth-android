@@ -14,13 +14,18 @@ private data class AppTheme(
     val accentSoft: String,
     val border: String,
     val buttonText: String,
+    val heading: String = text,
 )
 
 object ThemeManager {
     private const val PREFS = "appearance"
     private const val KEY_THEME = "theme"
 
+    private const val DEFAULT_THEME = "Busnes Light"
+
     private val themes = listOf(
+        AppTheme("Busnes Light", "#f8f6f0", "#ffffff", "#566461", "#66736f", "#bf3f18", "#fbf0ec", "#38182326", "#ffffff", "#182326"),
+        AppTheme("Busnes Dark", "#182326", "#1f2b2e", "#b3bcb8", "#8e9894", "#f5865f", "#2b2622", "#3df2efe8", "#182326", "#f2efe8"),
         AppTheme("Dark Matter", "#1a1a1e", "#252530", "#e8ddf5", "#d4c5e2", "#c29a72", "#5a3f31", "#404050", "#24170f"),
         AppTheme("Light Matter", "#f5efe5", "#fff8ee", "#2d1f15", "#4c3d32", "#c29a72", "#e6d2be", "#c5b29d", "#24170f"),
         AppTheme("Tropics", "#f4f1eb", "#fffaf0", "#241a14", "#43362d", "#9bc400", "#d4e3a0", "#c4b7a3", "#243100"),
@@ -52,6 +57,7 @@ object ThemeManager {
             R.color.ky_background -> theme.background
             R.color.ky_surface, R.color.ky_surface_elevated -> theme.surface
             R.color.ky_text -> theme.text
+            R.color.ky_heading -> theme.heading
             R.color.ky_muted -> theme.muted
             R.color.ky_cyan -> theme.accent
             R.color.ky_cyan_dim -> theme.accentSoft
@@ -64,7 +70,7 @@ object ThemeManager {
     fun buttonText(context: Context): Int = Color.parseColor(current(context).buttonText)
 
     private fun current(context: Context): AppTheme {
-        val saved = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).getString(KEY_THEME, "Patina Ky")
-        return themes.firstOrNull { it.name == saved } ?: themes.first { it.name == "Patina Ky" }
+        val saved = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).getString(KEY_THEME, DEFAULT_THEME)
+        return themes.firstOrNull { it.name == saved } ?: themes.first { it.name == DEFAULT_THEME }
     }
 }

@@ -41,7 +41,7 @@ class PairingClient {
                 throw IllegalStateException(errorMsg)
             }
             val deviceId = response.optString("deviceId")
-            require(deviceId.isNotBlank()) { "KySignOn did not return a device ID" }
+            require(deviceId.isNotBlank()) { "KyIdentity did not return a device ID" }
             val respDevice = response.optJSONObject("device")
             val userId = respDevice?.optString("userId")?.takeIf { it.isNotBlank() } ?: pairing.userId
 

@@ -15,12 +15,12 @@ import org.kysecurity.authenticator.passwords.PasswordEntry
 
 /**
  * Deny-side test for whether vault passkeys should be suppressed for [rpId] because the request
- * is, www-insensitively, the paired KySignOn host.
+ * is, www-insensitively, the paired KyIdentity host.
  *
- * Deliberately more lenient than [SignOnPasskey.isSignOnRpId]: [DomainMatcher.matchesPasskey]
- * normalizes away a leading "www.", but [RpId.normalize] (which backs [SignOnPasskey.isSignOnRpId])
+ * Deliberately more lenient than [IdentityPasskey.isIdentityRpId]: [DomainMatcher.matchesPasskey]
+ * normalizes away a leading "www.", but [RpId.normalize] (which backs [IdentityPasskey.isIdentityRpId])
  * does not. An exact compare here would let a stranded vault passkey through whenever the request
- * and the paired host differ only by that prefix, in either direction. [SignOnPasskey.isSignOnRpId]
+ * and the paired host differ only by that prefix, in either direction. [IdentityPasskey.isIdentityRpId]
  * itself stays exact, because it also gates enrolment and routing to hardware, where this leniency
  * would widen the security boundary instead of only narrowing what the vault offers.
  *
@@ -28,30 +28,30 @@ import org.kysecurity.authenticator.passwords.PasswordEntry
  * this file's `@RequiresApi` framework surface so it stays trivially testable from a plain JVM
  * unit test (verified empirically to work fine even inside this file, but this is clearer intent).
  */
-internal fun suppressesVaultPasskeys(rpId: String, signOnServerUrl: String?): Boolean {
-    val paired = SignOnPasskey.signOnRpId(signOnServerUrl) ?: return false
+internal fun suppressesVaultPasskeys(rpId: String, identityServerUrl: String?): Boolean {
+    val paired = IdentityPasskey.identityRpId(identityServerUrl) ?: return false
     return DomainMatcher.normalizeHost(paired) == DomainMatcher.normalizeHost(rpId)
 }
 
 /**
- * Create-path guard: the request is the paired KySignOn host by the lenient test above, but is not
- * exactly routable to hardware by [SignOnPasskey.isSignOnRpId], so nothing may be minted for it.
+ * Create-path guard: the request is the paired KyIdentity host by the lenient test above, but is not
+ * exactly routable to hardware by [IdentityPasskey.isIdentityRpId], so nothing may be minted for it.
  *
  * The two predicates disagree whenever the request and the paired host differ only by a leading
  * "www." — a real configuration, since the pairing URL and the server's `rp.id` are set
- * independently. Minting into `passwords_vault.kdbx` there would put a KySignOn login private key
+ * independently. Minting into `passwords_vault.kdbx` there would put a KyIdentity login private key
  * into an exportable, KyPasswords-synced artifact, which is the exact outcome this design removes;
  * and the get path, which uses the lenient test, would then hide the entry anyway, leaving a
  * credential the server believes in and the device can never use. Refusing to create is the only
  * correct failure mode.
  */
-internal fun refusesVaultPasskeyCreate(rpId: String, signOnServerUrl: String?): Boolean =
-    suppressesVaultPasskeys(rpId, signOnServerUrl) && !SignOnPasskey.isSignOnRpId(rpId, signOnServerUrl)
+internal fun refusesVaultPasskeyCreate(rpId: String, identityServerUrl: String?): Boolean =
+    suppressesVaultPasskeys(rpId, identityServerUrl) && !IdentityPasskey.isIdentityRpId(rpId, identityServerUrl)
 
 /**
  * Turns a credential query into the entries offered to the user.
  *
- * The hardware-backed KySignOn passkey needs no vault key, so [KyAuthCredentialProviderService]
+ * The hardware-backed KyIdentity passkey needs no vault key, so [KyAuthCredentialProviderService]
  * reaches this even while locked; the password-vault entries are added only when a vault is
  * supplied. [CredentialUnlockActivity] reaches this after authenticating, to add the vault
  * entries the service could not.
@@ -63,8 +63,8 @@ object CredentialEntryBuilder {
         context: Context,
         request: BeginGetCredentialRequest,
         entries: List<PasswordEntry>,
-        signOnPasskey: SignOnPasskeyRecord?,
-        signOnServerUrl: String?,
+        identityPasskey: IdentityPasskeyRecord?,
+        identityServerUrl: String?,
         authenticationAction: Action? = null,
     ): BeginGetCredentialResponse {
         val callingAppInfo = request.callingAppInfo
@@ -80,7 +80,7 @@ object CredentialEntryBuilder {
             when (option.type) {
                 TYPE_PUBLIC_KEY, TYPE_PUBLIC_KEY_ANDX ->
                     addPasskeyEntries(
-                        context, option, entries, signOnPasskey, signOnServerUrl, webOriginHost,
+                        context, option, entries, identityPasskey, identityServerUrl, webOriginHost,
                         callerPackage, callerOrigin, origin, callingAppInfo?.signingInfo,
                         responseBuilder, requestCode++,
                     )
@@ -98,8 +98,8 @@ object CredentialEntryBuilder {
         context: Context,
         option: BeginGetCredentialOption,
         entries: List<PasswordEntry>,
-        signOnPasskey: SignOnPasskeyRecord?,
-        signOnServerUrl: String?,
+        identityPasskey: IdentityPasskeyRecord?,
+        identityServerUrl: String?,
         webOriginHost: String?,
         callerPackage: String?,
         callerOrigin: String?,
@@ -116,10 +116,10 @@ object CredentialEntryBuilder {
         val rpId = RpId.validate(json.optString("rpId"), webOriginHost) ?: return
         // Nothing here could be offered to this caller, so stop before the DigitalAssetLinks fetch
         // below: that fetch is an HTTPS request to a host the caller names, and an rpId unrelated to
-        // anything we hold must short-circuit identically whether or not a KySignOn passkey is
+        // anything we hold must short-circuit identically whether or not a KyIdentity passkey is
         // enrolled. Otherwise a locked device answers "is one enrolled?" in the attacker's own
         // server log. Costs nothing when unlocked, where entries is normally non-empty.
-        if (entries.isEmpty() && signOnPasskey?.rpId != rpId) return
+        if (entries.isEmpty() && identityPasskey?.rpId != rpId) return
         // A native caller named this RP itself; only the RP can confirm the claim.
         if (webOriginHost == null &&
             !DigitalAssetLinks.isCallerAuthorized(rpId, callerPackage, callerSigningInfo)
@@ -132,18 +132,18 @@ object CredentialEntryBuilder {
             option.candidateQueryData.getByteArray(BUNDLE_KEY_CLIENT_DATA_HASH),
         )
 
-        // The hardware-backed KySignOn passkey. Offered without any vault key, so it survives the
+        // The hardware-backed KyIdentity passkey. Offered without any vault key, so it survives the
         // password vault being locked, compromised, or in recovery.
-        if (signOnPasskey != null && signOnPasskey.rpId == rpId) {
-            val title = signOnPasskey.username.ifBlank { rpId }
+        if (identityPasskey != null && identityPasskey.rpId == rpId) {
+            val title = identityPasskey.username.ifBlank { rpId }
             val intent = Intent(context, CredentialAuthActivity::class.java).apply {
-                putExtra(CredentialAuthActivity.EXTRA_ACTION, CredentialAuthActivity.ACTION_GET_SIGNON_PASSKEY)
+                putExtra(CredentialAuthActivity.EXTRA_ACTION, CredentialAuthActivity.ACTION_GET_IDENTITY_PASSKEY)
                 putExtra(CredentialAuthActivity.EXTRA_REQUEST_JSON, requestJson)
                 putExtra(CredentialAuthActivity.EXTRA_RP_ID, rpId)
                 putExtra(CredentialAuthActivity.EXTRA_ORIGIN, callerOrigin)
                 putExtra(CredentialAuthActivity.EXTRA_CALLER_PACKAGE, callerPackage)
                 putExtra(CredentialAuthActivity.EXTRA_CLIENT_DATA_HASH, clientDataHash)
-                putExtra(CredentialAuthActivity.EXTRA_DISPLAY_TITLE, "Sign in to KySignOn")
+                putExtra(CredentialAuthActivity.EXTRA_DISPLAY_TITLE, "Sign in to KyIdentity")
                 putExtra(CredentialAuthActivity.EXTRA_DISPLAY_SUBTITLE, "$title (Passkey • this device)")
             }
             responseBuilder.addCredentialEntry(
@@ -158,10 +158,10 @@ object CredentialEntryBuilder {
             )
         }
 
-        // A KySignOn passkey in the synced vault is never offered: it must be re-enrolled into
+        // A KyIdentity passkey in the synced vault is never offered: it must be re-enrolled into
         // secure hardware. See suppressesVaultPasskeys for why this is www-insensitive on both
-        // sides, unlike SignOnPasskey.isSignOnRpId.
-        if (!suppressesVaultPasskeys(rpId, signOnServerUrl)) {
+        // sides, unlike IdentityPasskey.isIdentityRpId.
+        if (!suppressesVaultPasskeys(rpId, identityServerUrl)) {
             val matches = entries.filter { DomainMatcher.matchesPasskey(it, rpId) }
             for ((index, entry) in matches.withIndex()) {
                 val passkey = entry.passkey ?: continue

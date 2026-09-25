@@ -147,7 +147,7 @@ Review idle behavior and dialogs without copying browser session machinery.
 `onStop` already locks except during configuration changes; verify backgrounding,
 rotation, process recreation, unsaved forms, revealed dialogs and in-flight work
 cannot retain/display secrets after lock or repopulate unlocked state. Preserve
-per-operation provider authentication and the separate KySignOn passkey path.
+per-operation provider authentication and the separate KyIdentity passkey path.
 Define any foreground idle-timeout change against the merged web contract before
 implementation; the handoff supplies no timeout value. Record actual device
 observations separately from compiled device tests.

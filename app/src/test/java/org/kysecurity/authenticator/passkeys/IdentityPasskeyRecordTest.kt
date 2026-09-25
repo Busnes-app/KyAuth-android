@@ -4,34 +4,34 @@ import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
 import org.junit.Test
 
-class SignOnPasskeyRecordTest {
+class IdentityPasskeyRecordTest {
 
-    private fun record() = SignOnPasskeyRecord(
-        rpId = "signon.example.com",
+    private fun record() = IdentityPasskeyRecord(
+        rpId = "identity.example.com",
         username = "yoshi",
         userHandle = byteArrayOf(1, 2, 3),
         credentialId = byteArrayOf(9, 8, 7, 6),
         signCount = 4,
-        alias = "kyauth_signon_passkey_a",
+        alias = "kyauth_identity_passkey_a",
         strongBoxBacked = true,
     )
 
     @Test
     fun `round trips through json`() {
-        assertEquals(record(), SignOnPasskeyRecord.fromJson(record().toJson()))
+        assertEquals(record(), IdentityPasskeyRecord.fromJson(record().toJson()))
     }
 
     @Test
     fun `rejects malformed or absent json instead of throwing`() {
-        assertNull(SignOnPasskeyRecord.fromJson(null))
-        assertNull(SignOnPasskeyRecord.fromJson(""))
-        assertNull(SignOnPasskeyRecord.fromJson("not json"))
-        assertNull(SignOnPasskeyRecord.fromJson("""{"rpId":"signon.example.com"}"""))
+        assertNull(IdentityPasskeyRecord.fromJson(null))
+        assertNull(IdentityPasskeyRecord.fromJson(""))
+        assertNull(IdentityPasskeyRecord.fromJson("not json"))
+        assertNull(IdentityPasskeyRecord.fromJson("""{"rpId":"identity.example.com"}"""))
     }
 
     @Test
     fun `an empty user handle survives the round trip`() {
         val empty = record().copy(userHandle = ByteArray(0))
-        assertEquals(empty, SignOnPasskeyRecord.fromJson(empty.toJson()))
+        assertEquals(empty, IdentityPasskeyRecord.fromJson(empty.toJson()))
     }
 }

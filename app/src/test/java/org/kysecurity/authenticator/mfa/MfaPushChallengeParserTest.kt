@@ -9,7 +9,7 @@ class MfaPushChallengeParserTest {
     private val paired = "https://signin.example.com"
 
     @Test
-    fun parsesKySignOnPushChallengeDataPayload() {
+    fun parsesKyIdentityPushChallengeDataPayload() {
         val now = 1_000_000L
         val challenge = MfaPushChallengeParser.parse(
             mapOf(

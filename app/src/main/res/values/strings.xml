@@ -1,7 +1,7 @@
 <resources>
     <string name="app_name">KyAuth</string>
-    <string name="pairing_title">Pair KySignOn</string>
-    <string name="app_status">KyAuth is locked. Pair a KySignOn account to begin.</string>
+    <string name="pairing_title">Pair KyIdentity</string>
+    <string name="app_status">KyAuth is locked. Pair a KyIdentity account to begin.</string>
     <string name="tab_totp">TOTP Vault</string>
     <string name="tab_approvals">Push MFA</string>
     <string name="tab_passwords">Passwords</string>
@@ -50,10 +50,10 @@
     <string name="unlock_kypasswords_description">Enter your KyPasswords Master Password or Paper Recovery Key to unwrap your vault keyfile.</string>
     <string name="select_theme">Select Theme</string>
     <string name="mfa_empty_description">New sign-in requests will appear here.</string>
-    <string name="signon_passkey_title">KySignOn Passkey</string>
-    <string name="signon_passkey_strongbox">Stored in this device\'s secure element (StrongBox). It does not sync and does not leave this device.</string>
-    <string name="signon_passkey_tee">Stored in this device\'s secure hardware. It does not sync and does not leave this device.</string>
-    <string name="signon_passkey_none">No KySignOn passkey on this device. Enrol one from KySignOn to use it as a second factor.</string>
-    <string name="signon_passkey_remove">Remove KySignOn Passkey</string>
-    <string name="signon_passkey_restranded">Re-enroll on KySignOn</string>
+    <string name="identity_passkey_title">KyIdentity Passkey</string>
+    <string name="identity_passkey_strongbox">Stored in this device\'s secure element (StrongBox). It does not sync and does not leave this device.</string>
+    <string name="identity_passkey_tee">Stored in this device\'s secure hardware. It does not sync and does not leave this device.</string>
+    <string name="identity_passkey_none">No KyIdentity passkey on this device. Enrol one from KyIdentity to use it as a second factor.</string>
+    <string name="identity_passkey_remove">Remove KyIdentity Passkey</string>
+    <string name="identity_passkey_restranded">Re-enroll on KyIdentity</string>
 </resources>

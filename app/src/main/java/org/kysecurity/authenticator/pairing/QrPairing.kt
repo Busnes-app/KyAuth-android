@@ -6,7 +6,7 @@ import java.net.URLDecoder
 import java.nio.charset.StandardCharsets
 
 /**
- * The ephemeral pairing credentials parsed from a KySignOn QR code or deep link.
+ * The ephemeral pairing credentials parsed from a KyIdentity QR code or deep link.
  * Kept in memory only and never saved to persistent storage.
  */
 data class QrPairing(
@@ -27,7 +27,7 @@ data class QrPairing(
 }
 
 /**
- * Accepts KySignOn's current QR JSON plus the KyPost/KySignOn-style deep-link envelopes.
+ * Accepts KyIdentity's current QR JSON plus the KyPost/KyIdentity-style deep-link envelopes.
  * Both forms must identify the same HTTPS origin before a credential can be sent.
  */
 object QrPairingParser {
@@ -45,7 +45,7 @@ object QrPairingParser {
     private fun parseJson(value: String): QrPairing {
         val json = JSONObject(value)
         val type = json.optString("type")
-        require(type == "kysignon_device_pairing" || type == "kypost_device_pairing") {
+        require(type == "kyidentity_device_pairing" || type == "kysignon_device_pairing" || type == "kypost_device_pairing") {
             "Unsupported QR code type: $type"
         }
         val serverUrl = json.optString("serverUrl").trim()
@@ -70,7 +70,7 @@ object QrPairingParser {
     private fun parseDeepLink(value: String): QrPairing {
         val uri = URI(value)
         require(
-            (uri.scheme.equals("kysignon", ignoreCase = true) || uri.scheme.equals("kypost", ignoreCase = true)) &&
+            (uri.scheme.equals("kyidentity", ignoreCase = true) || uri.scheme.equals("kysignon", ignoreCase = true) || uri.scheme.equals("kypost", ignoreCase = true)) &&
                 uri.host.equals("native-pair", ignoreCase = true),
         ) {
             "Unsupported pairing deep link"

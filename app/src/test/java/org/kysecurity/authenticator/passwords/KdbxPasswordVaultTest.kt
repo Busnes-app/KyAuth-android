@@ -94,7 +94,7 @@ class KdbxPasswordVaultTest {
         val vaultKey = CredentialCipher.generateVaultKey()
         val entries = listOf(
             PasswordEntry(
-                title = "KySignOn",
+                title = "KyIdentity",
                 username = "alice@example.test",
                 password = "correct-horse-battery-staple",
                 url = "https://auth.example.test",

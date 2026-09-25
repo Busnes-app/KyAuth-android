@@ -2,12 +2,14 @@
 
 ## Brand
 
-Use the Busnes.app-site KyAuth Systems stamp shield mark with the `KyAuth` wordmark. Do not use `KyAuthenticator` in user-visible text.
+Use the Busnes.app-site KyPost mail stamp with the `KyAuth` wordmark in the header and lock screen. Keep the KyAuth launcher icon. Do not use `KyAuthenticator` in user-visible text.
 
 ## Themes
 
 `ThemeManager.kt` is the Android source of truth for these themes:
 
+- Busnes Light
+- Busnes Dark
 - Dark Matter
 - Light Matter
 - Tropics
@@ -24,7 +26,7 @@ Use the Busnes.app-site KyAuth Systems stamp shield mark with the `KyAuth` wordm
 - Patina Ky
 - Polished Ky
 
-Patina Ky is the default. Use `ThemeManager.color` for app colors. Do not use fixed Patina colors for a themed view.
+Busnes Light is the default when no valid theme is saved. Preserve existing saved choices. Use `ThemeManager.color` for app colors. Do not use fixed Patina colors for a themed view.
 
 Keep danger and success colors separate from the theme palette.
 

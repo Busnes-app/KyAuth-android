@@ -51,7 +51,7 @@ class KyAuthCredentialProviderService : CredentialProviderService() {
         // EncryptedSharedPreferences can throw (GeneralSecurityException/IOException, e.g. after a
         // device restore or Keystore keyset invalidation); this runs before the vault check below,
         // so it must fail closed the same way rather than crashing the process.
-        val signOnPasskey = runCatching { SignOnPasskeyStore(this).record() }.getOrNull()
+        val identityPasskey = runCatching { IdentityPasskeyStore(this).record() }.getOrNull()
         val serverUrl = runCatching { PairingStore(this).account()?.serverUrl }.getOrNull()
         val vaultKey = AppLockManager.getPasswordVaultKey()
         val entries = vaultKey?.let {
@@ -61,22 +61,22 @@ class KyAuthCredentialProviderService : CredentialProviderService() {
         }
         // Nothing local to offer and no vault: short-circuit before the builder runs. The builder
         // can trigger a DigitalAssetLinks HTTPS fetch to a caller-named host, and a locked device
-        // with no enrolled KySignOn passkey must not let an arbitrary native app cause that with no
+        // with no enrolled KyIdentity passkey must not let an arbitrary native app cause that with no
         // user interaction.
-        if (signOnPasskey == null && entries == null) {
+        if (identityPasskey == null && entries == null) {
             return BeginGetCredentialResponse.Builder()
                 .addAuthenticationAction(unlockAction())
                 .build()
         }
-        // While the vault is unavailable the KySignOn passkey is still offered: it needs no vault
-        // key, and routing it through "Unlock KyAuth" would make KySignOn MFA depend on the
+        // While the vault is unavailable the KyIdentity passkey is still offered: it needs no vault
+        // key, and routing it through "Unlock KyAuth" would make KyIdentity MFA depend on the
         // password vault, which is exactly what this design removes.
         return CredentialEntryBuilder.build(
             context = this,
             request = request,
             entries = entries.orEmpty(),
-            signOnPasskey = signOnPasskey,
-            signOnServerUrl = serverUrl,
+            identityPasskey = identityPasskey,
+            identityServerUrl = serverUrl,
             authenticationAction = if (entries == null) unlockAction() else null,
         )
     }
@@ -138,27 +138,27 @@ class KyAuthCredentialProviderService : CredentialProviderService() {
                 // invalidation, and this runs on a bare Thread in a Service: an uncaught throw
                 // would kill the process with the OutcomeReceiver never called, hanging the
                 // picker. A failed read is also not "unpaired" — it cannot rule out that this is
-                // KySignOn — so it refuses rather than falling through to the vault path.
+                // KyIdentity — so it refuses rather than falling through to the vault path.
                 val pairing = runCatching { PairingStore(this).account()?.serverUrl }
                 if (pairing.isFailure) return responseBuilder.build()
                 val serverUrl = pairing.getOrNull()
-                val isSignOn = SignOnPasskey.isSignOnRpId(rpId, serverUrl)
-                // KySignOn-ish but not exactly routable to hardware: offer no create entry at all.
-                // Minting here would write a KySignOn login private key into passwords_vault.kdbx,
+                val isIdentity = IdentityPasskey.isIdentityRpId(rpId, serverUrl)
+                // KyIdentity-ish but not exactly routable to hardware: offer no create entry at all.
+                // Minting here would write a KyIdentity login private key into passwords_vault.kdbx,
                 // which syncs to KyPasswords and holds it exportably. See refusesVaultPasskeyCreate.
                 if (refusesVaultPasskeyCreate(rpId, serverUrl)) return responseBuilder.build()
                 val userObj = json.optJSONObject("user")
                 val username = userObj?.optString("name")?.ifBlank { null }
                     ?: userObj?.optString("displayName").orEmpty()
 
-                val title = if (isSignOn) {
-                    "Create KySignOn Passkey"
+                val title = if (isIdentity) {
+                    "Create KyIdentity Passkey"
                 } else if (username.isNotBlank()) {
                     "Create Passkey for $username"
                 } else {
                     "Create Passkey"
                 }
-                val subtitle = if (isSignOn) {
+                val subtitle = if (isIdentity) {
                     "Stays on this device, in secure hardware"
                 } else {
                     "Save Passkey for $rpId in KyAuth"
@@ -167,8 +167,8 @@ class KyAuthCredentialProviderService : CredentialProviderService() {
                 val intent = Intent(this, CredentialAuthActivity::class.java).apply {
                     putExtra(
                         CredentialAuthActivity.EXTRA_ACTION,
-                        if (isSignOn) {
-                            CredentialAuthActivity.ACTION_CREATE_SIGNON_PASSKEY
+                        if (isIdentity) {
+                            CredentialAuthActivity.ACTION_CREATE_IDENTITY_PASSKEY
                         } else {
                             CredentialAuthActivity.ACTION_CREATE_PASSKEY
                         },
