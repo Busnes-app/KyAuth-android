@@ -2118,6 +2118,19 @@ class MainActivity : AppCompatActivity() {
         accountSection.addView(title("Paired Account"))
         accountSection.addView(message("Server: ${account.serverUrl}\nDevice ID: ${account.deviceId}\nDevice Name: ${account.deviceName}\nUser ID: ${account.userId ?: "N/A"}"))
 
+        val systemAccount = KyIdentityAccount.current(this)
+        val signOnState = when {
+            !account.canSignOn -> "Suite app sign-in: off for this device (enable it on the KyIdentity devices page, then pair again)"
+            systemAccount != null -> "Suite app sign-in: on. KyPost and other suite apps can use this account."
+            else -> "Suite app sign-in: account missing"
+        }
+        accountSection.addView(message(signOnState))
+        if (account.canSignOn && systemAccount == null) {
+            accountSection.addView(secondaryButton("Restore system account").apply {
+                setOnClickListener { runCatching { KyIdentityAccount.sync(this@MainActivity, account) }; renderContent() }
+            }, fullWidthParams())
+        }
+
         val btnUnpair = secondaryButton(getString(R.string.unpair_account)).apply {
             setTextColor(ThemeManager.color(context, R.color.ky_error))
             setOnClickListener {

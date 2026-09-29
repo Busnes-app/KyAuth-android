@@ -100,6 +100,27 @@ KyAuth pairs an Android device with KyIdentity. It stores TOTP entries in an enc
   new input. Background locking remains immediate. Lock generations reject stale asynchronous
   unlock/reveal results; only the UI thread installs loaded entry lists.
 - Copied passwords are marked sensitive and clear after 30 seconds or when KyAuth locks.
+- KyAuth is the Android account authenticator for `org.kysecurity.identity` (`signon/`). The account
+  exists iff the paired device has KyIdentity's `canSignOn`; its user data is `server_url`, `user_id`,
+  `device_id`, never a secret. `customTokens` is on, so every `getAuthToken` arrives with the caller
+  UID. No `KEY_CUSTOM_TOKEN_EXPIRY` is returned: the system caches nothing and every `getAuthToken`
+  costs one biometric (the ID token's `jti` is single-use at the consumer).
+- `TrustedConsumers` pins caller package plus signing-certificate SHA-256 and fails closed; a shared
+  UID must be fully pinned. Every certificate in `signingCertificateHistory` must be in the pin set
+  (`containsAll`), so a key rotation needs the old and new digests pinned together before KyPost can
+  sign on again. `authTokenType` is the consumer server's KyIdentity `client_id`.
+- `SignOnActivity` is exported because AccountManager starts it from the requesting app's process.
+  `getAuthToken` verifies the caller, then puts only the authenticator response and a single-use 120 s
+  `PendingSignOn` nonce in the intent; no caller-describing extras exist. The activity takes the nonce
+  once and finishes silently without it, re-reads the pairing, shows who is asking, takes one
+  biometric through `VaultUnlockPrompt.showForSignature` on `DeviceSigningKey` (no vault key, so it
+  works while locked), signs an RFC 7523 assertion (`DeviceAssertion`, `aud` is the trimmed
+  `server_url` + `/oauth/token`), redeems it (`TokenClient`) and returns the ID token once.
+- KyIdentity side (shipped): the grant needs both `canSignOn` and MFA-approver on the device; an admin
+  MFA reset ends sign-on; `device_signon_disabled` is returned only after the signature verifies and
+  makes KyAuth clear the local flag and remove the account. The server accepts assertions up to 300 s
+  old; KyAuth's window is 120 s.
+- Settings shows the sign-on state and a "Restore system account" action when the account is missing.
 
 ## UI contract
 
@@ -123,6 +144,9 @@ KyAuth pairs an Android device with KyIdentity. It stores TOTP entries in an enc
 - `security/`: lock state, PIN policy, `VaultKek` authentication-bound key wrapping, `VaultUnlockPrompt`, atomic file writes, and local wipe.
 - `totp/`: TOTP parsing, generation, and KDBX persistence.
 - `passwords/`: password/passkey entry models, domain matcher, password generator, autofill service, and KDBX persistence.
+- `signon/`: `DeviceAssertion` (assertion builder), `TrustedConsumers` (caller pins),
+  `KyIdentityAccount` (system account lifecycle), `KyIdentityAuthenticator` + service,
+  `PendingSignOn` (nonce handoff), `SignOnActivity`, `TokenClient`.
 - `passkeys/`: FIDO2 WebAuthn crypto engine, `ClientData` (CollectedClientData), `RpId` validation,
   `IdentityPasskey` routing plus its hardware key and metadata store, CredentialProviderService, entry
   builder, slice builder, unlock activity, and auth activity.
@@ -193,6 +217,18 @@ Recorded so it is not mistaken for done:
   `BiometricPrompt` for the KyIdentity passkey (enrolment and assertion, via
   `VaultUnlockPrompt.showForSignature`) still require manual device verification; none of these are
   currently automated here.
+- **Consumer pins.** `TrustedConsumers.PINS` holds only `org.kysecurity.mail` (Play App Signing
+  certificate). The GitHub flavor `org.kysecurity.mail.github` is unpinned until its upload-key digest
+  is supplied, so it fails closed. Debug builds also accept `kyauthDebugConsumerCert`.
+- **Late sign-on launch.** A `SignOnActivity` launch more than 120 s after its nonce was issued leaves
+  the caller's `AccountManagerFuture` unanswered, by design: the activity never touches a response it
+  cannot bind to a live nonce.
+- **Sign-on device verification.** Unverified until observed on hardware: the full prompt; cancelling
+  the biometric returns `ERROR_CODE_CANCELED` without a network call; account visibility for a
+  consumer installed after the account was created; Settings -> Accounts removal followed by
+  "Restore system account"; `getAuthToken` from KyPost launching the exported activity from KyPost's
+  process; rotating the device mid-prompt keeps the prompt; a launch after the 120 s nonce expiry
+  leaves the caller waiting. Do not claim these until observed.
 - **Deprecated platform APIs.** `Slice`, `EncryptedSharedPreferences`/`MasterKey`, and the
   `Dataset`/`FillResponse` builders are deprecated. Moving to `androidx.credentials` would remove
   most of the Slice usage.
