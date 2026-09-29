@@ -72,8 +72,9 @@ inside the authenticator gives the same property without it.
   sign-on is not an escalation beyond what the device can do today. The registration response
   adds `device.canSignOn`. The client cannot request the capability; only the token row grants
   it.
-- Per-device toggle `PUT /api/notifications/native/devices/{id}/sign-on`, session-authenticated
-  with step-up, mirroring the existing `.../mfa` toggle. The devices page shows both switches.
+- Per-device toggle `PUT /api/notifications/native/devices/{id}/sign-on`, session-authenticated,
+  no step-up, mirroring the existing `.../mfa` toggle. Enabling needs an MFA-approver device
+  (409 `device_not_approver`); disabling is always allowed. An MFA reset clears `can_sign_on`. The devices page shows both switches.
   `DELETE /api/user/devices/{id}` keeps working and ends sign-on with it.
 - `POST /oauth/token` accepts `grant_type=urn:ietf:params:oauth:grant-type:jwt-bearer` (RFC
   7523) with `assertion` (compact JWS, `alg=ES256`) and `client_id`. The assertion is the
@@ -82,16 +83,23 @@ inside the authenticator gives the same property without it.
   - Claims: `iss` = `device:<device_id>`, `sub` = user id, `aud` = the issuer's token
     endpoint URL, `client_id` = target client (bound inside the signature so a captured
     assertion cannot be redirected), `iat`, `exp` ≤ `iat`+300, `jti` (random, single-use).
-  - Server checks, in order: device exists, belongs to `sub`, `can_sign_on`; ES256 signature
-    with that device's public key only (not "any key the user owns", the gap the push verifier
-    has); `aud`, `exp`, clock skew 60 s; `jti` unused (store with expiry); `client_id`
-    registered and equal to the form `client_id`; user active and not disabled by SCIM.
+  - Server checks, in order: `aud`, `exp`, clock skew 60 s; device exists and belongs to
+    `sub`; ES256 signature with that device's public key only (not "any key the user owns",
+    the gap the push verifier has); then `can_sign_on` AND `is_mfa_approver` (after the
+    signature, so `device_signon_disabled` only reaches the key holder); `jti` unused (store with expiry); `client_id`
+    registered and equal to the form `client_id`; user active and not disabled by SCIM; the
+    client's app authentication policy, enforced as the code grant does (a passkey-required
+    policy refuses device sign-on).
   - On success: create a login session for the user with method `device` (so `sid`,
     `EnsureClientSession`, back-channel logout and `LoggedOut` checks keep working), issue an
-    ID token and access token with the normal shape plus `amr: ["hwk","user"]` and
-    `signon_method: "device"`, `device_id`. No refresh token. Audit `device_signon` success
+    ID token and access token with the normal shape plus
+    `amr: ["hwk","user","urn:kysignon:amr:push","mfa"]`, `acr urn:kysignon:acr:mfa`,
+    `signon_method: "device"`, `device_id`. Evidence stamps `PrimaryAuthenticatedAt` and
+    `FactorAuthenticatedAt` = now with `FactorMethod` push: the device key is the primary
+    credential and every use takes a fresh biometric/credential, so `fresh`/`max_age` are
+    satisfied by construction. Deliberate, not a bypass. No refresh token. Audit `device_signon` success
     and failure with device id and client id. Update `last_seen_at`.
-  - Rate limit as `device_signon`, 10 burst, 0.2/s per device id and per IP.
+  - Rate limit as `device_signon`, 10 burst, 0.2/s per IP, inside the route's `oauth_token` limiter.
 
 ### 2. KyAuth: the authenticator
 
@@ -183,7 +191,7 @@ QR and password pairing stay for servers without SSO.
 | No replay | `jti` single-use at both KyIdentity and the consumer server; 5-minute `exp` | Server tests: second use rejected |
 | Only the enrolled device signs | KyIdentity verifies against that device's key only | Server test: sibling device key rejected |
 | User present | Device key requires biometric/credential per use, `amr` says so | Existing key params; instrumented test already exists for the fail-closed path |
-| Revocable | `can_sign_on` toggle, device delete, device login session → back-channel logout | Server tests |
+| Revocable | `can_sign_on` toggle, device delete, MFA reset; live sessions and minted credentials are not revoked (see gaps) | Server tests |
 | Nothing long-lived added to the phone | Token returned once, `customTokens` prevents system caching | Code review; KyPost stores only what it stores today |
 
 Unproven until run on a physical device: the full prompt path, account visibility for a
@@ -196,9 +204,13 @@ digests. Record these in AGENTS.md "Outstanding security work" until observed.
   F-Droid builds it. Same standing issue as `TrustedBrowsers`.
 - A pinned consumer can request any `client_id`. All pinned apps are ours; a per-package
   audience allowlist would hardcode deployment-specific client ids. Accepted.
-- Revoking sign-on does not revoke `deviceSecret`s already minted at kypost-server. The
-  device login session plus back-channel logout can close that; wire it in the KyIdentity step
-  if the logout handler already covers native sessions, otherwise follow up.
+- Revoking sign-on does not revoke `deviceSecret`s already minted at kypost-server. Turning
+  sign-on off or deleting the device does not end live device login sessions, and expired
+  device sessions are swept without a back-channel logout, so consumers must not rely on
+  back-channel logout for credentials minted from a device sign-on; they expire on the
+  consumer's own schedule.
+- Unlike the code grant, the device grant does not atomically re-check the app policy revision
+  inside `RecordIssuedToken`. Window: milliseconds; token life is at most 15 minutes.
 
 ## Sequence and repos
 
