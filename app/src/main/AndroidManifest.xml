@@ -75,9 +75,10 @@
                 android:name="android.accounts.AccountAuthenticator"
                 android:resource="@xml/kyidentity_authenticator" />
         </service>
+        <!-- Started from the requesting app's process by AccountManager; every launch must present a live PendingSignOn nonce or it finishes without showing anything. -->
         <activity
             android:name=".signon.SignOnActivity"
-            android:exported="false"
+            android:exported="true"
             android:excludeFromRecents="true"
             android:theme="@style/Theme.KyAuth" />
     </application>

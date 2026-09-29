@@ -35,4 +35,13 @@ class SignOnRequestTest {
         assertEquals(AccountManager.ERROR_CODE_BAD_REQUEST, (decideSignOn(caller, "kypost", paired.copy(canSignOn = false)) as SignOnRequest.Refuse).code)
         assertEquals(AccountManager.ERROR_CODE_BAD_REQUEST, (decideSignOn(caller, "kypost", paired.copy(userId = null)) as SignOnRequest.Refuse).code)
     }
+
+    @Test
+    fun cleanup_onlyWhenReadSucceededAndBadRequest() {
+        val bad = SignOnRequest.Refuse(AccountManager.ERROR_CODE_BAD_REQUEST, "x")
+        assertTrue(cleanupAfterRefusal(true, bad))
+        assertTrue(!cleanupAfterRefusal(false, bad))
+        assertTrue(!cleanupAfterRefusal(true, SignOnRequest.Refuse(AccountManager.ERROR_CODE_UNSUPPORTED_OPERATION, "x")))
+        assertTrue(!cleanupAfterRefusal(true, SignOnRequest.Proceed(caller, "kypost", paired)))
+    }
 }

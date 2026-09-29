@@ -26,6 +26,10 @@ internal fun decideSignOn(caller: TrustedCaller?, authTokenType: String?, paired
     return SignOnRequest.Proceed(caller, authTokenType!!, paired)
 }
 
+/** Stale-account cleanup only when the pairing read succeeded and it says "not paired / sign-on off". */
+internal fun cleanupAfterRefusal(readSucceeded: Boolean, decision: SignOnRequest): Boolean =
+    readSucceeded && decision is SignOnRequest.Refuse && decision.code == AccountManager.ERROR_CODE_BAD_REQUEST
+
 /**
  * Account authenticator for `org.kysecurity.identity`. `customTokens` is on, so the system never
  * caches what this returns and every request arrives with the caller's UID.
@@ -52,18 +56,18 @@ class KyIdentityAuthenticator(private val context: Context) : AbstractAccountAut
     ): Bundle {
         val uid = options?.getInt(AccountManager.KEY_CALLER_UID, -1) ?: -1
         val caller = if (uid > 0) TrustedConsumers.isTrusted(context, uid) else null
-        val paired = runCatching { PairingStore(context).account() }.getOrNull()
+        val read = runCatching { PairingStore(context).account() }
+        if (read.isFailure) return error(AccountManager.ERROR_CODE_REMOTE_EXCEPTION, "KyAuth could not read its pairing; try again")
+        val paired = read.getOrNull()
         return when (val decision = decideSignOn(caller, authTokenType, paired)) {
             is SignOnRequest.Refuse -> {
-                if (decision.code == AccountManager.ERROR_CODE_BAD_REQUEST) runCatching { KyIdentityAccount.sync(context, paired) }
+                if (cleanupAfterRefusal(true, decision)) runCatching { KyIdentityAccount.sync(context, paired) }
                 error(decision.code, decision.message)
             }
             is SignOnRequest.Proceed -> {
                 val intent = Intent(context, SignOnActivity::class.java)
                     .putExtra(AccountManager.KEY_ACCOUNT_AUTHENTICATOR_RESPONSE, response)
-                    .putExtra(SignOnActivity.EXTRA_CLIENT_ID, decision.clientId)
-                    .putExtra(SignOnActivity.EXTRA_CALLER_LABEL, decision.caller.label)
-                    .putExtra(SignOnActivity.EXTRA_CALLER_PACKAGE, decision.caller.packageName)
+                    .putExtra(SignOnActivity.EXTRA_REQUEST, PendingSignOn.issue(decision))
                 Bundle().apply { putParcelable(AccountManager.KEY_INTENT, intent) }
             }
         }
@@ -72,14 +76,14 @@ class KyIdentityAuthenticator(private val context: Context) : AbstractAccountAut
     override fun getAuthTokenLabel(authTokenType: String?): String = "KyIdentity sign-in"
 
     override fun hasFeatures(response: AccountAuthenticatorResponse?, account: Account?, features: Array<out String>?): Bundle =
-        Bundle().apply { putBoolean(AccountManager.KEY_BOOLEAN_RESULT, features?.all { it == "signon" } == true) }
+        Bundle().apply { putBoolean(AccountManager.KEY_BOOLEAN_RESULT, !features.isNullOrEmpty() && features.all { it == "signon" }) }
 
     override fun getAccountRemovalAllowed(response: AccountAuthenticatorResponse?, account: Account?): Bundle =
         Bundle().apply { putBoolean(AccountManager.KEY_BOOLEAN_RESULT, true) }
 
     override fun editProperties(response: AccountAuthenticatorResponse?, accountType: String?): Bundle = error(AccountManager.ERROR_CODE_UNSUPPORTED_OPERATION, "Not supported")
-    override fun confirmCredentials(response: AccountAuthenticatorResponse?, account: Account?, options: Bundle?): Bundle? = null
-    override fun updateCredentials(response: AccountAuthenticatorResponse?, account: Account?, authTokenType: String?, options: Bundle?): Bundle? = null
+    override fun confirmCredentials(response: AccountAuthenticatorResponse?, account: Account?, options: Bundle?): Bundle = error(AccountManager.ERROR_CODE_UNSUPPORTED_OPERATION, "Not supported")
+    override fun updateCredentials(response: AccountAuthenticatorResponse?, account: Account?, authTokenType: String?, options: Bundle?): Bundle = error(AccountManager.ERROR_CODE_UNSUPPORTED_OPERATION, "Not supported")
 
     private fun error(code: Int, message: String) = Bundle().apply {
         putInt(AccountManager.KEY_ERROR_CODE, code)
