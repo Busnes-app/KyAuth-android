@@ -101,7 +101,7 @@ KyAuth pairs an Android device with KyIdentity. It stores TOTP entries in an enc
   unlock/reveal results; only the UI thread installs loaded entry lists.
 - Copied passwords are marked sensitive and clear after 30 seconds or when KyAuth locks.
 - KyAuth is the Android account authenticator for `org.kysecurity.identity` (`signon/`). The account
-  exists iff the paired device has KyIdentity's `canSignOn`; its user data is `server_url`, `user_id`,
+  exists iff the paired device has KyIdentity's `canSignOn` and a user id; its user data is `server_url`, `user_id`,
   `device_id`, never a secret. `customTokens` is on, so every `getAuthToken` arrives with the caller
   UID. No `KEY_CUSTOM_TOKEN_EXPIRY` is returned: the system caches nothing and every `getAuthToken`
   costs one biometric (the ID token's `jti` is single-use at the consumer).
@@ -219,7 +219,10 @@ Recorded so it is not mistaken for done:
   currently automated here.
 - **Consumer pins.** `TrustedConsumers.PINS` holds only `org.kysecurity.mail` (Play App Signing
   certificate). The GitHub flavor `org.kysecurity.mail.github` is unpinned until its upload-key digest
-  is supplied, so it fails closed. Debug builds also accept `kyauthDebugConsumerCert`.
+  is supplied, and `org.kysecurity.mail.fdroid` is unpinned because F-Droid signs with its own key and
+  the digest does not exist until F-Droid builds it; both fail closed. Every certificate in a
+  package's signing history must be pinned, so a key rotation needs old and new digests pinned
+  together. Debug builds also accept `kyauthDebugConsumerCert`.
 - **Late sign-on launch.** A `SignOnActivity` launch more than 120 s after its nonce was issued leaves
   the caller's `AccountManagerFuture` unanswered, by design: the activity never touches a response it
   cannot bind to a live nonce.

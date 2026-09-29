@@ -17,7 +17,8 @@ data class TrustedCaller(val packageName: String, val label: String)
  */
 object TrustedConsumers {
     // SHA-256 of the DER signing certificate, lowercase hex: the Play App Signing key.
-    // The org.kysecurity.mail.github flavor is unpinned until its digest is supplied.
+    // org.kysecurity.mail.github (digest not yet supplied) and org.kysecurity.mail.fdroid (F-Droid signs with
+    // its own key; no digest until F-Droid builds it) are unpinned and fail closed.
     internal val PINS: Map<String, Set<String>> = mapOf(
         "org.kysecurity.mail" to setOf(
             "6f78411156058c1d27d5160699b73c0f45de266282383d8ca4361592e03a6c8e",
