@@ -1,5 +1,6 @@
 <resources>
     <string name="app_name">KyAuth</string>
+    <string name="signon_account_label">KyIdentity</string>
     <string name="pairing_title">Pair KyIdentity</string>
     <string name="app_status">KyAuth is locked. Pair a KyIdentity account to begin.</string>
     <string name="tab_totp">TOTP Vault</string>
