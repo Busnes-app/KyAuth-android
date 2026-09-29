@@ -161,6 +161,20 @@ class MainActivity : AppCompatActivity() {
 
     enum class Tab { TOTP, MFA, PASSWORDS, SETTINGS }
 
+    private var addAccountResponse: android.accounts.AccountAuthenticatorResponse? = null
+
+    // Completes the AccountManager addAccount future once pairing has produced the account.
+    private fun answerAddAccount() {
+        val response = addAccountResponse ?: return
+        val account = KyIdentityAccount.current(this) ?: return
+        addAccountResponse = null
+        response.onResult(Bundle().apply {
+            putString(android.accounts.AccountManager.KEY_ACCOUNT_NAME, account.name)
+            putString(android.accounts.AccountManager.KEY_ACCOUNT_TYPE, account.type)
+        })
+        finish()
+    }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         activeTab = savedInstanceState?.getString(STATE_ACTIVE_TAB)
@@ -170,6 +184,7 @@ class MainActivity : AppCompatActivity() {
             window.setFlags(WindowManager.LayoutParams.FLAG_SECURE, WindowManager.LayoutParams.FLAG_SECURE)
         }
         store = PairingStore(this)
+        addAccountResponse = intent.parcelable(android.accounts.AccountManager.KEY_ACCOUNT_AUTHENTICATOR_RESPONSE)
         KyAuthMessagingService.ensureChannel(this)
         handler.post(ticker)
         Thread { KyPasswordVaultSync.clearInterruptedSnapshots(filesDir) }.start()
@@ -198,6 +213,8 @@ class MainActivity : AppCompatActivity() {
 
     override fun onDestroy() {
         super.onDestroy()
+        addAccountResponse?.onError(android.accounts.AccountManager.ERROR_CODE_CANCELED, "Pairing cancelled")
+        addAccountResponse = null
         handler.removeCallbacks(ticker)
         vaultLoadGeneration = null
         dismissSensitiveDialogs()
@@ -319,6 +336,7 @@ class MainActivity : AppCompatActivity() {
                                     }
                                     store.save(account)
                                     runCatching { KyIdentityAccount.sync(this@MainActivity, account) }
+                                    answerAddAccount()
                                     unlockWithPrompt()
                                 }.onFailure { error.text = it.message ?: "Pairing failed" }
                             }
@@ -2127,7 +2145,11 @@ class MainActivity : AppCompatActivity() {
         accountSection.addView(message(signOnState))
         if (account.canSignOn && systemAccount == null) {
             accountSection.addView(secondaryButton("Restore system account").apply {
-                setOnClickListener { runCatching { KyIdentityAccount.sync(this@MainActivity, account) }; renderContent() }
+                setOnClickListener {
+                    val ok = runCatching { KyIdentityAccount.sync(this@MainActivity, account) }.getOrDefault(false)
+                    if (!ok) Toast.makeText(this@MainActivity, "Could not restore the system account", Toast.LENGTH_LONG).show()
+                    renderContent()
+                }
             }, fullWidthParams())
         }
 

@@ -16,29 +16,29 @@ class TokenClientTest {
 
     @Test
     fun parse_success() {
-        val r = client.parse(200, """{"access_token":"a","token_type":"Bearer","expires_in":900,"id_token":"eyJ.x.y"}""", 1000) as TokenResult.Success
+        val r = client.parse(200, """{"access_token":"a","token_type":"Bearer","expires_in":900,"id_token":"eyJ.x.y"}""") as TokenResult.Success
         assertEquals("eyJ.x.y", r.idToken)
-        assertEquals(1900L, r.expiresAtEpochSeconds)
+        assertEquals("Success(redacted)", r.toString())
     }
 
     @Test
     fun parse_missingIdToken() {
-        val r = client.parse(200, """{"access_token":"a"}""", 1000)
+        val r = client.parse(200, """{"access_token":"a"}""")
         assertTrue(r is TokenResult.Failure)
     }
 
     @Test
     fun parse_signOnDisabled() {
-        val r = client.parse(400, """{"error":"invalid_grant","error_description":"device_signon_disabled"}""", 1000) as TokenResult.Failure
+        val r = client.parse(400, """{"error":"invalid_grant","error_description":"device_signon_disabled"}""") as TokenResult.Failure
         assertTrue(r.signOnDisabled)
         assertTrue(r.userMessage.contains("KyIdentity devices page"))
     }
 
     @Test
     fun parse_otherErrorsAreGeneric() {
-        val r = client.parse(400, """{"error":"invalid_grant","error_description":"The device assertion is invalid"}""", 1000) as TokenResult.Failure
+        val r = client.parse(400, """{"error":"invalid_grant","error_description":"The device assertion is invalid"}""") as TokenResult.Failure
         assertEquals(false, r.signOnDisabled)
-        val rl = client.parse(429, "", 1000) as TokenResult.Failure
+        val rl = client.parse(429, "") as TokenResult.Failure
         assertTrue(rl.userMessage.contains("Try again"))
     }
 

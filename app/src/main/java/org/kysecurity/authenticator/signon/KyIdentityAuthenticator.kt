@@ -20,8 +20,11 @@ sealed class SignOnRequest {
 internal fun decideSignOn(caller: TrustedCaller?, authTokenType: String?, paired: PairedAccount?): SignOnRequest {
     if (caller == null) return SignOnRequest.Refuse(AccountManager.ERROR_CODE_UNSUPPORTED_OPERATION, "This app is not allowed to use KyIdentity sign-in")
     if (!DeviceAssertion.isValidClientId(authTokenType)) return SignOnRequest.Refuse(AccountManager.ERROR_CODE_BAD_ARGUMENTS, "Invalid client id")
-    if (paired == null || !paired.canSignOn || paired.userId.isNullOrBlank()) {
-        return SignOnRequest.Refuse(AccountManager.ERROR_CODE_BAD_REQUEST, "This device is not enabled for sign-in. Pair KyAuth again or enable sign-in on the KyIdentity devices page.")
+    if (paired == null || paired.userId.isNullOrBlank()) {
+        return SignOnRequest.Refuse(AccountManager.ERROR_CODE_BAD_REQUEST, "Pair KyAuth with KyIdentity first.")
+    }
+    if (!paired.canSignOn) {
+        return SignOnRequest.Refuse(AccountManager.ERROR_CODE_BAD_REQUEST, "Sign-in from this phone is turned off. Turn it on for this device on the KyIdentity devices page, then try again.")
     }
     return SignOnRequest.Proceed(caller, authTokenType!!, paired)
 }

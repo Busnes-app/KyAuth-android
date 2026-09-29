@@ -116,8 +116,8 @@ class DeviceAssertionTest {
     @Test
     fun derToRaw_parsesLiteralDerShortIntegers() {
         // Case (b): short integers
-        // DER: 30 22  02 01 01  02 1f<31×0x7f>
-        val der = byteArrayOf(0x30, 0x22,
+        // DER: 30 24  02 01 01  02 1f<31×0x7f>
+        val der = byteArrayOf(0x30, 0x24,
             0x02, 0x01, 0x01,
             0x02, 0x1f) + ByteArray(31) { 0x7f.toByte() }
         val raw = DeviceAssertion.derToRaw(der)
@@ -157,7 +157,7 @@ class DeviceAssertionTest {
     @Test
     fun derToRaw_failsOnOversizedInteger() {
         // INTEGER with >256-bit value: 02 21 01<32×0x00> (257-bit value)
-        val der = byteArrayOf(0x30, 0x44,
+        val der = byteArrayOf(0x30, 0x45,
             0x02, 0x21, 0x01) + ByteArray(32) { 0x00 } +
             byteArrayOf(0x02, 0x20) + ByteArray(32) { 0x11.toByte() }
         try {

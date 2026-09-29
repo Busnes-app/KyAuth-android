@@ -102,25 +102,29 @@ KyAuth pairs an Android device with KyIdentity. It stores TOTP entries in an enc
 - Copied passwords are marked sensitive and clear after 30 seconds or when KyAuth locks.
 - KyAuth is the Android account authenticator for `org.kysecurity.identity` (`signon/`). The account
   exists iff the paired device has KyIdentity's `canSignOn` and a user id; its user data is `server_url`, `user_id`,
-  `device_id`, never a secret. `customTokens` is on, so every `getAuthToken` arrives with the caller
-  UID. No `KEY_CUSTOM_TOKEN_EXPIRY` is returned: the system caches nothing and every `getAuthToken`
+  `device_id`, never a secret. `customTokens` is on: AccountManager still adds the caller UID
+  to every `getAuthToken`, but skips its own grant check and token store, so the `TrustedConsumers` pin is the sole gate. No `KEY_CUSTOM_TOKEN_EXPIRY` is returned: the system caches nothing and every `getAuthToken`
   costs one biometric (the ID token's `jti` is single-use at the consumer).
 - `TrustedConsumers` pins caller package plus signing-certificate SHA-256 and fails closed; a shared
-  UID must be fully pinned. Every certificate in `signingCertificateHistory` must be in the pin set
+  UID must be fully pinned, and a package with multiple signers (`hasMultipleSigners`) fails closed. The manifest `<queries>` lists every pinned package (SDK 30+ hides others from `getPackagesForUid`/`getPackageInfo`); a test keeps the two in step. Every certificate in `signingCertificateHistory` must be in the pin set
   (`containsAll`), so a key rotation needs the old and new digests pinned together before KyPost can
   sign on again. `authTokenType` is the consumer server's KyIdentity `client_id`.
 - `SignOnActivity` is exported because AccountManager starts it from the requesting app's process.
   `getAuthToken` verifies the caller, then puts only the authenticator response and a single-use 120 s
   `PendingSignOn` nonce in the intent; no caller-describing extras exist. The activity takes the nonce
-  once and finishes silently without it, re-reads the pairing, shows who is asking, takes one
+  once and, without one, answers the response with `ERROR_CODE_CANCELED` ("Sign-in request expired") and finishes with no UI, re-reads the pairing, shows who is asking, takes one
   biometric through `VaultUnlockPrompt.showForSignature` on `DeviceSigningKey` (no vault key, so it
   works while locked), signs an RFC 7523 assertion (`DeviceAssertion`, `aud` is the trimmed
   `server_url` + `/oauth/token`), redeems it (`TokenClient`) and returns the ID token once.
 - KyIdentity side (shipped): the grant needs both `canSignOn` and MFA-approver on the device; an admin
-  MFA reset ends sign-on; `device_signon_disabled` is returned only after the signature verifies and
-  makes KyAuth clear the local flag and remove the account. The server accepts assertions up to 300 s
+  MFA reset ends sign-on; `device_signon_disabled` is returned only after the signature verifies. KyIdentity decides on every
+  request: the local `canSignOn` is the value captured at pairing and is never cleared by a server
+  refusal; the caller gets the message telling the user to turn sign-in on at the KyIdentity devices page. The server accepts assertions up to 300 s
   old; KyAuth's window is 120 s.
-- Settings shows the sign-on state and a "Restore system account" action when the account is missing.
+- Settings shows the sign-on state and a "Restore system account" action when the account is missing;
+  `KyIdentityAccount.sync` returns false if the system refused to add it and Settings says so.
+- `addAccount` launches `MainActivity` with the authenticator response; pairing success completes it
+  with the account, and `onDestroy` answers `ERROR_CODE_CANCELED` if still pending.
 
 ## UI contract
 
@@ -223,9 +227,8 @@ Recorded so it is not mistaken for done:
   the digest does not exist until F-Droid builds it; both fail closed. Every certificate in a
   package's signing history must be pinned, so a key rotation needs old and new digests pinned
   together. Debug builds also accept `kyauthDebugConsumerCert`.
-- **Late sign-on launch.** A `SignOnActivity` launch more than 120 s after its nonce was issued leaves
-  the caller's `AccountManagerFuture` unanswered, by design: the activity never touches a response it
-  cannot bind to a live nonce.
+- **Late sign-on launch.** A `SignOnActivity` launch more than 120 s after its nonce was issued (or a
+  replay) shows no UI and returns `ERROR_CODE_CANCELED` to the caller.
 - **Sign-on device verification.** Unverified until observed on hardware: the full prompt; cancelling
   the biometric returns `ERROR_CODE_CANCELED` without a network call; account visibility for a
   consumer installed after the account was created; Settings -> Accounts removal followed by

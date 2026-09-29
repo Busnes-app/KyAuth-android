@@ -19,14 +19,15 @@ object TrustedConsumers {
     // SHA-256 of the DER signing certificate, lowercase hex: the Play App Signing key.
     // org.kysecurity.mail.github (digest not yet supplied) and org.kysecurity.mail.fdroid (F-Droid signs with
     // its own key; no digest until F-Droid builds it) are unpinned and fail closed.
-    internal val PINS: Map<String, Set<String>> = mapOf(
-        "org.kysecurity.mail" to setOf(
-            "6f78411156058c1d27d5160699b73c0f45de266282383d8ca4361592e03a6c8e",
+    private class Consumer(val label: String, val digests: Set<String>)
+
+    private val CONSUMERS: Map<String, Consumer> = mapOf(
+        "org.kysecurity.mail" to Consumer(
+            "KyPost",
+            setOf("6f78411156058c1d27d5160699b73c0f45de266282383d8ca4361592e03a6c8e"),
         ),
     )
-    private val LABELS = mapOf(
-        "org.kysecurity.mail" to "KyPost",
-    )
+    internal val PINS: Map<String, Set<String>> = CONSUMERS.mapValues { it.value.digests }
 
     fun isTrusted(context: Context, callerUid: Int): TrustedCaller? {
         val pm = context.packageManager
@@ -42,13 +43,13 @@ object TrustedConsumers {
     ): TrustedCaller? {
         if (packagesForUid.isEmpty()) return null
         for (pkg in packagesForUid) {
-            val pinned = PINS[pkg] ?: return null
+            val pinned = CONSUMERS[pkg]?.digests ?: return null
             val allowed = if (extraDebugDigest != null) pinned + extraDebugDigest else pinned
             val actual = certDigestsFor(pkg)
             if (actual.isEmpty() || !allowed.containsAll(actual)) return null
         }
         val first = packagesForUid.first()
-        return TrustedCaller(first, LABELS.getValue(first))
+        return TrustedCaller(first, CONSUMERS.getValue(first).label)
     }
 
     private fun signingDigests(pm: PackageManager, pkg: String): Set<String> = runCatching {

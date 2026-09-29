@@ -17,13 +17,13 @@ object KyIdentityAccount {
         AccountManager.get(context).getAccountsByType(TYPE).firstOrNull()
 
     /** Makes the system account match the pairing: present iff the device can sign on. */
-    fun sync(context: Context, account: PairedAccount?) {
+    fun sync(context: Context, account: PairedAccount?): Boolean {
         val am = AccountManager.get(context)
         val existing = am.getAccountsByType(TYPE)
         val userId = account?.userId
         if (account == null || !account.canSignOn || userId.isNullOrBlank()) {
             existing.forEach { am.removeAccountExplicitly(it) }
-            return
+            return true
         }
         val name = account.username?.takeIf { it.isNotBlank() } ?: userId
         val wanted = Account(name, TYPE)
@@ -35,14 +35,16 @@ object KyIdentityAccount {
                 putString(KEY_USER_ID, userId)
                 putString(KEY_DEVICE_ID, account.deviceId)
             }
-            am.addAccountExplicitly(wanted, null, data, visibility)
-        } else {
+            return runCatching { am.addAccountExplicitly(wanted, null, data, visibility) }.getOrDefault(false)
+        }
+        run {
             am.setUserData(wanted, KEY_SERVER_URL, account.serverUrl)
             am.setUserData(wanted, KEY_USER_ID, userId)
             am.setUserData(wanted, KEY_DEVICE_ID, account.deviceId)
             visibility.forEach { (pkg, v) -> am.setAccountVisibility(wanted, pkg, v) }
         }
+        return true
     }
 
-    fun remove(context: Context) = sync(context, null)
+    fun remove(context: Context) { sync(context, null) }
 }

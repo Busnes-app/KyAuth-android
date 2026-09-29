@@ -42,6 +42,7 @@ class SignOnActivity : AppCompatActivity() {
         val request = PendingSignOn.take(intent.getStringExtra(EXTRA_REQUEST))
         if (request == null) {
             delivered = true
+            response?.onError(AccountManager.ERROR_CODE_CANCELED, "Sign-in request expired")
             finish()
             return
         }
@@ -52,7 +53,7 @@ class SignOnActivity : AppCompatActivity() {
         }
         val paired = read.getOrNull()
         if (paired == null || !paired.canSignOn || paired.userId.isNullOrBlank()) {
-            fail(AccountManager.ERROR_CODE_BAD_REQUEST, "This device is not enabled for sign-in")
+            fail(AccountManager.ERROR_CODE_BAD_REQUEST, "Pair KyAuth with KyIdentity first.")
             return
         }
         render(request.copy(paired = paired))
@@ -89,6 +90,7 @@ class SignOnActivity : AppCompatActivity() {
             cornerRadius = 14 * density
         }
         setOnClickListener { onClick(this) }
+        filterTouchesWhenObscured = true
         layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, (48 * density).toInt())
             .apply { topMargin = (16 * density).toInt() }
     }
@@ -130,12 +132,6 @@ class SignOnActivity : AppCompatActivity() {
                 when (result) {
                     is TokenResult.Success -> deliver(result)
                     is TokenResult.Failure -> {
-                        if (result.signOnDisabled) {
-                            runCatching {
-                                PairingStore(this).save(paired.copy(canSignOn = false))
-                                KyIdentityAccount.remove(this)
-                            }
-                        }
                         fail(AccountManager.ERROR_CODE_REMOTE_EXCEPTION, result.userMessage)
                     }
                 }

@@ -41,11 +41,6 @@ android {
         versionName = "0.1.0"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         buildConfigField("boolean", "ALLOW_SCREENSHOTS", "false")
-        buildConfigField(
-            "String",
-            "DEBUG_CONSUMER_CERT",
-            "\"${providers.gradleProperty("kyauthDebugConsumerCert").orNull.orEmpty()}\"",
-        )
     }
 
     signingConfigs {
@@ -65,8 +60,14 @@ android {
         debug {
             // Debug builds run in an emulator/IDE capture surface. Release remains secure by default.
             buildConfigField("boolean", "ALLOW_SCREENSHOTS", "true")
+            val debugCert = providers.gradleProperty("kyauthDebugConsumerCert").orNull.orEmpty()
+            require(debugCert.isEmpty() || Regex("[0-9a-f]{64}").matches(debugCert)) {
+                "kyauthDebugConsumerCert must be 64 lowercase hex characters (SHA-256 of the DER signing certificate)"
+            }
+            buildConfigField("String", "DEBUG_CONSUMER_CERT", "\"$debugCert\"")
         }
         release {
+            buildConfigField("String", "DEBUG_CONSUMER_CERT", "\"\"")
             isMinifyEnabled = true
             proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
             if (signingMaterial != null) {
