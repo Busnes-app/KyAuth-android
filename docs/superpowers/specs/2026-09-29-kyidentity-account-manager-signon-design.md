@@ -136,39 +136,43 @@ New package `signon/`:
 
 ### 3. kypost-server: accept the token once
 
-- `GET /api/auth/native/signon/config` → `{"issuer": ..., "clientId": ...}` when SSO is
-  configured, else 404. Both values are public in OIDC.
-- `POST /api/auth/native/signon`, unauthenticated, rate-limited like `native/register`. Body
-  `{idToken, deviceName, deviceIdentifier, platform, pushToken?}`. Verify with the existing
-  `Provider` verifier (issuer, audience, signature, expiry); require `signon_method ==
-  "device"`; `iat` within the last 5 minutes; `jti` single-use in a bounded in-memory set;
-  then the same directory revocation, `resolveSSOUser` and `LoggedOut` checks the web
-  callback runs. Then reuse the registration internals to mint `deviceId`/`deviceSecret` and
-  return the same body `native/register` returns. Record `SSOKySignOn` and the KyIdentity
-  `sub` on the device row so a later link with a different subject is refused, not merged.
-- Nothing else changes: mail routes, push, deregister and lockout already work on the device
-  headers.
+- `GET /api/auth/sso-config` (exists, public) gains `clientId` beside `enabled` and `issuerUrl`.
+  Both values are public in OIDC.
+- `POST /api/auth/native/signon`, marked `withTokenAuth`, metered on the SSO per-IP limiter.
+  Body `{idToken}`. A new `sso.Provider.VerifyIDToken` runs the same go-oidc verification
+  `Exchange` runs (signature, issuer, audience, expiry, nbf, non-empty sub) minus the nonce and
+  at_hash checks that only a browser code flow can make; require `signon_method == "device"`,
+  `iat` within the last 5 minutes and `jti` single-use through the existing `singleUse` cache;
+  then the same directory revocation, `resolveSSOUser`, active-user and `LoggedOut` checks the
+  web callback runs. On success it answers exactly what `POST /api/notifications/review-pairing`
+  answers: `writeNotificationPairing(w, user.ID)`, a single-use 90-second `kypost://native-pair`
+  deep link with the pairing token, register endpoint and TLS pin.
+- Nothing else changes. The device registers through `native/register` with that token as it
+  does today, which mints the `deviceId`/`deviceSecret` pair, push transport, lockout and
+  deregister behaviour unchanged. The `backend/AGENTS.md` rule that only `Exchange` accepts an
+  ID token is amended to name `VerifyIDToken` and the one caller allowed to use it.
 
 ### 4. kypost-android: consume it
 
-New `signon/KyIdentitySignOn.kt`, used from the pairing screen:
+New `signon/` package, entered from a "Sign in with KyIdentity" button on the pairing screen:
 
-1. Fetch `/api/auth/native/signon/config` from the entered kypost-server URL.
+1. `KyIdentitySignOnActivity` asks for the kypost-server URL, fetches `/api/auth/sso-config`,
+   and stops with a message when `enabled` is false or `clientId` is empty.
 2. `AccountManager.getAccountsByType("org.kysecurity.identity")`. None visible →
    `newChooseAccountIntent` restricted to the type (this also grants visibility). Still none →
    `addAccount`, which opens KyAuth pairing.
-3. Before trusting the account, check `getAuthenticatorTypes()` for that type: the
-   authenticator's package must be `org.kysecurity.authenticator` with a pinned KyAuth
+3. Before trusting the account, `AuthenticatorPin` checks `getAuthenticatorTypes()` for that
+   type: the authenticator's package must be `org.kysecurity.authenticator` with a pinned KyAuth
    certificate. Anything else fails closed. (A rogue authenticator could never produce a token
    kypost-server accepts, but this stops it from phishing the prompt.)
-4. Require the account's `server_url` to equal the config's `issuer`.
+4. Require the account's `server_url` to equal the config's `issuerUrl`.
 5. `getAuthToken(account, clientId, null, activity, ...)`. KyAuth shows its prompt.
-6. `POST /api/auth/native/signon` with the token and the same device fields
-   `NativeRegistration` sends today; store the result in `SecurePairingStore` unchanged.
-7. Existing flow resumes (push registration, TLS pin if the server offered one).
+6. `POST /api/auth/native/signon` with the token; the reply is a deep link, parsed by the
+   existing `NativePairingDeepLinkParser` and handed to `PushPairingActivity` exactly as
+   `PasswordPairingActivity` does. The normal pipeline registers the push token, pins TLS and
+   stores the device secret; no new coordinator or store path.
 
-The button reads "Sign in with KyIdentity" and appears beside the current QR and password
-paths; those stay for servers without SSO.
+QR and password pairing stay for servers without SSO.
 
 ### 5. Security properties and what is proven
 
