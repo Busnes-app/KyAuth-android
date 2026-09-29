@@ -24,8 +24,7 @@ object DeviceAssertion {
         nowEpochSeconds: Long,
         jti: String,
     ): String {
-        // Manual header construction to ensure key order: alg, typ, kid
-        val headerStr = """{"alg":"ES256","typ":"JWT","kid":"$deviceId"}"""
+        val header = JSONObject().put("alg", "ES256").put("typ", "JWT").put("kid", deviceId)
         val claims = JSONObject()
             .put("iss", "device:$deviceId")
             .put("sub", userId)
@@ -34,7 +33,7 @@ object DeviceAssertion {
             .put("iat", nowEpochSeconds)
             .put("exp", nowEpochSeconds + ASSERTION_TTL_SECONDS)
             .put("jti", jti)
-        return b64.encodeToString(headerStr.toByteArray()) + "." +
+        return b64.encodeToString(header.toString().toByteArray()) + "." +
             b64.encodeToString(claims.toString().toByteArray())
     }
 
@@ -52,6 +51,8 @@ object DeviceAssertion {
         }
         val r = readInt()
         val s = readInt()
+        require(r.bitLength() <= 256) { "r bitLength exceeds 256 bits" }
+        require(s.bitLength() <= 256) { "s bitLength exceeds 256 bits" }
         val out = ByteArray(64)
         // Copy r and s as unsigned bytes, right-aligned to 32 bytes each
         copyLeftPadded(r.toByteArray(), out, 0, 32)
@@ -64,8 +65,10 @@ object DeviceAssertion {
 
     /** Copy bytes right-aligned (left-padded with zeros) into a 32-byte slot. */
     private fun copyLeftPadded(src: ByteArray, dst: ByteArray, dstOffset: Int, slotSize: Int) {
+        // For BigInteger.toByteArray(), take only the last slotSize bytes (handles leading sign byte)
         val len = minOf(src.size, slotSize)
         val padding = slotSize - len
-        src.copyInto(dst, dstOffset + padding, src.size - len, src.size)
+        val startIdx = src.size - len
+        src.copyInto(dst, dstOffset + padding, startIdx, src.size)
     }
 }
