@@ -41,6 +41,11 @@ android {
         versionName = "0.1.0"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         buildConfigField("boolean", "ALLOW_SCREENSHOTS", "false")
+        buildConfigField(
+            "String",
+            "DEBUG_CONSUMER_CERT",
+            "\"${providers.gradleProperty("kyauthDebugConsumerCert").orNull.orEmpty()}\"",
+        )
     }
 
     signingConfigs {
