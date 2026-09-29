@@ -1,6 +1,5 @@
 package org.kysecurity.authenticator.signon
 
-import android.accounts.AbstractAccountAuthenticator
 import android.accounts.AccountAuthenticatorResponse
 import android.accounts.AccountManager
 import android.graphics.drawable.GradientDrawable
@@ -104,7 +103,7 @@ class SignOnActivity : AppCompatActivity() {
             subtitle = getString(R.string.signon_biometric_subtitle, request.caller.label),
             signature = signature,
             onAuthenticated = { authed -> signAndRedeem(request, authed) },
-            onFailed = { fail(AccountManager.ERROR_CODE_CANCELED, it) },
+            onFailed = { fail(AccountManager.ERROR_CODE_CANCELED, "Authentication was cancelled") },
         )
     }
 
@@ -146,11 +145,11 @@ class SignOnActivity : AppCompatActivity() {
 
     private fun deliver(result: TokenResult.Success) {
         if (delivered) return
+        // No expiry on purpose: with customTokens the system would cache this token per caller, and its jti is single-use.
         val bundle = Bundle().apply {
             putString(AccountManager.KEY_ACCOUNT_NAME, KyIdentityAccount.current(this@SignOnActivity)?.name)
             putString(AccountManager.KEY_ACCOUNT_TYPE, KyIdentityAccount.TYPE)
             putString(AccountManager.KEY_AUTHTOKEN, result.idToken)
-            putLong(AbstractAccountAuthenticator.KEY_CUSTOM_TOKEN_EXPIRY, result.expiresAtEpochSeconds * 1000)
         }
         delivered = true
         response?.onResult(bundle)

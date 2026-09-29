@@ -80,6 +80,7 @@
             android:name=".signon.SignOnActivity"
             android:exported="true"
             android:excludeFromRecents="true"
+            android:configChanges="orientation|screenSize|screenLayout|smallestScreenSize|keyboardHidden|uiMode"
             android:theme="@style/Theme.KyAuth" />
     </application>
 </manifest>
