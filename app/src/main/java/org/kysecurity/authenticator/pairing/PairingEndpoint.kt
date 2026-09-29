@@ -15,11 +15,14 @@ object PairingEndpoint {
         return serverUrl.trim().trimEnd('/')
     }
 
-    fun registrationUrl(serverUrl: String): URI {
-        val validated = validateServerUrl(serverUrl)
-        val server = URI(validated)
+    fun registrationUrl(serverUrl: String): URI = endpoint(serverUrl, "/api/notifications/native/register")
+
+    fun tokenUrl(serverUrl: String): URI = endpoint(serverUrl, "/oauth/token")
+
+    private fun endpoint(serverUrl: String, path: String): URI {
+        val server = URI(validateServerUrl(serverUrl))
         val basePath = server.path.orEmpty().trimEnd('/')
-        return URI(server.scheme, null, server.host, server.port, "$basePath/api/notifications/native/register", null, null)
+        return URI(server.scheme, null, server.host, server.port, basePath + path, null, null)
     }
 
     fun validatedRegistrationUrl(serverUrl: String, candidate: String?): URI {
