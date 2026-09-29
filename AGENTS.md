@@ -234,7 +234,7 @@ Recorded so it is not mistaken for done:
   consumer installed after the account was created; Settings -> Accounts removal followed by
   "Restore system account"; `getAuthToken` from KyPost launching the exported activity from KyPost's
   process; rotating the device mid-prompt keeps the prompt; a launch after the 120 s nonce expiry
-  leaves the caller waiting. Do not claim these until observed.
+  returns CANCELED to the caller; rotating the device during pairing keeps the addAccount request alive. Do not claim these until observed.
 - **Deprecated platform APIs.** `Slice`, `EncryptedSharedPreferences`/`MasterKey`, and the
   `Dataset`/`FillResponse` builders are deprecated. Moving to `androidx.credentials` would remove
   most of the Slice usage.

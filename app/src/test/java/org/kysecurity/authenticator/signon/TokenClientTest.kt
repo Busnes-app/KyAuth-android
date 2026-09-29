@@ -30,14 +30,13 @@ class TokenClientTest {
     @Test
     fun parse_signOnDisabled() {
         val r = client.parse(400, """{"error":"invalid_grant","error_description":"device_signon_disabled"}""") as TokenResult.Failure
-        assertTrue(r.signOnDisabled)
         assertTrue(r.userMessage.contains("KyIdentity devices page"))
     }
 
     @Test
     fun parse_otherErrorsAreGeneric() {
         val r = client.parse(400, """{"error":"invalid_grant","error_description":"The device assertion is invalid"}""") as TokenResult.Failure
-        assertEquals(false, r.signOnDisabled)
+        assertTrue(!r.userMessage.contains("turned off"))
         val rl = client.parse(429, "") as TokenResult.Failure
         assertTrue(rl.userMessage.contains("Try again"))
     }

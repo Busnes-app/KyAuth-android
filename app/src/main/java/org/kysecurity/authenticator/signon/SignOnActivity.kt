@@ -52,8 +52,12 @@ class SignOnActivity : AppCompatActivity() {
             return
         }
         val paired = read.getOrNull()
-        if (paired == null || !paired.canSignOn || paired.userId.isNullOrBlank()) {
+        if (paired == null || paired.userId.isNullOrBlank()) {
             fail(AccountManager.ERROR_CODE_BAD_REQUEST, "Pair KyAuth with KyIdentity first.")
+            return
+        }
+        if (!paired.canSignOn) {
+            fail(AccountManager.ERROR_CODE_BAD_REQUEST, "Sign-in was not enabled for this phone when it was paired. Pair KyAuth again after enabling sign-in on the KyIdentity devices page.")
             return
         }
         render(request.copy(paired = paired))

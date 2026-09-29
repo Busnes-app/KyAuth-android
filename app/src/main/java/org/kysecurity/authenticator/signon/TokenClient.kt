@@ -9,7 +9,7 @@ sealed class TokenResult {
     data class Success(val idToken: String) : TokenResult() {
         override fun toString() = "Success(redacted)"
     }
-    data class Failure(val userMessage: String, val signOnDisabled: Boolean = false) : TokenResult()
+    data class Failure(val userMessage: String) : TokenResult()
 }
 
 /** Redeems a device assertion at KyIdentity's token endpoint. The ID token is returned, never stored. Blocking: call off the main thread. */
@@ -57,7 +57,6 @@ class TokenClient {
             if (json.optString("error_description") == "device_signon_disabled") {
                 return TokenResult.Failure(
                     "Sign-in from this phone is turned off. Turn it on for this device on the KyIdentity devices page, then try again.",
-                    signOnDisabled = true,
                 )
             }
             return TokenResult.Failure("KyIdentity refused the sign-in ($status).")

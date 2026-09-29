@@ -164,15 +164,16 @@ class MainActivity : AppCompatActivity() {
     private var addAccountResponse: android.accounts.AccountAuthenticatorResponse? = null
 
     // Completes the AccountManager addAccount future once pairing has produced the account.
-    private fun answerAddAccount() {
-        val response = addAccountResponse ?: return
-        val account = KyIdentityAccount.current(this) ?: return
+    private fun answerAddAccountIfPossible(): Boolean {
+        val response = addAccountResponse ?: return false
+        val account = KyIdentityAccount.current(this) ?: return false
         addAccountResponse = null
         response.onResult(Bundle().apply {
             putString(android.accounts.AccountManager.KEY_ACCOUNT_NAME, account.name)
             putString(android.accounts.AccountManager.KEY_ACCOUNT_TYPE, account.type)
         })
         finish()
+        return true
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -192,6 +193,7 @@ class MainActivity : AppCompatActivity() {
 
     override fun onResume() {
         super.onResume()
+        if (answerAddAccountIfPossible()) return
         loadPendingPushChallenge()
         if (!AppLockManager.isUnlocked()) {
             unlockWithPrompt(silent = true)
@@ -213,8 +215,10 @@ class MainActivity : AppCompatActivity() {
 
     override fun onDestroy() {
         super.onDestroy()
-        addAccountResponse?.onError(android.accounts.AccountManager.ERROR_CODE_CANCELED, "Pairing cancelled")
-        addAccountResponse = null
+        if (!isChangingConfigurations) {
+            addAccountResponse?.onError(android.accounts.AccountManager.ERROR_CODE_CANCELED, "Pairing cancelled")
+            addAccountResponse = null
+        }
         handler.removeCallbacks(ticker)
         vaultLoadGeneration = null
         dismissSensitiveDialogs()
@@ -336,7 +340,7 @@ class MainActivity : AppCompatActivity() {
                                     }
                                     store.save(account)
                                     runCatching { KyIdentityAccount.sync(this@MainActivity, account) }
-                                    answerAddAccount()
+                                    if (answerAddAccountIfPossible()) return@onSuccess
                                     unlockWithPrompt()
                                 }.onFailure { error.text = it.message ?: "Pairing failed" }
                             }
