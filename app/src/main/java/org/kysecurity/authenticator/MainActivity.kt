@@ -58,6 +58,7 @@ import org.kysecurity.authenticator.pairing.PairingEndpoint
 import org.kysecurity.authenticator.pairing.PairingStore
 import org.kysecurity.authenticator.pairing.QrPairing
 import org.kysecurity.authenticator.pairing.QrPairingParser
+import org.kysecurity.authenticator.signon.KyIdentityAccount
 import org.kysecurity.authenticator.pairing.PushTokenProvider
 import org.kysecurity.authenticator.passkeys.IdentityPasskeyKey
 import org.kysecurity.authenticator.passkeys.PasskeyQr
@@ -317,6 +318,7 @@ class MainActivity : AppCompatActivity() {
                                         runCatching { IdentityPasskeyStore(this@MainActivity).clear() }
                                     }
                                     store.save(account)
+                                    runCatching { KyIdentityAccount.sync(this@MainActivity, account) }
                                     unlockWithPrompt()
                                 }.onFailure { error.text = it.message ?: "Pairing failed" }
                             }
@@ -2128,6 +2130,7 @@ class MainActivity : AppCompatActivity() {
                     .setNegativeButton("Cancel", null)
                     .setPositiveButton("Unpair") { _, _ ->
                         store.clear()
+                        runCatching { KyIdentityAccount.remove(this@MainActivity) }
                         // A passkey for a server we are no longer paired to is dead weight, and
                         // its key must not outlive the pairing.
                         IdentityPasskeyKey.deleteAll()

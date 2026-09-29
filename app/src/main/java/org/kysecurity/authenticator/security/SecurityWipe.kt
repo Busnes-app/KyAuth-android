@@ -10,6 +10,7 @@ import java.security.KeyStore
 object SecurityWipe {
     fun wipe(context: Context) {
         // 1. Wipe PairingStore, KyPasswordStore and the KyIdentity passkey record
+        runCatching { org.kysecurity.authenticator.signon.KyIdentityAccount.remove(context) }
         runCatching { PairingStore(context).clear() }
         runCatching { KyPasswordStore(context).clear() }
         runCatching { org.kysecurity.authenticator.passkeys.IdentityPasskeyStore(context).clear() }

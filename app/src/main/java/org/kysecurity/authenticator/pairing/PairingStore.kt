@@ -11,6 +11,7 @@ data class PairedAccount(
     val deviceName: String,
     val username: String? = null,
     val userId: String? = null,
+    val canSignOn: Boolean = false,
 )
 
 class PairingStore(context: Context) {
@@ -32,7 +33,7 @@ class PairingStore(context: Context) {
         val deviceName = preferences.getString("device_name", null) ?: return null
         val username = preferences.getString("username", null)
         val userId = preferences.getString("user_id", null)
-        return PairedAccount(serverUrl, deviceId, deviceName, username, userId)
+        return PairedAccount(serverUrl, deviceId, deviceName, username, userId, preferences.getBoolean("can_sign_on", false))
     }
 
     fun save(account: PairedAccount) {
@@ -42,6 +43,7 @@ class PairingStore(context: Context) {
             .putString("device_name", account.deviceName)
             .putString("username", account.username)
             .putString("user_id", account.userId)
+            .putBoolean("can_sign_on", account.canSignOn)
             .apply()
     }
 
@@ -52,6 +54,7 @@ class PairingStore(context: Context) {
             .remove("device_name")
             .remove("username")
             .remove("user_id")
+            .remove("can_sign_on")
             .apply()
     }
 }
