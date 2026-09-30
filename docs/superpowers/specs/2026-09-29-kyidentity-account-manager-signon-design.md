@@ -95,7 +95,9 @@ inside the authenticator gives the same property without it.
     is a generic `invalid_grant`, audited with the presented origin); `jti` unused (store with
     expiry); user active and not disabled by SCIM; the client's app authentication policy,
     enforced as the code grant does. Every consumer server's public origin must therefore be
-    registered on its client; the browser SSO redirect URI already does this.
+    registered on its client; the browser SSO redirect URI already does this. The binding is
+    per origin (scheme, host, port): relays sharing an origin with different paths are one
+    trust domain.
   - On success: create a login session for the user with method `device` (so `sid`,
     `EnsureClientSession`, back-channel logout and `LoggedOut` checks keep working), issue an
     ID token and access token with the normal shape plus
@@ -154,6 +156,8 @@ New package `signon/`:
 
 - `GET /api/auth/sso-config` (exists, public) gains `clientId` beside `enabled` and `issuerUrl`.
   Both values are public in OIDC.
+- kypost-server accepts only the origin of its own `SERVER_BASE_URL`, so extra aliases
+  registered at KyIdentity do not widen what it accepts.
 - `POST /api/auth/native/signon`, marked `withTokenAuth`, metered on the SSO per-IP limiter.
   Body `{idToken}`. A new `sso.Provider.VerifyIDToken` runs the same go-oidc verification
   `Exchange` runs (signature, issuer, audience, expiry, nbf, non-empty sub) minus the nonce and
@@ -196,7 +200,7 @@ QR and password pairing stay for servers without SSO.
 |---|---|---|
 | Only suite apps get tokens | Caller certificate pin in `getAuthToken` | Unit test on the pin check with a fake `PackageManager`; instrumented test that an unpinned caller is refused |
 | A token for KyPost is useless at KyVault | `aud` = per-server `client_id`; `client_id` inside the signed assertion | Server test: wrong audience rejected |
-| Origin bound | The relay names `client_id`, so the signed `origin` must match a registered redirect URI origin of that client; a relay cannot obtain a token for another relay's client | Server tests: foreign host, foreign port refused with no session; canonical `:443` and uppercase host accepted; ID token carries `origin` |
+| Origin bound | The relay names `client_id`, so the signed `origin` must match a registered redirect URI origin of that client; a relay cannot obtain a token for another relay's client; binding is per origin, so relays sharing an origin with different paths are one trust domain | Server tests: foreign host, foreign port refused with no session; canonical `:443` and uppercase host accepted; ID token carries `origin` |
 | No replay | `jti` single-use at both KyIdentity and the consumer server; 5-minute `exp` | Server tests: second use rejected |
 | Only the enrolled device signs | KyIdentity verifies against that device's key only | Server test: sibling device key rejected |
 | Not claimed as MFA | Session has no factor evidence; `amr` is `["pop"]`, `acr` is `urn:kysignon:acr:device`; refused wherever MFA is mandatory | Server tests: MFA-required user and factor-requiring app policy refused, claims asserted |
@@ -213,7 +217,8 @@ digests. Record these in AGENTS.md "Outstanding security work" until observed.
   F-Droid builds it. Same standing issue as `TrustedBrowsers`.
 - A consumer names the `client_id`, but the token is bound to the relay origin: KyAuth signs
   the origin the user typed, and KyIdentity refuses it unless it is a registered redirect URI
-  origin of that client, so a relay cannot mint a token valid at another relay.
+  origin of that client, so a relay cannot mint a token valid at another relay. The unit is the origin (scheme,
+  host, port), not the URL.
 - Revoking sign-on does not revoke `deviceSecret`s already minted at kypost-server. Turning
   sign-on off or deleting the device does not end live device login sessions, and expired
   device sessions are swept without a back-channel logout, so consumers must not rely on
