@@ -44,19 +44,25 @@ class PairingClient {
                 )
                 throw IllegalStateException(errorMsg)
             }
-            return parseRegistration(body, pairing, deviceName)
+            return parseRegistration(body, pairing, deviceName, attestationChain)
         } finally {
             connection.disconnect()
         }
     }
 
-    internal fun parseRegistration(body: String, pairing: QrPairing, deviceName: String): PairedAccount {
+    internal fun parseRegistration(
+        body: String,
+        pairing: QrPairing,
+        deviceName: String,
+        attestationChain: List<String> = emptyList(),
+    ): PairedAccount {
         val response = JSONObject(body.ifBlank { "{}" })
         val deviceId = response.optString("deviceId")
         require(deviceId.isNotBlank()) { "KyIdentity did not return a device ID" }
         val respDevice = response.optJSONObject("device")
         val userId = respDevice?.optString("userId")?.takeIf { it.isNotBlank() } ?: pairing.userId
         val level = respDevice?.optString("attestedLevel")?.takeIf { it in LEVELS } ?: "none"
+        val reported = respDevice?.has("attestedLevel") == true
         val boot = respDevice?.optString("bootState")?.takeIf { it.isNotBlank() } ?: "unknown"
         return PairedAccount(
             serverUrl = pairing.serverUrl.trimEnd('/'),
@@ -67,6 +73,7 @@ class PairingClient {
             canSignOn = respDevice?.optBoolean("canSignOn", false) ?: false,
             attestedLevel = level,
             bootState = boot,
+            attestationReason = AttestationReason.classify(level, reported, attestationChain),
         )
     }
 

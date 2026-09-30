@@ -2168,7 +2168,7 @@ class MainActivity : AppCompatActivity() {
             else -> "Suite app sign-in: account missing"
         }
         accountSection.addView(message(signOnState))
-        accountSection.addView(message(attestationSummary(account.attestedLevel, account.bootState, ::getString)))
+        accountSection.addView(message(attestationSummary(account.attestedLevel, account.bootState, account.attestationReason, ::getString)))
         if (account.canSignOn && systemAccount == null) {
             accountSection.addView(secondaryButton("Restore system account").apply {
                 setOnClickListener {

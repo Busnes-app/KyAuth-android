@@ -46,6 +46,8 @@ class DeviceSigningKeyAttestationTest {
         assertNotNull("leaf carries the attestation extension", leaf.getExtensionValue(keyAttestationOid))
         assertEquals(generated.publicKeyBase64, Base64.getEncoder().encodeToString(leaf.publicKey.encoded))
         assertEquals(generated.publicKeyBase64, DeviceSigningKey.publicKeyBase64())
+        val level = AttestationReason.leafSecurityLevel(generated.attestationChain[0])
+        assertTrue("leaf security level parses: $level", level in 0..2)
     }
 
     @Test

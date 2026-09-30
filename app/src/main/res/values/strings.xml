@@ -31,6 +31,9 @@
     <string name="attested_strongbox">Attested: StrongBox</string>
     <string name="attested_tee">Attested: TEE</string>
     <string name="attested_none">Not attested. Pair again to attest this phone.</string>
+    <string name="attested_none_server">Not attested. This KyIdentity server does not check attestation yet.</string>
+    <string name="attested_none_keystore">Not attested. This phone\'s keystore cannot attest keys, so pairing again will not help.</string>
+    <string name="attested_none_refused">Not attested. The server did not accept this build\'s attestation. Pairing again will not help until the server trusts this build.</string>
     <string name="boot_locked">Bootloader locked.</string>
     <string name="boot_locked_custom_os">Bootloader locked (custom OS).</string>
     <string name="boot_unlocked">Bootloader unlocked.</string>

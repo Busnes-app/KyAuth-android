@@ -15,6 +15,8 @@ data class PairedAccount(
     /** `none`, `tee` or `strongbox`, as KyIdentity graded the pairing's attestation chain. */
     val attestedLevel: String = "none",
     val bootState: String = "unknown",
+    /** An [AttestationReason] value; empty for attested or legacy accounts. */
+    val attestationReason: String = "",
 )
 
 class PairingStore(context: Context) {
@@ -41,6 +43,7 @@ class PairingStore(context: Context) {
             canSignOn = preferences.getBoolean("can_sign_on", false),
             attestedLevel = preferences.getString("attested_level", null) ?: "none",
             bootState = preferences.getString("boot_state", null) ?: "unknown",
+            attestationReason = preferences.getString("attestation_reason", null) ?: "",
         )
     }
 
@@ -54,6 +57,7 @@ class PairingStore(context: Context) {
             .putBoolean("can_sign_on", account.canSignOn)
             .putString("attested_level", account.attestedLevel)
             .putString("boot_state", account.bootState)
+            .putString("attestation_reason", account.attestationReason)
             .apply()
     }
 
@@ -67,6 +71,7 @@ class PairingStore(context: Context) {
             .remove("can_sign_on")
             .remove("attested_level")
             .remove("boot_state")
+            .remove("attestation_reason")
             .apply()
     }
 }
