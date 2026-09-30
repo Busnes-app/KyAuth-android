@@ -92,7 +92,7 @@ inside the authenticator gives the same property without it.
   - On success: create a login session for the user with method `device` (so `sid`,
     `EnsureClientSession`, back-channel logout and `LoggedOut` checks keep working), issue an
     ID token and access token with the normal shape plus
-    `amr: ["hwk"]`, `acr urn:kysignon:acr:device`, `auth_time` = now,
+    `amr: ["pop"]`, `acr urn:kysignon:acr:device`, `auth_time` = now,
     `signon_method: "device"`, `device_id`. Device sign-on is single-factor: the session
     carries `PrimaryAuthenticatedAt` = now and no factor evidence, because enrollment accepts
     any P-256 key and nothing proves hardware backing or user verification. The existing
@@ -190,7 +190,7 @@ QR and password pairing stay for servers without SSO.
 | A token for KyPost is useless at KyVault | `aud` = per-server `client_id`; `client_id` inside the signed assertion | Server test: wrong audience rejected |
 | No replay | `jti` single-use at both KyIdentity and the consumer server; 5-minute `exp` | Server tests: second use rejected |
 | Only the enrolled device signs | KyIdentity verifies against that device's key only | Server test: sibling device key rejected |
-| Not claimed as MFA | Session has no factor evidence; `amr` is `["hwk"]`, `acr` is `urn:kysignon:acr:device`; refused wherever MFA is mandatory | Server tests: MFA-required user and factor-requiring app policy refused, claims asserted |
+| Not claimed as MFA | Session has no factor evidence; `amr` is `["pop"]`, `acr` is `urn:kysignon:acr:device`; refused wherever MFA is mandatory | Server tests: MFA-required user and factor-requiring app policy refused, claims asserted |
 | Revocable | `can_sign_on` toggle, device delete, MFA reset; live sessions and minted credentials are not revoked (see gaps) | Server tests |
 | Nothing long-lived added to the phone | Token returned once, `customTokens` prevents system caching | Code review; KyPost stores only what it stores today |
 
@@ -215,8 +215,6 @@ digests. Record these in AGENTS.md "Outstanding security work" until observed.
   attestation root (security level, per-use user auth, challenge match), stores the attested
   level, and only attested devices get MFA-grade sign-on. Until then device sign-on is refused
   wherever MFA is mandatory.
-- Unlike the code grant, the device grant does not atomically re-check the app policy revision
-  inside `RecordIssuedToken`. Window: milliseconds; token life is at most 15 minutes.
 
 ## Sequence and repos
 
