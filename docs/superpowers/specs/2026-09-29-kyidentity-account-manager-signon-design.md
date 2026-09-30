@@ -202,8 +202,6 @@ digests. Record these in AGENTS.md "Outstanding security work" until observed.
 
 - `TrustedConsumers` needs the F-Droid signing digest for KyPost, which does not exist until
   F-Droid builds it. Same standing issue as `TrustedBrowsers`.
-- A pinned consumer can request any `client_id`. All pinned apps are ours; a per-package
-  audience allowlist would hardcode deployment-specific client ids. Accepted.
 - Revoking sign-on does not revoke `deviceSecret`s already minted at kypost-server. Turning
   sign-on off or deleting the device does not end live device login sessions, and expired
   device sessions are swept without a back-channel logout, so consumers must not rely on

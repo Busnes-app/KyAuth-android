@@ -57,7 +57,7 @@
     <string name="identity_passkey_none">No KyIdentity passkey on this device. Enrol one from KyIdentity to use it as a second factor.</string>
     <string name="identity_passkey_remove">Remove KyIdentity Passkey</string>
     <string name="identity_passkey_restranded">Re-enroll on KyIdentity</string>
-    <string name="signon_prompt">%1$s wants to sign in as %2$s at %3$s.</string>
+    <string name="signon_prompt">%1$s at %2$s wants to sign in as %3$s at %4$s.</string>
     <string name="signon_approve">Approve sign-in</string>
     <string name="signon_deny">Deny</string>
     <string name="signon_biometric_subtitle">Sign in to %1$s</string>

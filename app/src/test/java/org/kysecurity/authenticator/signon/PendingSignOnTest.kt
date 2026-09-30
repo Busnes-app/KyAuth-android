@@ -10,7 +10,7 @@ import org.kysecurity.authenticator.pairing.PairedAccount
 class PendingSignOnTest {
     private var now = 1_000L
     private val req = SignOnRequest.Proceed(
-        TrustedCaller("org.kysecurity.mail", "KyPost"), "kypost",
+        TrustedCaller("org.kysecurity.mail", "KyPost"), "kypost", "https://mail.example.com",
         PairedAccount("https://id.example.com", "d", "P", "alice", "u1", canSignOn = true),
     )
 

@@ -12,26 +12,31 @@ import org.kysecurity.authenticator.pairing.PairedAccount
 import org.kysecurity.authenticator.pairing.PairingStore
 
 sealed class SignOnRequest {
-    data class Proceed(val caller: TrustedCaller, val clientId: String, val paired: PairedAccount) : SignOnRequest()
+    data class Proceed(val caller: TrustedCaller, val clientId: String, val origin: String, val paired: PairedAccount) : SignOnRequest()
     data class Refuse(val code: Int, val message: String) : SignOnRequest()
 }
 
 /** Everything that decides whether a token request may reach the prompt, with no Android state. */
-internal fun decideSignOn(caller: TrustedCaller?, authTokenType: String?, paired: PairedAccount?): SignOnRequest {
+internal fun decideSignOn(caller: TrustedCaller?, authTokenType: String?, rawOrigin: String?, paired: PairedAccount?): SignOnRequest {
     if (caller == null) return SignOnRequest.Refuse(AccountManager.ERROR_CODE_UNSUPPORTED_OPERATION, "This app is not allowed to use KyIdentity sign-in")
     if (!DeviceAssertion.isValidClientId(authTokenType)) return SignOnRequest.Refuse(AccountManager.ERROR_CODE_BAD_ARGUMENTS, "Invalid client id")
+    val origin = DeviceAssertion.relayOrigin(rawOrigin)
+        ?: return SignOnRequest.Refuse(AccountManager.ERROR_CODE_BAD_ARGUMENTS, "A secure relay address is required")
     if (paired == null || paired.userId.isNullOrBlank()) {
         return SignOnRequest.Refuse(AccountManager.ERROR_CODE_BAD_REQUEST, "Pair KyAuth with KyIdentity first.")
     }
     if (!paired.canSignOn) {
         return SignOnRequest.Refuse(AccountManager.ERROR_CODE_BAD_REQUEST, "Sign-in was not enabled for this phone when it was paired. Pair KyAuth again after enabling sign-in on the KyIdentity devices page.")
     }
-    return SignOnRequest.Proceed(caller, authTokenType!!, paired)
+    return SignOnRequest.Proceed(caller, authTokenType!!, origin, paired)
 }
 
 /** Stale-account cleanup only when the pairing read succeeded and it says "not paired / sign-on off". */
 internal fun cleanupAfterRefusal(readSucceeded: Boolean, decision: SignOnRequest): Boolean =
     readSucceeded && decision is SignOnRequest.Refuse && decision.code == AccountManager.ERROR_CODE_BAD_REQUEST
+
+/** `getAuthToken` option carrying the relay URL the consumer's user typed. */
+const val ORIGIN_OPTION = "org.kysecurity.identity.origin"
 
 /**
  * Account authenticator for `org.kysecurity.identity`. `customTokens` is on, so the system never
@@ -62,7 +67,7 @@ class KyIdentityAuthenticator(private val context: Context) : AbstractAccountAut
         val read = runCatching { PairingStore(context).account() }
         if (read.isFailure) return error(AccountManager.ERROR_CODE_REMOTE_EXCEPTION, "KyAuth could not read its pairing; try again")
         val paired = read.getOrNull()
-        return when (val decision = decideSignOn(caller, authTokenType, paired)) {
+        return when (val decision = decideSignOn(caller, authTokenType, options?.getString(ORIGIN_OPTION), paired)) {
             is SignOnRequest.Refuse -> {
                 if (cleanupAfterRefusal(true, decision)) runCatching { KyIdentityAccount.sync(context, paired) }
                 error(decision.code, decision.message)
