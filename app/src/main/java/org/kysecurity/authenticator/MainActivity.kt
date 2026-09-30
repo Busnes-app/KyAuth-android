@@ -351,9 +351,17 @@ class MainActivity : AppCompatActivity() {
                                     if (answerAddAccountIfPossible()) return@onSuccess
                                     unlockWithPrompt()
                                 }.onFailure {
-                                    error.text = if (keyReplaced) {
-                                        getString(R.string.pairing_failed_key_replaced, it.message ?: "unknown error")
-                                    } else it.message ?: "Pairing failed"
+                                    if (!keyReplaced) {
+                                        error.text = it.message ?: "Pairing failed"
+                                        return@onFailure
+                                    }
+                                    // The old key is gone, so the saved pairing cannot sign anything.
+                                    unpairIdentity()
+                                    AlertDialog.Builder(this@MainActivity)
+                                        .setTitle(getString(R.string.pairing_title))
+                                        .setMessage(getString(R.string.pairing_failed_key_replaced, (it.message ?: "unknown error").trimEnd('.')))
+                                        .setPositiveButton("OK", null)
+                                        .showKyDialog()
                                 }
                             }
                         }.start()
@@ -2180,16 +2188,7 @@ class MainActivity : AppCompatActivity() {
                             "This also deletes the KyIdentity passkey held on this device.",
                     )
                     .setNegativeButton("Cancel", null)
-                    .setPositiveButton("Unpair") { _, _ ->
-                        store.clear()
-                        runCatching { KyIdentityAccount.remove(this@MainActivity) }
-                        // A passkey for a server we are no longer paired to is dead weight, and
-                        // its key must not outlive the pairing.
-                        IdentityPasskeyKey.deleteAll()
-                        IdentityPasskeyStore(this@MainActivity).clear()
-                        lockSensitiveState()
-                        renderContent()
-                    }
+                    .setPositiveButton("Unpair") { _, _ -> unpairIdentity() }
                     .showKyDialog()
             }
         }
@@ -2853,6 +2852,17 @@ class MainActivity : AppCompatActivity() {
             dialog.window?.decorView?.let(::clear)
             dialog.dismiss()
         }
+    }
+
+    private fun unpairIdentity() {
+        store.clear()
+        runCatching { KyIdentityAccount.remove(this) }
+        // A passkey for a server we are no longer paired to is dead weight, and
+        // its key must not outlive the pairing.
+        IdentityPasskeyKey.deleteAll()
+        IdentityPasskeyStore(this).clear()
+        lockSensitiveState()
+        renderContent()
     }
 
     private fun lockSensitiveState() {
