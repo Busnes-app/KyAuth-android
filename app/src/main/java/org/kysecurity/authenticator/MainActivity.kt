@@ -51,6 +51,7 @@ import org.kysecurity.authenticator.mfa.MfaMessage
 import org.kysecurity.authenticator.mfa.MfaPushChallengeStore
 import org.kysecurity.authenticator.mfa.MfaResponseClient
 import org.kysecurity.authenticator.mfa.MfaResponseResult
+import org.kysecurity.authenticator.pairing.AttestationChallenge
 import org.kysecurity.authenticator.pairing.DeviceSigningKey
 import org.kysecurity.authenticator.pairing.PairedAccount
 import org.kysecurity.authenticator.pairing.PairingClient
@@ -317,13 +318,19 @@ class MainActivity : AppCompatActivity() {
                         triggerBtn?.isEnabled = false
                         progress.visibility = ProgressBar.VISIBLE
                         Thread {
+                            var keyReplaced = false
                             val result = runCatching {
                                 val pushToken = PushTokenProvider.currentToken().getOrThrow()
+                                val hadAccount = runCatching { store.account() != null }.getOrDefault(false)
+                                val key = DeviceSigningKey.regenerate(AttestationChallenge.forPairing(pairing))
+                                keyReplaced = hadAccount
                                 PairingClient().register(
                                     pairing = pairing,
                                     deviceName = android.os.Build.MODEL,
                                     deviceIdentifier = store.deviceIdentifier(),
                                     pushToken = pushToken,
+                                    publicKeyBase64 = key.publicKeyBase64,
+                                    attestationChain = key.attestationChain,
                                 )
                             }
                             runOnUiThread {
@@ -342,7 +349,10 @@ class MainActivity : AppCompatActivity() {
                                     runCatching { KyIdentityAccount.sync(this@MainActivity, account) }
                                     if (answerAddAccountIfPossible()) return@onSuccess
                                     unlockWithPrompt()
-                                }.onFailure { error.text = it.message ?: "Pairing failed" }
+                                }.onFailure {
+                                    error.text = if (keyReplaced) getString(R.string.pairing_failed_key_replaced)
+                                    else it.message ?: "Pairing failed"
+                                }
                             }
                         }.start()
                     },
@@ -2147,6 +2157,17 @@ class MainActivity : AppCompatActivity() {
             else -> "Suite app sign-in: account missing"
         }
         accountSection.addView(message(signOnState))
+        val attestation = when (account.attestedLevel) {
+            "strongbox" -> getString(R.string.attested_strongbox)
+            "tee" -> getString(R.string.attested_tee)
+            else -> getString(R.string.attested_none)
+        }
+        val boot = when (account.bootState) {
+            "locked-verified", "locked-selfsigned" -> getString(R.string.boot_locked)
+            "unlocked" -> getString(R.string.boot_unlocked)
+            else -> ""
+        }
+        accountSection.addView(message(attestation + boot))
         if (account.canSignOn && systemAccount == null) {
             accountSection.addView(secondaryButton("Restore system account").apply {
                 setOnClickListener {
