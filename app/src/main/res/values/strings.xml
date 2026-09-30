@@ -31,8 +31,9 @@
     <string name="attested_strongbox">Attested: StrongBox</string>
     <string name="attested_tee">Attested: TEE</string>
     <string name="attested_none">Not attested. Pair again to attest this phone.</string>
-    <string name="boot_locked"> Bootloader locked.</string>
-    <string name="boot_unlocked"> Bootloader unlocked.</string>
+    <string name="boot_locked">Bootloader locked.</string>
+    <string name="boot_locked_custom_os">Bootloader locked (custom OS).</string>
+    <string name="boot_unlocked">Bootloader unlocked.</string>
     <string name="scan_failed">Unable to scan QR code</string>
     <string name="manual_pairing_required">Server URL and Pairing Token/PIN are required</string>
     <string name="vault_locked">VAULT LOCKED</string>

@@ -52,6 +52,7 @@ import org.kysecurity.authenticator.mfa.MfaPushChallengeStore
 import org.kysecurity.authenticator.mfa.MfaResponseClient
 import org.kysecurity.authenticator.mfa.MfaResponseResult
 import org.kysecurity.authenticator.pairing.AttestationChallenge
+import org.kysecurity.authenticator.pairing.attestationSummary
 import org.kysecurity.authenticator.pairing.DeviceSigningKey
 import org.kysecurity.authenticator.pairing.PairedAccount
 import org.kysecurity.authenticator.pairing.PairingClient
@@ -2158,17 +2159,7 @@ class MainActivity : AppCompatActivity() {
             else -> "Suite app sign-in: account missing"
         }
         accountSection.addView(message(signOnState))
-        val attestation = when (account.attestedLevel) {
-            "strongbox" -> getString(R.string.attested_strongbox)
-            "tee" -> getString(R.string.attested_tee)
-            else -> getString(R.string.attested_none)
-        }
-        val boot = when (account.bootState) {
-            "locked-verified", "locked-selfsigned" -> getString(R.string.boot_locked)
-            "unlocked" -> getString(R.string.boot_unlocked)
-            else -> ""
-        }
-        accountSection.addView(message(attestation + boot))
+        accountSection.addView(message(attestationSummary(account.attestedLevel, account.bootState, ::getString)))
         if (account.canSignOn && systemAccount == null) {
             accountSection.addView(secondaryButton("Restore system account").apply {
                 setOnClickListener {
