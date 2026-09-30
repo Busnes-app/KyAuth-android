@@ -322,8 +322,8 @@ class MainActivity : AppCompatActivity() {
                             val result = runCatching {
                                 val pushToken = PushTokenProvider.currentToken().getOrThrow()
                                 val hadAccount = runCatching { store.account() != null }.getOrDefault(false)
-                                val key = DeviceSigningKey.regenerate(AttestationChallenge.forPairing(pairing))
                                 keyReplaced = hadAccount
+                                val key = DeviceSigningKey.regenerate(AttestationChallenge.forPairing(pairing))
                                 PairingClient().register(
                                     pairing = pairing,
                                     deviceName = android.os.Build.MODEL,
@@ -350,8 +350,9 @@ class MainActivity : AppCompatActivity() {
                                     if (answerAddAccountIfPossible()) return@onSuccess
                                     unlockWithPrompt()
                                 }.onFailure {
-                                    error.text = if (keyReplaced) getString(R.string.pairing_failed_key_replaced)
-                                    else it.message ?: "Pairing failed"
+                                    error.text = if (keyReplaced) {
+                                        getString(R.string.pairing_failed_key_replaced, it.message ?: "unknown error")
+                                    } else it.message ?: "Pairing failed"
                                 }
                             }
                         }.start()

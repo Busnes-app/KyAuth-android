@@ -27,7 +27,7 @@
     <string name="totp_expiry">TAP TO COPY  ·  EXPIRES IN %1$d S</string>
     <string name="generate_strong_password">Generate Strong Password</string>
     <string name="cancel">Cancel</string>
-    <string name="pairing_failed_key_replaced">Pairing failed. The previous pairing\'s device key was replaced, so pair this phone again.</string>
+    <string name="pairing_failed_key_replaced">Pairing failed: %1$s. The previous pairing\'s device key may have been replaced, so pair this phone again.</string>
     <string name="attested_strongbox">Attested: StrongBox</string>
     <string name="attested_tee">Attested: TEE</string>
     <string name="attested_none">Not attested. Pair again to attest this phone.</string>
