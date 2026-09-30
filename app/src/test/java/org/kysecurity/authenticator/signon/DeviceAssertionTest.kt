@@ -19,7 +19,7 @@ class DeviceAssertionTest {
     fun signingInput_hasPinnedHeaderAndClaims() {
         val input = DeviceAssertion.signingInput(
             deviceId = "dev-1", userId = "user-1", serverUrl = "https://id.example.com/",
-            clientId = "kypost", nowEpochSeconds = 1000, jti = "j-1",
+            clientId = "kypost", origin = "https://mail.example.com", nowEpochSeconds = 1000, jti = "j-1",
         )
         val (h, c) = input.split(".").let { it[0] to it[1] }
         val header = JSONObject(String(b64url(h)))
@@ -35,7 +35,34 @@ class DeviceAssertionTest {
         assertEquals(1000L, claims.getLong("iat"))
         assertEquals(1120L, claims.getLong("exp"))
         assertEquals("j-1", claims.getString("jti"))
-        assertEquals(7, claims.length())
+        assertEquals("https://mail.example.com", claims.getString("origin"))
+        assertEquals(8, claims.length())
+    }
+
+    @Test
+    fun relayOrigin_normalisesHttpsAndRefusesEverythingElse() {
+        val cases = mapOf(
+            "https://mail.example.com/" to "https://mail.example.com",
+            "https://mail.example.com/relay/v1?x=1#f" to "https://mail.example.com",
+            "https://Mail.EXAMPLE.com" to "https://mail.example.com",
+            "HTTPS://mail.example.com" to "https://mail.example.com",
+            "https://mail.example.com:443/" to "https://mail.example.com",
+            "https://mail.example.com:8443/relay" to "https://mail.example.com:8443",
+            "http://mail.example.com" to null,
+            "https://user:pw@mail.example.com" to null,
+            "https://user@mail.example.com" to null,
+            "" to null,
+            "   " to null,
+            "mail.example.com" to null,
+            "https:///path" to null,
+            "https:mail.example.com" to null,
+            "https://mail.example.com:0/" to null,
+            "https://mail.example.com:65536/" to null,
+            "https://mail.example.com:65535/" to "https://mail.example.com:65535",
+            "https://" + "a".repeat(250) + ".com" to null,
+        )
+        for ((raw, want) in cases) assertEquals("relayOrigin(\"$raw\")", want, DeviceAssertion.relayOrigin(raw))
+        assertEquals(null, DeviceAssertion.relayOrigin(null))
     }
 
     @Test
@@ -80,7 +107,7 @@ class DeviceAssertionTest {
         val serverUrl = """https://id.example"test\path/"""
         val input = DeviceAssertion.signingInput(
             deviceId = deviceId, userId = "user-1", serverUrl = serverUrl,
-            clientId = "kypost", nowEpochSeconds = 1000, jti = "j-1",
+            clientId = "kypost", origin = "https://mail.example.com", nowEpochSeconds = 1000, jti = "j-1",
         )
         val (h, c) = input.split(".").let { it[0] to it[1] }
 
