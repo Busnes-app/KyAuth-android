@@ -1,5 +1,7 @@
 # KyIdentity device sign-on grant Implementation Plan (1 of 4)
 
+> Superseded by audit P1 (2026-09-30): amr is [pop], acr urn:kysignon:acr:device, single-factor.
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** KyIdentity lets a paired native device with the sign-on capability redeem an ES256 assertion for an ID token whose audience is a registered client.

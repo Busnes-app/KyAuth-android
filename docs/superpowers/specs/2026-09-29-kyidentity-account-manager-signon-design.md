@@ -131,7 +131,8 @@ New package `signon/`:
      `KEY_CUSTOM_TOKEN_EXPIRY` = its `exp`. Deny or any error returns
      `ERROR_CODE_CANCELED` / `ERROR_CODE_REMOTE_EXCEPTION` with a user-readable message; the
      server's `device_signon_disabled` error tells the user to re-enable sign-on on the
-     KyIdentity devices page.
+     KyIdentity devices page. The server's `signon_not_permitted` error is shown as "This
+     account cannot sign in to apps from this phone right now. Use web sign-in."
   4. The device key is independent of `VaultKek`, so sign-on works while KyAuth's vault is
      locked, the same way the KyIdentity passkey does.
 - `invalidateAuthToken`, `confirmCredentials`, `updateCredentials`, `editProperties`: no-ops.
