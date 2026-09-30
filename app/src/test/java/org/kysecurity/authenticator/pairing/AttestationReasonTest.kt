@@ -39,6 +39,9 @@ class AttestationReasonTest {
         assertNull(AttestationReason.leafSecurityLevel(byteArrayOf(0x01, 0x02, 0x03, 0x04)))
         assertNull(AttestationReason.leafSecurityLevel(extension(1).copyOf(6)))
         assertNull(AttestationReason.leafSecurityLevel(der(0x04, der(0x30, der(0x02, byteArrayOf(1)) + der(0x02, byteArrayOf(1))))))
+        assertNull(AttestationReason.leafSecurityLevel(byteArrayOf(0x04, 0x04, 0x30, 0x80.toByte(), 0x00, 0x00)))
+        assertNull(AttestationReason.leafSecurityLevel(byteArrayOf(0x04, 0x03, 0x30, 0x20, 0x02)))
+        assertNull(AttestationReason.leafSecurityLevel(der(0x04, der(0x30, der(0x02, byteArrayOf(1)) + der(0x0A, ByteArray(0))))))
         assertNull(AttestationReason.leafSecurityLevel("not base64!"))
         assertNull(AttestationReason.leafSecurityLevel("AAAA"))
     }

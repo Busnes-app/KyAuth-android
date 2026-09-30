@@ -55,6 +55,7 @@ class PairingClient {
         pairing: QrPairing,
         deviceName: String,
         attestationChain: List<String> = emptyList(),
+        leafLevel: (String) -> Int? = AttestationReason::leafSecurityLevel,
     ): PairedAccount {
         val response = JSONObject(body.ifBlank { "{}" })
         val deviceId = response.optString("deviceId")
@@ -62,7 +63,7 @@ class PairingClient {
         val respDevice = response.optJSONObject("device")
         val userId = respDevice?.optString("userId")?.takeIf { it.isNotBlank() } ?: pairing.userId
         val level = respDevice?.optString("attestedLevel")?.takeIf { it in LEVELS } ?: "none"
-        val reported = respDevice?.has("attestedLevel") == true
+        val reported = respDevice?.let { it.has("attestedLevel") && !it.isNull("attestedLevel") } == true
         val boot = respDevice?.optString("bootState")?.takeIf { it.isNotBlank() } ?: "unknown"
         return PairedAccount(
             serverUrl = pairing.serverUrl.trimEnd('/'),
@@ -73,7 +74,7 @@ class PairingClient {
             canSignOn = respDevice?.optBoolean("canSignOn", false) ?: false,
             attestedLevel = level,
             bootState = boot,
-            attestationReason = AttestationReason.classify(level, reported, attestationChain),
+            attestationReason = AttestationReason.classify(level, reported, attestationChain, leafLevel),
         )
     }
 

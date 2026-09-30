@@ -71,4 +71,20 @@ class PairingClientTest {
         val junk = client.parseRegistration("""{"success":true,"deviceId":"d","device":{"userId":"u","attestedLevel":"platinum"}}""", pairing, "Pixel")
         assertEquals("none", junk.attestedLevel)
     }
+
+    @Test
+    fun parseRegistration_classifiesAttestationReason() {
+        val client = PairingClient()
+        val pairing = QrPairing(serverUrl = "https://id.example.com/", pairingToken = "t")
+        fun reason(device: String, chain: List<String> = emptyList(), leaf: Int? = null) = client.parseRegistration(
+            """{"success":true,"deviceId":"d","device":{"userId":"u"$device}}""", pairing, "Pixel", chain, { leaf },
+        ).attestationReason
+        assertEquals("server-unsupported", reason(""))
+        assertEquals("server-unsupported", reason(""","attestedLevel":null"""))
+        assertEquals("keystore-software", reason(""","attestedLevel":"none""""))
+        assertEquals("keystore-software", reason(""","attestedLevel":"platinum""""))
+        assertEquals("keystore-software", reason(""","attestedLevel":"none"""", listOf("leaf"), 0))
+        assertEquals("not-accepted", reason(""","attestedLevel":"none"""", listOf("leaf"), 1))
+        assertEquals("", reason(""","attestedLevel":"tee""""))
+    }
 }
