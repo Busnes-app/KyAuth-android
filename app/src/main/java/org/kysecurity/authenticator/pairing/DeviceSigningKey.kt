@@ -3,6 +3,7 @@ package org.kysecurity.authenticator.pairing
 import android.os.Build
 import android.security.keystore.KeyGenParameterSpec
 import android.security.keystore.KeyProperties
+import android.util.Log
 import java.security.KeyPair
 import java.security.KeyPairGenerator
 import java.security.KeyStore
@@ -16,10 +17,10 @@ data class GeneratedDeviceKey(
     val publicKeyBase64: String,
     /** Base64 DER certificates, leaf first; empty when the key was generated without a challenge. */
     val attestationChain: List<String>,
-    val strongBoxAttempted: Boolean,
 )
 
 object DeviceSigningKey {
+    private const val TAG = "DeviceSigningKey"
     private const val ANDROID_KEY_STORE = "AndroidKeyStore"
     // Storage contract: the alias paired devices already hold. Renaming it makes the lookup miss,
     // silently generates a fresh key the server never saw, and every push signature then fails.
@@ -78,14 +79,18 @@ object DeviceSigningKey {
      */
     fun regenerate(challenge: ByteArray): GeneratedDeviceKey {
         testKeyPair?.let {
-            return GeneratedDeviceKey(Base64.getEncoder().encodeToString(it.public.encoded), emptyList(), false)
+            return GeneratedDeviceKey(Base64.getEncoder().encodeToString(it.public.encoded), emptyList())
         }
         deleteKey()
         var attested = true
-        val strongBox = runCatching { generateWith(challenge, strongBox = true) }.isSuccess
+        val strongBox = runCatching { generateWith(challenge, strongBox = true) }
+            .onFailure { Log.w(TAG, "StrongBox attestation failed, trying TEE: ${it.javaClass.name}") }
+            .isSuccess
         if (!strongBox) {
             deleteKey()
-            if (runCatching { generateWith(challenge, strongBox = false) }.isFailure) {
+            val tee = runCatching { generateWith(challenge, strongBox = false) }
+                .onFailure { Log.w(TAG, "TEE attestation failed, using plain key: ${it.javaClass.name}") }
+            if (tee.isFailure) {
                 deleteKey()
                 generate()
                 attested = false
@@ -97,7 +102,6 @@ object DeviceSigningKey {
         return GeneratedDeviceKey(
             publicKeyBase64 = Base64.getEncoder().encodeToString(publicKey.encoded),
             attestationChain = chain.map { Base64.getEncoder().encodeToString(it.encoded) },
-            strongBoxAttempted = true,
         )
     }
 
