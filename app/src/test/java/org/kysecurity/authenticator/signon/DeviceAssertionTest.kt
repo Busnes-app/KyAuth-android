@@ -56,6 +56,10 @@ class DeviceAssertionTest {
             "mail.example.com" to null,
             "https:///path" to null,
             "https:mail.example.com" to null,
+            "https://mail.example.com:0/" to null,
+            "https://mail.example.com:65536/" to null,
+            "https://mail.example.com:65535/" to "https://mail.example.com:65535",
+            "https://" + "a".repeat(250) + ".com" to null,
         )
         for ((raw, want) in cases) assertEquals("relayOrigin(\"$raw\")", want, DeviceAssertion.relayOrigin(raw))
         assertEquals(null, DeviceAssertion.relayOrigin(null))

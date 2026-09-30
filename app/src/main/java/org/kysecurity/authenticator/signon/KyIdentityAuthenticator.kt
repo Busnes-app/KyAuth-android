@@ -21,7 +21,7 @@ internal fun decideSignOn(caller: TrustedCaller?, authTokenType: String?, rawOri
     if (caller == null) return SignOnRequest.Refuse(AccountManager.ERROR_CODE_UNSUPPORTED_OPERATION, "This app is not allowed to use KyIdentity sign-in")
     if (!DeviceAssertion.isValidClientId(authTokenType)) return SignOnRequest.Refuse(AccountManager.ERROR_CODE_BAD_ARGUMENTS, "Invalid client id")
     val origin = DeviceAssertion.relayOrigin(rawOrigin)
-        ?: return SignOnRequest.Refuse(AccountManager.ERROR_CODE_BAD_ARGUMENTS, "A secure relay address is required")
+        ?: return SignOnRequest.Refuse(AccountManager.ERROR_CODE_BAD_ARGUMENTS, "The relay address must be an https:// URL with a plain hostname (use punycode for international names).")
     if (paired == null || paired.userId.isNullOrBlank()) {
         return SignOnRequest.Refuse(AccountManager.ERROR_CODE_BAD_REQUEST, "Pair KyAuth with KyIdentity first.")
     }

@@ -15,13 +15,17 @@ object DeviceAssertion {
     private val CLIENT_ID = Regex("[A-Za-z0-9._:-]{1,128}")
     private val b64 = Base64.getUrlEncoder().withoutPadding()
 
+    private const val MAX_RELAY_LENGTH = 256
+
     fun isValidClientId(value: String?): Boolean = value != null && CLIENT_ID.matches(value)
 
     /** The relay the consumer typed, as `https://host[:port]`; null unless it is plain HTTPS. */
     fun relayOrigin(raw: String?): String? {
+        if (raw == null || raw.length > MAX_RELAY_LENGTH) return null
         val uri = runCatching { URI(raw) }.getOrNull() ?: return null
         if (!uri.scheme.equals("https", ignoreCase = true) || uri.rawUserInfo != null) return null
         val host = uri.host?.lowercase()?.takeIf { it.isNotEmpty() } ?: return null
+        if (uri.port != -1 && uri.port !in 1..65535) return null
         return if (uri.port == -1 || uri.port == 443) "https://$host" else "https://$host:${uri.port}"
     }
 

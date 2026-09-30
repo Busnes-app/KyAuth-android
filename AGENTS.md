@@ -113,7 +113,9 @@ KyAuth pairs an Android device with KyIdentity. It stores TOTP entries in an enc
   `org.kysecurity.identity.origin` (the only source of the origin). `DeviceAssertion.relayOrigin`
   normalises it to `https://host[:port]` via `java.net.URI`: scheme `https`, non-empty host, no
   userinfo; host lowercased, port 443 dropped, path/query/fragment ignored. Anything else is refused
-  with `ERROR_CODE_BAD_ARGUMENTS` ("A secure relay address is required") before any prompt.
+  with `ERROR_CODE_BAD_ARGUMENTS` before any prompt. Input over 256 characters or an explicit port
+  outside 1..65535 is refused. The binding is per origin: two relays sharing host and port but with
+  different paths are one trust domain. Relay names must be ASCII/punycode.
   `decideSignOn` checks in order: caller pin, client id, origin, pairing. The assertion carries it as
   the `origin` claim; KyIdentity checks it against the client's registered redirect-URI origins, so
   a pinned consumer cannot obtain a token for another relay's `client_id`.
