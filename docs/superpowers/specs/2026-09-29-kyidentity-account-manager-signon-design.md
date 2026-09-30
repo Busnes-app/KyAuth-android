@@ -82,22 +82,29 @@ inside the authenticator gives the same property without it.
   - Header: `{"alg":"ES256","typ":"JWT","kid":"<device_id>"}`.
   - Claims: `iss` = `device:<device_id>`, `sub` = user id, `aud` = the issuer's token
     endpoint URL, `client_id` = target client (bound inside the signature so a captured
-    assertion cannot be redirected), `iat`, `exp` ≤ `iat`+300, `jti` (random, single-use).
+    assertion cannot be redirected), `origin` = `scheme://host[:port]` of the relay the
+    consumer app typed (https only, lowercase host, default port omitted, no path, query,
+    fragment or trailing slash; ≤ 256 chars; KyAuth normalises before signing), `iat`,
+    `exp` ≤ `iat`+300, `jti` (random, single-use).
   - Server checks, in order: `aud`, `exp`, clock skew 60 s; device exists and belongs to
     `sub`; ES256 signature with that device's public key only (not "any key the user owns",
     the gap the push verifier has); then `can_sign_on` AND `is_mfa_approver` (after the
-    signature, so `device_signon_disabled` only reaches the key holder); `jti` unused (store with expiry); `client_id`
-    registered and equal to the form `client_id`; user active and not disabled by SCIM; the
-    client's app authentication policy, enforced as the code grant does (a passkey-required
-    policy refuses device sign-on).
+    signature, so `device_signon_disabled` only reaches the key holder); `client_id`
+    registered and equal to the form `client_id`; `origin` exactly equal to the origin of one
+    of the client's registered redirect URIs (same canonicalisation on both sides; a mismatch
+    is a generic `invalid_grant`, audited with the presented origin); `jti` unused (store with
+    expiry); user active and not disabled by SCIM; the client's app authentication policy,
+    enforced as the code grant does. Every consumer server's public origin must therefore be
+    registered on its client; the browser SSO redirect URI already does this.
   - On success: create a login session for the user with method `device` (so `sid`,
     `EnsureClientSession`, back-channel logout and `LoggedOut` checks keep working), issue an
     ID token and access token with the normal shape plus
-    `amr: ["hwk","user","urn:kysignon:amr:push","mfa"]`, `acr urn:kysignon:acr:mfa`,
-    `signon_method: "device"`, `device_id`. Evidence stamps `PrimaryAuthenticatedAt` and
-    `FactorAuthenticatedAt` = now with `FactorMethod` push: the device key is the primary
-    credential and every use takes a fresh biometric/credential, so `fresh`/`max_age` are
-    satisfied by construction. Deliberate, not a bypass. No refresh token. Audit `device_signon` success
+    `amr: ["pop"]`, `acr urn:kysignon:acr:device`, `auth_time` = now,
+    `signon_method: "device"`, `device_id`, `origin` (the verified value). Device sign-on is single-factor: the session
+    carries `PrimaryAuthenticatedAt` = now and no factor evidence, because enrollment accepts
+    any P-256 key and nothing proves hardware backing or user verification. The existing
+    enrollment guard (`mfa_session_access`) therefore refuses users whose policy requires MFA,
+    and app policies that require a factor refuse; neither special-cases devices. No refresh token. Audit `device_signon` success
     and failure with device id and client id. Update `last_seen_at`.
   - Rate limit as `device_signon`, 10 burst, 0.2/s per IP, inside the route's `oauth_token` limiter.
 
@@ -131,7 +138,8 @@ New package `signon/`:
      `KEY_CUSTOM_TOKEN_EXPIRY` = its `exp`. Deny or any error returns
      `ERROR_CODE_CANCELED` / `ERROR_CODE_REMOTE_EXCEPTION` with a user-readable message; the
      server's `device_signon_disabled` error tells the user to re-enable sign-on on the
-     KyIdentity devices page.
+     KyIdentity devices page. The server's `signon_not_permitted` error is shown as "This
+     account cannot sign in to apps from this phone right now. Use web sign-in."
   4. The device key is independent of `VaultKek`, so sign-on works while KyAuth's vault is
      locked, the same way the KyIdentity passkey does.
 - `invalidateAuthToken`, `confirmCredentials`, `updateCredentials`, `editProperties`: no-ops.
@@ -188,9 +196,10 @@ QR and password pairing stay for servers without SSO.
 |---|---|---|
 | Only suite apps get tokens | Caller certificate pin in `getAuthToken` | Unit test on the pin check with a fake `PackageManager`; instrumented test that an unpinned caller is refused |
 | A token for KyPost is useless at KyVault | `aud` = per-server `client_id`; `client_id` inside the signed assertion | Server test: wrong audience rejected |
+| Origin bound | The relay names `client_id`, so the signed `origin` must match a registered redirect URI origin of that client; a relay cannot obtain a token for another relay's client | Server tests: foreign host, foreign port refused with no session; canonical `:443` and uppercase host accepted; ID token carries `origin` |
 | No replay | `jti` single-use at both KyIdentity and the consumer server; 5-minute `exp` | Server tests: second use rejected |
 | Only the enrolled device signs | KyIdentity verifies against that device's key only | Server test: sibling device key rejected |
-| User present | Device key requires biometric/credential per use, `amr` says so | Existing key params; instrumented test already exists for the fail-closed path |
+| Not claimed as MFA | Session has no factor evidence; `amr` is `["pop"]`, `acr` is `urn:kysignon:acr:device`; refused wherever MFA is mandatory | Server tests: MFA-required user and factor-requiring app policy refused, claims asserted |
 | Revocable | `can_sign_on` toggle, device delete, MFA reset; live sessions and minted credentials are not revoked (see gaps) | Server tests |
 | Nothing long-lived added to the phone | Token returned once, `customTokens` prevents system caching | Code review; KyPost stores only what it stores today |
 
@@ -202,13 +211,20 @@ digests. Record these in AGENTS.md "Outstanding security work" until observed.
 
 - `TrustedConsumers` needs the F-Droid signing digest for KyPost, which does not exist until
   F-Droid builds it. Same standing issue as `TrustedBrowsers`.
+- A consumer names the `client_id`, but the token is bound to the relay origin: KyAuth signs
+  the origin the user typed, and KyIdentity refuses it unless it is a registered redirect URI
+  origin of that client, so a relay cannot mint a token valid at another relay.
 - Revoking sign-on does not revoke `deviceSecret`s already minted at kypost-server. Turning
   sign-on off or deleting the device does not end live device login sessions, and expired
   device sessions are swept without a back-channel logout, so consumers must not rely on
   back-channel logout for credentials minted from a device sign-on; they expire on the
   consumer's own schedule.
-- Unlike the code grant, the device grant does not atomically re-check the app policy revision
-  inside `RecordIssuedToken`. Window: milliseconds; token life is at most 15 minutes.
+- Device sign-on is single-factor. Follow-up (Yoshi, 2026-09-30): attestation-gated MFA
+  grade — KyAuth generates the device key with a server-issued attestation challenge at
+  pairing and uploads the certificate chain; KyIdentity verifies it to Google's hardware
+  attestation root (security level, per-use user auth, challenge match), stores the attested
+  level, and only attested devices get MFA-grade sign-on. Until then device sign-on is refused
+  wherever MFA is mandatory.
 
 ## Sequence and repos
 
