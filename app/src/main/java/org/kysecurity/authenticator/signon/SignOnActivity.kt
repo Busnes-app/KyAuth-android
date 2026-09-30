@@ -74,7 +74,7 @@ class SignOnActivity : AppCompatActivity() {
             setBackgroundColor(ThemeManager.color(context, R.color.ky_background))
         }
         root.addView(TextView(this).apply {
-            text = getString(R.string.signon_prompt, request.caller.label, who, host)
+            text = getString(R.string.signon_prompt, request.caller.label, request.origin.removePrefix("https://"), who, host)
             textSize = 18f
             setTextColor(ThemeManager.color(context, R.color.ky_heading))
         })
@@ -120,6 +120,7 @@ class SignOnActivity : AppCompatActivity() {
             userId = paired.userId.orEmpty(),
             serverUrl = paired.serverUrl,
             clientId = request.clientId,
+            origin = request.origin,
             nowEpochSeconds = System.currentTimeMillis() / 1000,
             jti = UUID.randomUUID().toString(),
         )
