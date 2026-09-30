@@ -117,9 +117,11 @@ KyAuth pairs an Android device with KyIdentity. It stores TOTP entries in an enc
   works while locked), signs an RFC 7523 assertion (`DeviceAssertion`, `aud` is the trimmed
   `server_url` + `/oauth/token`), redeems it (`TokenClient`) and returns the ID token once.
 - KyIdentity side (shipped): the grant needs both `canSignOn` and MFA-approver on the device; an admin
-  MFA reset ends sign-on; `device_signon_disabled` is returned only after the signature verifies. KyIdentity decides on every
+  MFA reset ends sign-on; `device_signon_disabled` and `signon_not_permitted` (policy refuses: organisation MFA, app factor
+  or fresh-password policy, or no app access) are returned only after the signature verifies. KyIdentity decides on every
   request: the local `canSignOn` is the value captured at pairing and is never cleared by a server
-  refusal; the caller gets the message telling the user to turn sign-in on at the KyIdentity devices page. The server accepts assertions up to 300 s
+  refusal; the caller gets the message telling the user to turn sign-in on at the KyIdentity devices page, or for
+  `signon_not_permitted` "This account cannot sign in to apps from this phone right now. Use web sign-in." The server accepts assertions up to 300 s
   old; KyAuth's window is 120 s.
 - Settings shows the sign-on state and a "Restore system account" action when the account is missing;
   `KyIdentityAccount.sync` returns false if the system refused to add it and Settings says so.

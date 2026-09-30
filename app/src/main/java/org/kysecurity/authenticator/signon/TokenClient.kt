@@ -59,6 +59,9 @@ class TokenClient {
                     "Sign-in from this phone is turned off. Turn it on for this device on the KyIdentity devices page, then try again.",
                 )
             }
+            if (json.optString("error_description") == "signon_not_permitted") {
+                return TokenResult.Failure("This account cannot sign in to apps from this phone right now. Use web sign-in.")
+            }
             return TokenResult.Failure("KyIdentity refused the sign-in ($status).")
         }
         val idToken = json.optString("id_token")

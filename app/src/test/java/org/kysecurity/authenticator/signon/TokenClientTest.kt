@@ -34,6 +34,18 @@ class TokenClientTest {
     }
 
     @Test
+    fun parse_signOnNotPermitted() {
+        val r = client.parse(400, """{"error":"invalid_grant","error_description":"signon_not_permitted"}""") as TokenResult.Failure
+        assertEquals("This account cannot sign in to apps from this phone right now. Use web sign-in.", r.userMessage)
+    }
+
+    @Test
+    fun parse_unknownDescriptionIsGeneric() {
+        val r = client.parse(400, """{"error":"invalid_grant","error_description":"something_new"}""") as TokenResult.Failure
+        assertEquals("KyIdentity refused the sign-in (400).", r.userMessage)
+    }
+
+    @Test
     fun parse_otherErrorsAreGeneric() {
         val r = client.parse(400, """{"error":"invalid_grant","error_description":"The device assertion is invalid"}""") as TokenResult.Failure
         assertTrue(!r.userMessage.contains("turned off"))
