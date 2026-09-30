@@ -40,21 +40,26 @@ class PairingClient {
                 )
                 throw IllegalStateException(errorMsg)
             }
-            val deviceId = response.optString("deviceId")
-            require(deviceId.isNotBlank()) { "KyIdentity did not return a device ID" }
-            val respDevice = response.optJSONObject("device")
-            val userId = respDevice?.optString("userId")?.takeIf { it.isNotBlank() } ?: pairing.userId
-
-            return PairedAccount(
-                serverUrl = pairing.serverUrl.trimEnd('/'),
-                deviceId = deviceId,
-                deviceName = deviceName.trim(),
-                username = pairing.username,
-                userId = userId,
-            )
+            return parseRegistration(body, pairing, deviceName)
         } finally {
             connection.disconnect()
         }
+    }
+
+    internal fun parseRegistration(body: String, pairing: QrPairing, deviceName: String): PairedAccount {
+        val response = JSONObject(body.ifBlank { "{}" })
+        val deviceId = response.optString("deviceId")
+        require(deviceId.isNotBlank()) { "KyIdentity did not return a device ID" }
+        val respDevice = response.optJSONObject("device")
+        val userId = respDevice?.optString("userId")?.takeIf { it.isNotBlank() } ?: pairing.userId
+        return PairedAccount(
+            serverUrl = pairing.serverUrl.trimEnd('/'),
+            deviceId = deviceId,
+            deviceName = deviceName.trim(),
+            username = pairing.username,
+            userId = userId,
+            canSignOn = respDevice?.optBoolean("canSignOn", false) ?: false,
+        )
     }
 
     internal fun registrationRequestJson(

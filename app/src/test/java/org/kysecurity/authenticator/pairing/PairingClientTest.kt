@@ -27,4 +27,17 @@ class PairingClientTest {
         assertEquals("public-key", request.getString("publicKey"))
         assertEquals("fcm-token", request.getString("pushToken"))
     }
+
+    @Test
+    fun parseRegistration_readsCanSignOn() {
+        val client = PairingClient()
+        val pairing = QrPairing(serverUrl = "https://id.example.com/", pairingToken = "t", username = "alice")
+        val on = client.parseRegistration(
+            """{"success":true,"deviceId":"dev-1","device":{"userId":"u1","canSignOn":true}}""", pairing, "Pixel",
+        )
+        assertEquals(true, on.canSignOn)
+        assertEquals("u1", on.userId)
+        val off = client.parseRegistration("""{"success":true,"deviceId":"dev-1","device":{"userId":"u1"}}""", pairing, "Pixel")
+        assertEquals(false, off.canSignOn)
+    }
 }

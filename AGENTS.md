@@ -100,6 +100,33 @@ KyAuth pairs an Android device with KyIdentity. It stores TOTP entries in an enc
   new input. Background locking remains immediate. Lock generations reject stale asynchronous
   unlock/reveal results; only the UI thread installs loaded entry lists.
 - Copied passwords are marked sensitive and clear after 30 seconds or when KyAuth locks.
+- KyAuth is the Android account authenticator for `org.kysecurity.identity` (`signon/`). The account
+  exists iff the paired device has KyIdentity's `canSignOn` and a user id; its user data is `server_url`, `user_id`,
+  `device_id`, never a secret. `customTokens` is on: AccountManager still adds the caller UID
+  to every `getAuthToken`, but skips its own grant check and token store, so the `TrustedConsumers` pin is the sole gate. No `KEY_CUSTOM_TOKEN_EXPIRY` is returned: the system caches nothing and every `getAuthToken`
+  costs one biometric (the ID token's `jti` is single-use at the consumer).
+- `TrustedConsumers` pins caller package plus signing-certificate SHA-256 and fails closed; a shared
+  UID must be fully pinned, and a package with multiple signers (`hasMultipleSigners`) fails closed. The manifest `<queries>` lists every pinned package (SDK 30+ hides others from `getPackagesForUid`/`getPackageInfo`); a test keeps the two in step. Every certificate in `signingCertificateHistory` must be in the pin set
+  (`containsAll`), so a key rotation needs the old and new digests pinned together before KyPost can
+  sign on again. `authTokenType` is the consumer server's KyIdentity `client_id`.
+- `SignOnActivity` is exported because AccountManager starts it from the requesting app's process.
+  `getAuthToken` verifies the caller, then puts only the authenticator response and a single-use 120 s
+  `PendingSignOn` nonce in the intent; no caller-describing extras exist. The activity takes the nonce
+  once and, without one, answers the response with `ERROR_CODE_CANCELED` ("Sign-in request expired") and finishes with no UI, re-reads the pairing, shows who is asking, takes one
+  biometric through `VaultUnlockPrompt.showForSignature` on `DeviceSigningKey` (no vault key, so it
+  works while locked), signs an RFC 7523 assertion (`DeviceAssertion`, `aud` is the trimmed
+  `server_url` + `/oauth/token`), redeems it (`TokenClient`) and returns the ID token once.
+- KyIdentity side (shipped): the grant needs both `canSignOn` and MFA-approver on the device; an admin
+  MFA reset ends sign-on; `device_signon_disabled` and `signon_not_permitted` (policy refuses: organisation MFA, app factor
+  or fresh-password policy, or no app access) are returned only after the signature verifies. KyIdentity decides on every
+  request: the local `canSignOn` is the value captured at pairing and is never cleared by a server
+  refusal; the caller gets the message telling the user to turn sign-in on at the KyIdentity devices page, or for
+  `signon_not_permitted` "This account cannot sign in to apps from this phone right now. Use web sign-in." The server accepts assertions up to 300 s
+  old; KyAuth's window is 120 s.
+- Settings shows the sign-on state and a "Restore system account" action when the account is missing;
+  `KyIdentityAccount.sync` returns false if the system refused to add it and Settings says so.
+- `addAccount` launches `MainActivity` with the authenticator response; pairing success completes it
+  with the account, and `onDestroy` answers `ERROR_CODE_CANCELED` if still pending.
 
 ## UI contract
 
@@ -123,6 +150,9 @@ KyAuth pairs an Android device with KyIdentity. It stores TOTP entries in an enc
 - `security/`: lock state, PIN policy, `VaultKek` authentication-bound key wrapping, `VaultUnlockPrompt`, atomic file writes, and local wipe.
 - `totp/`: TOTP parsing, generation, and KDBX persistence.
 - `passwords/`: password/passkey entry models, domain matcher, password generator, autofill service, and KDBX persistence.
+- `signon/`: `DeviceAssertion` (assertion builder), `TrustedConsumers` (caller pins),
+  `KyIdentityAccount` (system account lifecycle), `KyIdentityAuthenticator` + service,
+  `PendingSignOn` (nonce handoff), `SignOnActivity`, `TokenClient`.
 - `passkeys/`: FIDO2 WebAuthn crypto engine, `ClientData` (CollectedClientData), `RpId` validation,
   `IdentityPasskey` routing plus its hardware key and metadata store, CredentialProviderService, entry
   builder, slice builder, unlock activity, and auth activity.
@@ -193,6 +223,20 @@ Recorded so it is not mistaken for done:
   `BiometricPrompt` for the KyIdentity passkey (enrolment and assertion, via
   `VaultUnlockPrompt.showForSignature`) still require manual device verification; none of these are
   currently automated here.
+- **Consumer pins.** `TrustedConsumers.PINS` holds only `org.kysecurity.mail` (Play App Signing
+  certificate). The GitHub flavor `org.kysecurity.mail.github` is unpinned until its upload-key digest
+  is supplied, and `org.kysecurity.mail.fdroid` is unpinned because F-Droid signs with its own key and
+  the digest does not exist until F-Droid builds it; both fail closed. Every certificate in a
+  package's signing history must be pinned, so a key rotation needs old and new digests pinned
+  together. Debug builds also accept `kyauthDebugConsumerCert`.
+- **Late sign-on launch.** A `SignOnActivity` launch more than 120 s after its nonce was issued (or a
+  replay) shows no UI and returns `ERROR_CODE_CANCELED` to the caller.
+- **Sign-on device verification.** Unverified until observed on hardware: the full prompt; cancelling
+  the biometric returns `ERROR_CODE_CANCELED` without a network call; account visibility for a
+  consumer installed after the account was created; Settings -> Accounts removal followed by
+  "Restore system account"; `getAuthToken` from KyPost launching the exported activity from KyPost's
+  process; rotating the device mid-prompt keeps the prompt; a launch after the 120 s nonce expiry
+  returns CANCELED to the caller; rotating the device during pairing keeps the addAccount request alive. Do not claim these until observed.
 - **Deprecated platform APIs.** `Slice`, `EncryptedSharedPreferences`/`MasterKey`, and the
   `Dataset`/`FillResponse` builders are deprecated. Moving to `androidx.credentials` would remove
   most of the Slice usage.

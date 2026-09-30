@@ -2,6 +2,12 @@
     xmlns:tools="http://schemas.android.com/tools">
     <uses-permission android:name="android.permission.INTERNET" />
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+    <!-- Package visibility: without this the sign-on caller pin cannot see KyPost on SDK 30+. -->
+    <queries>
+        <package android:name="org.kysecurity.mail" />
+        <package android:name="org.kysecurity.mail.github" />
+        <package android:name="org.kysecurity.mail.fdroid" />
+    </queries>
     <application
         android:allowBackup="false"
         android:dataExtractionRules="@xml/data_extraction_rules"
@@ -63,5 +69,24 @@
                 android:name="android.autofill"
                 android:resource="@xml/autofill_service" />
         </service>
+        <!-- AccountManager binds this service; the system, not a permission, gates it. -->
+        <service
+            android:name=".signon.KyIdentityAuthenticatorService"
+            android:exported="true"
+            tools:ignore="ExportedService">
+            <intent-filter>
+                <action android:name="android.accounts.AccountAuthenticator" />
+            </intent-filter>
+            <meta-data
+                android:name="android.accounts.AccountAuthenticator"
+                android:resource="@xml/kyidentity_authenticator" />
+        </service>
+        <!-- Started from the requesting app's process by AccountManager; every launch must present a live PendingSignOn nonce or it finishes without showing anything. -->
+        <activity
+            android:name=".signon.SignOnActivity"
+            android:exported="true"
+            android:excludeFromRecents="true"
+            android:configChanges="orientation|screenSize|screenLayout|smallestScreenSize|keyboardHidden|uiMode"
+            android:theme="@style/Theme.KyAuth" />
     </application>
 </manifest>

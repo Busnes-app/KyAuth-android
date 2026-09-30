@@ -1,5 +1,6 @@
 <resources>
     <string name="app_name">KyAuth</string>
+    <string name="signon_account_label">KyIdentity</string>
     <string name="pairing_title">Pair KyIdentity</string>
     <string name="app_status">KyAuth is locked. Pair a KyIdentity account to begin.</string>
     <string name="tab_totp">TOTP Vault</string>
@@ -56,4 +57,8 @@
     <string name="identity_passkey_none">No KyIdentity passkey on this device. Enrol one from KyIdentity to use it as a second factor.</string>
     <string name="identity_passkey_remove">Remove KyIdentity Passkey</string>
     <string name="identity_passkey_restranded">Re-enroll on KyIdentity</string>
+    <string name="signon_prompt">%1$s wants to sign in as %2$s at %3$s.</string>
+    <string name="signon_approve">Approve sign-in</string>
+    <string name="signon_deny">Deny</string>
+    <string name="signon_biometric_subtitle">Sign in to %1$s</string>
 </resources>
