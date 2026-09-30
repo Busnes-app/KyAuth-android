@@ -56,7 +56,12 @@ The attestation challenge is fixed when the key is generated, so the key must be
   challenge and omits the field; if `getCertificateChain` returns a single self-signed certificate, it is
   sent as is and the server grades it `none`.
 - The registration response's `device.attestedLevel` is stored in `PairedAccount` beside `canSignOn`.
-  Settings shows "Attested: StrongBox / TEE" or "Not attested. Pair again to attest this phone." The
+  Settings shows "Attested: StrongBox / TEE" or a "Not attested" hint that says whether pairing again
+  can help. KyAuth classifies the outcome itself (decision 2026-09-30): the response lacked
+  `attestedLevel` (server does not check attestation yet), the phone's own chain is empty or its leaf
+  reports software security level (emulators; pairing again will not help), or a hardware-level chain
+  was graded `none` (the server does not trust this build or the chain; pairing again will not help
+  until it does). Accounts paired before this keep "Pair again to attest this phone." The
   system account is unaffected.
 - Consequences: re-pairing rotates the device key (the server upsert already replaces `public_key`; push
   MFA responses signed with the old key stop working, which is correct for a new pairing). Existing
