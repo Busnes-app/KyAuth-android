@@ -127,7 +127,7 @@ KyAuth pairs an Android device with KyIdentity. It stores TOTP entries in an enc
   works while locked), signs an RFC 7523 assertion (`DeviceAssertion`, `aud` is the trimmed
   `server_url` + `/oauth/token`; 8 claims including `origin`), redeems it (`TokenClient`) and returns the ID token once.
 - KyIdentity side (shipped): the grant needs both `canSignOn` and MFA-approver on the device; an admin
-  MFA reset ends sign-on; `device_signon_disabled` and `signon_not_permitted` (policy refuses: organisation MFA, app factor
+  MFA reset ends sign-on; `device_signon_disabled` and `signon_not_permitted` (policy refuses: organisation MFA on an unattested device, app factor
   or fresh-password policy, or no app access) are returned only after the signature verifies. KyIdentity decides on every
   request: the local `canSignOn` is the value captured at pairing and is never cleared by a server
   refusal; the caller gets the message telling the user to turn sign-in on at the KyIdentity devices page, or for
@@ -209,7 +209,7 @@ Recorded so it is not mistaken for done:
   they sync and restore, as other password managers do. Protection comes from the
   authentication-bound vault key. The KyIdentity login passkey is the exception and is
   hardware-resident; see the product contract above.
-- **Device key attestation positive path unverified.** Emulators ship software KeyMint, so `DeviceSigningKeyAttestationTest` only proves a chain exists; the server grades it `none`. No real-hardware pairing has been observed. A physical phone paired against a KyIdentity with the attestation verifier is what proves `tee`/`strongbox`. The KyIdentity passkey (`IdentityPasskeyKey`) still has no attestation; the same challenge mechanism could extend to it.
+- **Device key attestation positive path unverified.** Emulators ship software KeyMint, so `DeviceSigningKeyAttestationTest` only proves a chain exists and attests the pairing challenge; the server grades it `none`. No real-hardware pairing has been observed. A physical phone paired against a KyIdentity with the attestation verifier is what proves `tee`/`strongbox`. The test uses the production Keystore alias and deletes it: run it only on an unpaired device, or re-pair afterwards. The KyIdentity passkey (`IdentityPasskeyKey`) still has no attestation; the same challenge mechanism could extend to it.
 - **KyIdentity passkey hardware backing is unverified.** `IdentityPasskeyKey.generate` accepts a key
   only when `KeyInfo.securityLevel` is `TRUSTED_ENVIRONMENT`, `STRONGBOX` or `UNKNOWN_SECURE`, so
   both `SOFTWARE` and `UNKNOWN` ("the platform could not tell") are refused; the fail-closed path
