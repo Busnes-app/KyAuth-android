@@ -356,7 +356,8 @@ class MainActivity : AppCompatActivity() {
                                         return@onFailure
                                     }
                                     // The old key is gone, so the saved pairing cannot sign anything.
-                                    unpairIdentity()
+                                    // The KyIdentity passkey is a separate key and stays.
+                                    clearPairing()
                                     AlertDialog.Builder(this@MainActivity)
                                         .setTitle(getString(R.string.pairing_title))
                                         .setMessage(getString(R.string.pairing_failed_key_replaced, (it.message ?: "unknown error").trimEnd('.')))
@@ -2855,12 +2856,16 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun unpairIdentity() {
-        store.clear()
-        runCatching { KyIdentityAccount.remove(this) }
         // A passkey for a server we are no longer paired to is dead weight, and
         // its key must not outlive the pairing.
         IdentityPasskeyKey.deleteAll()
         IdentityPasskeyStore(this).clear()
+        clearPairing()
+    }
+
+    private fun clearPairing() {
+        store.clear()
+        runCatching { KyIdentityAccount.remove(this) }
         lockSensitiveState()
         renderContent()
     }
