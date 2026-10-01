@@ -11,7 +11,7 @@ KyAuth pairs an Android device with KyIdentity. It stores TOTP entries in an enc
 - Pairing accepts a short-lived KyIdentity QR payload or manual server details.
 - Release builds require HTTPS. Debug builds permit loopback HTTP only.
 - The optional registration URL must use the same origin as the pairing server.
-- The app generates a hardware-backed P-256 device signing key.
+- Each pairing generates a fresh P-256 device signing key (alias unchanged) with an attestation challenge derived from the pairing credential (`AttestationChallenge`), StrongBox first, TEE fallback, plain key when the device cannot attest. The registration request carries the attestation chain (`attestation`, base64 DER, leaf first); KyIdentity grades it `none`/`tee`/`strongbox` and returns `device.attestedLevel` and `device.bootState`, which `PairedAccount` stores and Settings shows, with an `attestationReason` (`AttestationReason`: server silent, keystore software-only, or chain not accepted) that lets the `none` hint say whether pairing again can help. Re-pairing rotates the key: the old key is deleted before registration, so a failed re-pair clears the local pairing and system account, because the phone has already deleted the key; the user pairs again. Unlike Unpair, it keeps the KyIdentity passkey. Settings shows the boot state on its own line. Only an attested device earns MFA-grade sign-on; see the attestation spec.
 - Frozen identifiers, kept through the KyIdentity rename: the signed push prefix `kysignon-push-v1` (must equal what `kyidentity-server` `internal/mfa/mfa.go` verifies) and the Keystore alias `kysignon-device-signing-v1` (renaming it orphans every paired device's key). Rename nothing the server or the Keystore already holds.
 - TOTP entries use KeePass `TimeOtp-*` fields in `totp_vault.kdbx`, along with standard KeePass title, URL, and notes.
 - The TOTP vault uses an app-private file and an independent random vault key.
@@ -127,7 +127,7 @@ KyAuth pairs an Android device with KyIdentity. It stores TOTP entries in an enc
   works while locked), signs an RFC 7523 assertion (`DeviceAssertion`, `aud` is the trimmed
   `server_url` + `/oauth/token`; 8 claims including `origin`), redeems it (`TokenClient`) and returns the ID token once.
 - KyIdentity side (shipped): the grant needs both `canSignOn` and MFA-approver on the device; an admin
-  MFA reset ends sign-on; `device_signon_disabled` and `signon_not_permitted` (policy refuses: organisation MFA, app factor
+  MFA reset ends sign-on; `device_signon_disabled` and `signon_not_permitted` (policy refuses: organisation MFA on an unattested device, app factor
   or fresh-password policy, or no app access) are returned only after the signature verifies. KyIdentity decides on every
   request: the local `canSignOn` is the value captured at pairing and is never cleared by a server
   refusal; the caller gets the message telling the user to turn sign-in on at the KyIdentity devices page, or for
@@ -155,7 +155,7 @@ KyAuth pairs an Android device with KyIdentity. It stores TOTP entries in an enc
 ## Project layout
 
 - `app/src/main/java/org/kysecurity/authenticator/MainActivity.kt`: app UI and workflows.
-- `pairing/`: QR parsing, endpoint validation, pairing network client, device key, and encrypted pairing store.
+- `pairing/`: QR parsing, endpoint validation, pairing network client, device key, `AttestationChallenge`, and encrypted pairing store.
 - `mfa/`: push challenge model, FCM receive service, signed payload, and response client.
 - `security/`: lock state, PIN policy, `VaultKek` authentication-bound key wrapping, `VaultUnlockPrompt`, atomic file writes, and local wipe.
 - `totp/`: TOTP parsing, generation, and KDBX persistence.
@@ -209,9 +209,7 @@ Recorded so it is not mistaken for done:
   they sync and restore, as other password managers do. Protection comes from the
   authentication-bound vault key. The KyIdentity login passkey is the exception and is
   hardware-resident; see the product contract above.
-- **KyIdentity passkey attestation.** Even when the key is hardware-backed, `fmt` is still `none`, so
-  the server has only the client's word for it. `setAttestationChallenge` plus a verifier in
-  `kyidentity-server` would make it evidence.
+- **Device key attestation positive path unverified.** Emulators ship software KeyMint, so `DeviceSigningKeyAttestationTest` only proves a chain exists and attests the pairing challenge; the server grades it `none`. No real-hardware pairing has been observed. A physical phone paired against a KyIdentity with the attestation verifier is what proves `tee`/`strongbox`. The test uses the production Keystore alias and deletes it: run it only on an unpaired device, or re-pair afterwards. The KyIdentity passkey (`IdentityPasskeyKey`) still has no attestation; the same challenge mechanism could extend to it.
 - **KyIdentity passkey hardware backing is unverified.** `IdentityPasskeyKey.generate` accepts a key
   only when `KeyInfo.securityLevel` is `TRUSTED_ENVIRONMENT`, `STRONGBOX` or `UNKNOWN_SECURE`, so
   both `SOFTWARE` and `UNKNOWN` ("the platform could not tell") are refused; the fail-closed path

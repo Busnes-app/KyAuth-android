@@ -51,6 +51,8 @@ import org.kysecurity.authenticator.mfa.MfaMessage
 import org.kysecurity.authenticator.mfa.MfaPushChallengeStore
 import org.kysecurity.authenticator.mfa.MfaResponseClient
 import org.kysecurity.authenticator.mfa.MfaResponseResult
+import org.kysecurity.authenticator.pairing.AttestationChallenge
+import org.kysecurity.authenticator.pairing.attestationSummary
 import org.kysecurity.authenticator.pairing.DeviceSigningKey
 import org.kysecurity.authenticator.pairing.PairedAccount
 import org.kysecurity.authenticator.pairing.PairingClient
@@ -317,13 +319,19 @@ class MainActivity : AppCompatActivity() {
                         triggerBtn?.isEnabled = false
                         progress.visibility = ProgressBar.VISIBLE
                         Thread {
+                            var keyReplaced = false
                             val result = runCatching {
                                 val pushToken = PushTokenProvider.currentToken().getOrThrow()
+                                val hadAccount = runCatching { store.account() != null }.getOrDefault(false)
+                                keyReplaced = hadAccount
+                                val key = DeviceSigningKey.regenerate(AttestationChallenge.forPairing(pairing))
                                 PairingClient().register(
                                     pairing = pairing,
                                     deviceName = android.os.Build.MODEL,
                                     deviceIdentifier = store.deviceIdentifier(),
                                     pushToken = pushToken,
+                                    publicKeyBase64 = key.publicKeyBase64,
+                                    attestationChain = key.attestationChain,
                                 )
                             }
                             runOnUiThread {
@@ -342,7 +350,20 @@ class MainActivity : AppCompatActivity() {
                                     runCatching { KyIdentityAccount.sync(this@MainActivity, account) }
                                     if (answerAddAccountIfPossible()) return@onSuccess
                                     unlockWithPrompt()
-                                }.onFailure { error.text = it.message ?: "Pairing failed" }
+                                }.onFailure {
+                                    if (!keyReplaced) {
+                                        error.text = it.message ?: "Pairing failed"
+                                        return@onFailure
+                                    }
+                                    // The old key is gone, so the saved pairing cannot sign anything.
+                                    // The KyIdentity passkey is a separate key and stays.
+                                    clearPairing()
+                                    AlertDialog.Builder(this@MainActivity)
+                                        .setTitle(getString(R.string.pairing_title))
+                                        .setMessage(getString(R.string.pairing_failed_key_replaced, (it.message ?: "unknown error").trimEnd('.')))
+                                        .setPositiveButton("OK", null)
+                                        .showKyDialog()
+                                }
                             }
                         }.start()
                     },
@@ -2147,6 +2168,7 @@ class MainActivity : AppCompatActivity() {
             else -> "Suite app sign-in: account missing"
         }
         accountSection.addView(message(signOnState))
+        accountSection.addView(message(attestationSummary(account.attestedLevel, account.bootState, account.attestationReason, ::getString)))
         if (account.canSignOn && systemAccount == null) {
             accountSection.addView(secondaryButton("Restore system account").apply {
                 setOnClickListener {
@@ -2167,16 +2189,7 @@ class MainActivity : AppCompatActivity() {
                             "This also deletes the KyIdentity passkey held on this device.",
                     )
                     .setNegativeButton("Cancel", null)
-                    .setPositiveButton("Unpair") { _, _ ->
-                        store.clear()
-                        runCatching { KyIdentityAccount.remove(this@MainActivity) }
-                        // A passkey for a server we are no longer paired to is dead weight, and
-                        // its key must not outlive the pairing.
-                        IdentityPasskeyKey.deleteAll()
-                        IdentityPasskeyStore(this@MainActivity).clear()
-                        lockSensitiveState()
-                        renderContent()
-                    }
+                    .setPositiveButton("Unpair") { _, _ -> unpairIdentity() }
                     .showKyDialog()
             }
         }
@@ -2840,6 +2853,21 @@ class MainActivity : AppCompatActivity() {
             dialog.window?.decorView?.let(::clear)
             dialog.dismiss()
         }
+    }
+
+    private fun unpairIdentity() {
+        // A passkey for a server we are no longer paired to is dead weight, and
+        // its key must not outlive the pairing.
+        IdentityPasskeyKey.deleteAll()
+        IdentityPasskeyStore(this).clear()
+        clearPairing()
+    }
+
+    private fun clearPairing() {
+        store.clear()
+        runCatching { KyIdentityAccount.remove(this) }
+        lockSensitiveState()
+        renderContent()
     }
 
     private fun lockSensitiveState() {

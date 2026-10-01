@@ -3,6 +3,7 @@ package org.kysecurity.authenticator.pairing
 import android.os.Build
 import android.security.keystore.KeyGenParameterSpec
 import android.security.keystore.KeyProperties
+import android.util.Log
 import java.security.KeyPair
 import java.security.KeyPairGenerator
 import java.security.KeyStore
@@ -12,7 +13,14 @@ import java.security.Signature
 import java.security.spec.ECGenParameterSpec
 import java.util.Base64
 
+data class GeneratedDeviceKey(
+    val publicKeyBase64: String,
+    /** Base64 DER certificates, leaf first; empty when the key was generated without a challenge. */
+    val attestationChain: List<String>,
+)
+
 object DeviceSigningKey {
+    private const val TAG = "DeviceSigningKey"
     private const val ANDROID_KEY_STORE = "AndroidKeyStore"
     // Storage contract: the alias paired devices already hold. Renaming it makes the lookup miss,
     // silently generates a fresh key the server never saw, and every push signature then fails.
@@ -62,6 +70,54 @@ object DeviceSigningKey {
                 keyStore.deleteEntry(ALIAS)
             }
         }
+    }
+
+    /**
+     * Creates a fresh device key for one pairing. The attestation challenge is fixed at generation, so
+     * the old key is deleted first. StrongBox first, TEE on any failure, and a plain key (empty chain)
+     * when the device cannot attest at all. Attestation never fails the pairing.
+     */
+    fun regenerate(challenge: ByteArray): GeneratedDeviceKey {
+        testKeyPair?.let {
+            return GeneratedDeviceKey(Base64.getEncoder().encodeToString(it.public.encoded), emptyList())
+        }
+        deleteKey()
+        var attested = true
+        val strongBox = runCatching { generateWith(challenge, strongBox = true) }
+            .onFailure { Log.w(TAG, "StrongBox attestation failed, trying TEE: ${it.javaClass.name}") }
+            .isSuccess
+        if (!strongBox) {
+            deleteKey()
+            val tee = runCatching { generateWith(challenge, strongBox = false) }
+                .onFailure { Log.w(TAG, "TEE attestation failed, using plain key: ${it.javaClass.name}") }
+            if (tee.isFailure) {
+                deleteKey()
+                generate()
+                attested = false
+            }
+        }
+        val keyStore = KeyStore.getInstance(ANDROID_KEY_STORE).apply { load(null) }
+        val chain = if (attested) keyStore.getCertificateChain(ALIAS).orEmpty().toList() else emptyList()
+        val publicKey = keyStore.getCertificate(ALIAS).publicKey
+        return GeneratedDeviceKey(
+            publicKeyBase64 = Base64.getEncoder().encodeToString(publicKey.encoded),
+            attestationChain = chain.map { Base64.getEncoder().encodeToString(it.encoded) },
+        )
+    }
+
+    private fun generateWith(challenge: ByteArray, strongBox: Boolean) {
+        KeyPairGenerator.getInstance(KeyProperties.KEY_ALGORITHM_EC, ANDROID_KEY_STORE).apply {
+            initialize(
+                KeyGenParameterSpec.Builder(ALIAS, KeyProperties.PURPOSE_SIGN or KeyProperties.PURPOSE_VERIFY)
+                    .setAlgorithmParameterSpec(ECGenParameterSpec("secp256r1"))
+                    .setDigests(KeyProperties.DIGEST_SHA256)
+                    .setUserAuthenticationRequired(true)
+                    .setUserAuthenticationParameters(0, authenticationTypes())
+                    .setAttestationChallenge(challenge)
+                    .setIsStrongBoxBacked(strongBox)
+                    .build(),
+            )
+        }.generateKeyPair()
     }
 
     private fun generate(): KeyPair = KeyPairGenerator.getInstance(KeyProperties.KEY_ALGORITHM_EC, ANDROID_KEY_STORE).apply {
