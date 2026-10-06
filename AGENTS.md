@@ -178,6 +178,10 @@ KyAuth pairs an Android device with KyIdentity. It stores TOTP entries in an enc
 - Keep security checks fail-closed.
 - Add a focused test for non-trivial logic.
 - Update this file when a durable product contract, workflow, or file boundary changes.
+- KyAuth is becoming authenticator-only (TOTP, Push MFA, KyIdentity sign-on and passkey);
+  Vaultwarden plus the Bitwarden app replace KyPasswords and the password vault. See
+  `docs/superpowers/specs/2026-10-06-vaultwarden-replaces-kypasswords.md`. Do not extend
+  `passwords/`, Autofill, or vault paths of the Credential Provider.
 
 ## Verification
 
