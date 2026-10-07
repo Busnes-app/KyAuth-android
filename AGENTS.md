@@ -23,6 +23,8 @@ KyAuth pairs an Android device with KyIdentity. It stores TOTP entries in an enc
   and zeroes the vault key arrays.
 - The PIN is an optional second local factor. Failed PIN attempts use delays of 0, 5, 30, and 300 seconds. The fifth failure wipes local data.
 - Release builds disable screenshots and Android backup.
+- TOTP entries have no backup, export or sync, by decision: losing the phone loses its TOTP
+  entries. KyIdentity access recovers through recovery codes or an admin MFA reset.
 - Push MFA receives KyIdentity FCM data-message challenges, posts a local notification, and opens the Push MFA tab for approve/deny. A response is only ever sent to the paired server; a `serverUrl` in the push payload is ignored. Digits must be two-digit, decoys are capped at 3, and expiry is clamped to 10 minutes.
 - An MFA response must carry an explicit decision. A 2xx with no `approved`/`success` field is a protocol error, not an approval.
 - The KyPasswords key envelope must declare `kdf: argon2id`, and derivation uses the envelope's own
