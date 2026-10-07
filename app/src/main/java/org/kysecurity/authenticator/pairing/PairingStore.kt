@@ -1,8 +1,6 @@
 package org.kysecurity.authenticator.pairing
 
 import android.content.Context
-import androidx.security.crypto.EncryptedSharedPreferences
-import androidx.security.crypto.MasterKey
 import java.util.UUID
 
 data class PairedAccount(
@@ -20,13 +18,7 @@ data class PairedAccount(
 )
 
 class PairingStore(context: Context) {
-    private val preferences = EncryptedSharedPreferences.create(
-        context,
-        "pairing",
-        MasterKey.Builder(context).setKeyScheme(MasterKey.KeyScheme.AES256_GCM).build(),
-        EncryptedSharedPreferences.PrefKeyEncryptionScheme.AES256_SIV,
-        EncryptedSharedPreferences.PrefValueEncryptionScheme.AES256_GCM,
-    )
+    private val preferences = context.getSharedPreferences("pairing_store", Context.MODE_PRIVATE)
 
     fun deviceIdentifier(): String = preferences.getString("installation_id", null) ?: UUID.randomUUID().toString().also {
         preferences.edit().putString("installation_id", it).apply()

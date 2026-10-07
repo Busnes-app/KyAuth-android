@@ -1,14 +1,17 @@
 package org.kysecurity.authenticator.passkeys
 
+import android.content.Context
 import androidx.test.core.app.ApplicationProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import org.junit.After
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
 import org.junit.Before
 import org.junit.Test
 import org.junit.runner.RunWith
 import org.kysecurity.authenticator.security.SecurityWipe
+import java.security.KeyStore
 
 @RunWith(AndroidJUnit4::class)
 class IdentityPasskeyStoreTest {
@@ -64,5 +67,21 @@ class IdentityPasskeyStoreTest {
             ApplicationProvider.getApplicationContext(),
         )
         assertNull(store.record())
+    }
+
+    @Test
+    fun securityWipeClearsEveryPrefsFileAndTheMasterKey() {
+        val context = ApplicationProvider.getApplicationContext<Context>()
+        val names = listOf(
+            "mfa_push_challenge", "push", "pairing", "identity_passkey",
+            "pairing_store", "kypasswords_pairing",
+        )
+        names.forEach { context.getSharedPreferences(it, Context.MODE_PRIVATE).edit().putString("k", "v").commit() }
+        SecurityWipe.wipe(context)
+        names.forEach {
+            assertFalse("$it survived", context.getSharedPreferences(it, Context.MODE_PRIVATE).contains("k"))
+        }
+        val keyStore = KeyStore.getInstance("AndroidKeyStore").apply { load(null) }
+        assertFalse(keyStore.containsAlias("_androidx_security_master_key_"))
     }
 }

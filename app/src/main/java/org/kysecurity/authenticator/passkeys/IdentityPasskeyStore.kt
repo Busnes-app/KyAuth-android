@@ -1,26 +1,18 @@
 package org.kysecurity.authenticator.passkeys
 
 import android.content.Context
-import androidx.security.crypto.EncryptedSharedPreferences
-import androidx.security.crypto.MasterKey
 
 /**
  * Persists the non-secret half of the KyIdentity passkey. The private key is non-exportable and
  * never passes through here — only rpId, credential id, user handle, sign count, the Keystore
  * alias and which hardware backed it.
  *
- * Modelled on [org.kysecurity.authenticator.pairing.PairingStore]: same dependency, same pattern,
- * no new crypto and deliberately not a third KDBX vault.
+ * Modelled on [org.kysecurity.authenticator.pairing.PairingStore]: plain app-private prefs, no
+ * new crypto and deliberately not a third KDBX vault.
  */
 class IdentityPasskeyStore(context: Context) {
 
-    private val preferences = EncryptedSharedPreferences.create(
-        context,
-        "identity_passkey",
-        MasterKey.Builder(context).setKeyScheme(MasterKey.KeyScheme.AES256_GCM).build(),
-        EncryptedSharedPreferences.PrefKeyEncryptionScheme.AES256_SIV,
-        EncryptedSharedPreferences.PrefValueEncryptionScheme.AES256_GCM,
-    )
+    private val preferences = context.getSharedPreferences("identity_passkey_store", Context.MODE_PRIVATE)
 
     fun record(): IdentityPasskeyRecord? =
         IdentityPasskeyRecord.fromJson(preferences.getString(KEY_RECORD, null))

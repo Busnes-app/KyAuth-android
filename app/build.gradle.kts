@@ -87,7 +87,6 @@ dependencies {
     implementation("androidx.appcompat:appcompat:1.8.0")
     implementation("com.google.android.material:material:1.14.0")
     implementation("androidx.biometric:biometric:1.1.0")
-    implementation("androidx.security:security-crypto:1.1.0")
     implementation("com.google.android.gms:play-services-code-scanner:16.1.0")
     implementation("com.google.firebase:firebase-messaging:25.1.2")
     implementation("app.keemobile:kotpass:0.13.0")
