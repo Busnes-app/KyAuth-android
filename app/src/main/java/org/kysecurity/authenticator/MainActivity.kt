@@ -1135,9 +1135,9 @@ class MainActivity : AppCompatActivity() {
         sections.add(appearanceSection)
 
         val providerSection = settingsCard()
-        providerSection.addView(title("KyIdentity passkey provider"))
-        providerSection.addView(message("Enable KyAuth as a passkey provider so KyIdentity sign-in can use this phone's passkey."))
-        providerSection.addView(primaryButton("Set as default provider").apply {
+        providerSection.addView(title("KyIdentity passkey"))
+        providerSection.addView(message("Turn KyAuth on under Additional services so KyIdentity sign-in can use this phone's passkey. Keep Bitwarden as your preferred service."))
+        providerSection.addView(primaryButton("Open passkey settings").apply {
             setOnClickListener { openCredentialProviderSettings() }
         }, fullWidthParams())
         sections.add(providerSection)

@@ -20,9 +20,12 @@ KyAuth pairs an Android device with KyIdentity. It stores TOTP entries in an enc
   unwrapping requires a `BiometricPrompt.CryptoObject`. A device without a secure lock screen cannot
   use KyAuth.
 - The app locks when it moves to the background. It clears in-memory TOTP data and its copied code,
-  and zeroes the vault key arrays.
+  and zeroes the vault key arrays. App lock clears and dismisses open dialogs, including unsaved
+  forms and revealed secrets.
 - The PIN is an optional second local factor. Failed PIN attempts use delays of 0, 5, 30, and 300 seconds. The fifth failure wipes local data.
 - Release builds disable screenshots and Android backup.
+- A copied TOTP code is marked sensitive (`ClipDescription.EXTRA_IS_SENSITIVE`) and clears when its
+  code period ends, or when KyAuth locks.
 - TOTP entries have no backup, export or sync, by decision: losing the phone loses its TOTP
   entries. KyIdentity access recovers through recovery codes or an admin MFA reset.
 - Push MFA receives KyIdentity FCM data-message challenges, posts a local notification, and opens Vault, where the request card at the top approves or denies it. A response is only ever sent to the paired server; a `serverUrl` in the push payload is ignored. Digits must be two-digit, decoys are capped at 3, and expiry is clamped to 10 minutes.
@@ -96,6 +99,8 @@ KyAuth pairs an Android device with KyIdentity. It stores TOTP entries in an enc
 
 - Use the `KyAuth` name in user-visible text.
 - Use the KyPost mail stamp with the KyAuth wordmark in the header and lock screen; keep the KyAuth launcher icon.
+- Settings sends the user to the credential-provider screen to turn KyAuth on as an additional
+  service; Bitwarden stays the preferred service.
 - Use the three-part bottom pill: Vault, lock shield, Settings.
 - The Vault screen shows a pending Push MFA request at its top, then the TOTP list with a + icon to scan QR or add accounts manually with optional Website and Notes fields.
 - Use the 17 suite themes from `ThemeManager`. The default is Busnes Light; preserve valid saved choices.
@@ -171,8 +176,8 @@ Recorded so it is not mistaken for done:
   "Restore system account"; `getAuthToken` from KyPost launching the exported activity from KyPost's
   process; rotating the device mid-prompt keeps the prompt; a launch after the 120 s nonce expiry
   returns CANCELED to the caller; rotating the device during pairing keeps the addAccount request alive. Do not claim these until observed.
-- **Deprecated platform APIs.** `Slice` and `EncryptedSharedPreferences`/`MasterKey` are deprecated. Moving to `androidx.credentials` would remove
-  most of the Slice usage.
+- **Deprecated platform APIs.** `Slice` and `EncryptedSharedPreferences`/`MasterKey` are deprecated.
+  Moving to `androidx.credentials` would remove most of the Slice usage.
 
 ## Child DOX Index
 

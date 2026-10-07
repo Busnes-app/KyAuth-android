@@ -80,4 +80,21 @@ class VaultTabTest {
         }
         assertNull(MfaPushChallengeStore(context).load())
     }
+
+    @Test fun expiredPendingChallengeIsDroppedAtRender() {
+        ActivityScenario.launch(MainActivity::class.java).use { scenario ->
+            scenario.onActivity { activity ->
+                val expired = challenge(-1_000)
+                val field = MainActivity::class.java.getDeclaredField("pendingChallenge").apply { isAccessible = true }
+                field.set(activity, expired)
+                // save, not load: load() would drop the expired challenge itself.
+                MfaPushChallengeStore(context).save(expired)
+                MainActivity::class.java.getDeclaredMethod("renderContent").apply { isAccessible = true }.invoke(activity)
+                assertFalse(texts(activity.window.decorView).contains("Sign-in Request"))
+                assertNull(field.get(activity))
+                val raw = context.getSharedPreferences("mfa_push_challenge", Context.MODE_PRIVATE).getString("challenge", null)
+                assertNull(raw)
+            }
+        }
+    }
 }

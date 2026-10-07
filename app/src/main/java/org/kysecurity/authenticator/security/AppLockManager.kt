@@ -212,7 +212,7 @@ object AppLockManager {
         val blob = getPrefs(context).getString(KEY_KEK_WRAPPED_KEYS, null) ?: return null
         return runCatching {
             val plain = VaultKek.unwrap(authenticatedCipher, Base64.getDecoder().decode(blob))
-            parseWrappedKeys(plain).also { plain.fill(0) }
+            try { parseWrappedKeys(plain) } finally { plain.fill(0) }
         }.getOrNull()
     }
 
