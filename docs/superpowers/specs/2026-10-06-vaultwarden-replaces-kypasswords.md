@@ -54,6 +54,11 @@ login passkey. It keeps no password or passkey vault, synced or device-only.
   only that entry), `WebAuthnEngine`, `ClientData`, `RpId` with `PublicSuffix`,
   `DigitalAssetLinks`, `IdentityPasskey*`.
 
+## TOTP backup
+
+None, decided 2026-10-06. Losing the phone loses its TOTP entries; there is no backup, export
+or sync to add.
+
 ## UI
 
 - The TOTP Vault tab is renamed **Vault**. A pending Push MFA request shows at the top of
