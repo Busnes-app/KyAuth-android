@@ -8,7 +8,7 @@ import java.security.Signature
 import javax.crypto.Cipher
 
 /**
- * Biometric and device-credential prompts. [show] yields a cipher bound to [VaultKek] for the vault keys; [showForSignature] yields an authenticated Keystore signature and touches no vault material.
+ * Biometric and device-credential prompts. [show] yields a cipher bound to [VaultKek] for the vault key; [showForSignature] yields an authenticated Keystore signature and touches no vault material.
  *
  * The cipher is bound to [VaultKek], so it cannot decrypt anything until the framework reports a
  * successful biometric or device-credential authentication. Callers receive null only on a device
@@ -59,8 +59,7 @@ object VaultUnlockPrompt {
 
     /**
      * Authenticates a Keystore [Signature] for one use. Unlike [show] this touches no vault key at
-     * all: the KySignOn passkey path must keep working while the password vault is locked or
-     * compromised, so it must never reach [VaultKek].
+     * all: the KySignOn passkey path must never reach [VaultKek].
      */
     fun showForSignature(
         activity: FragmentActivity,

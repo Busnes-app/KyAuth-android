@@ -3,17 +3,16 @@ package org.kysecurity.authenticator.security
 import android.content.Context
 import org.kysecurity.authenticator.pairing.DeviceSigningKey
 import org.kysecurity.authenticator.pairing.PairingStore
-import org.kysecurity.authenticator.passwords.kypasswords.KyPasswordStore
-import java.io.File
 import java.security.KeyStore
 
 object SecurityWipe {
     fun wipe(context: Context) {
-        // 1. Wipe PairingStore, KyPasswordStore and the KyIdentity passkey record
+        // 1. Wipe PairingStore and the KyIdentity passkey record
         runCatching { org.kysecurity.authenticator.signon.KyIdentityAccount.remove(context) }
         runCatching { PairingStore(context).clear() }
-        runCatching { KyPasswordStore(context).clear() }
         runCatching { org.kysecurity.authenticator.passkeys.IdentityPasskeyStore(context).clear() }
+        // Session token file left by older builds that paired with KyPasswords.
+        runCatching { context.deleteSharedPreferences("kypasswords_pairing") }
 
         // 2. Wipe AppLock SharedPreferences
         runCatching {

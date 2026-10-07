@@ -6,49 +6,38 @@ import java.util.Base64
 import javax.crypto.Cipher
 import org.json.JSONObject
 
+/** The VaultKek-wrapped plaintext: `{"totp": base64}`. Unknown fields from older builds are ignored. */
+internal fun serializeWrappedKeys(totpKey: ByteArray): ByteArray =
+    JSONObject().put("totp", Base64.getEncoder().encodeToString(totpKey)).toString().toByteArray(Charsets.UTF_8)
+
+internal fun parseWrappedKeys(plain: ByteArray): ByteArray =
+    Base64.getDecoder().decode(JSONObject(String(plain, Charsets.UTF_8)).getString("totp"))
+
 /**
- * Owns the lock state and the two vault keys.
- *
- * Both vault keys live in a single blob wrapped by [VaultKek], an authentication-bound Keystore
- * key. Unwrapping therefore requires a cipher the framework has already authenticated, and one
- * authentication yields one unwrap — hence the single blob rather than one per vault.
- *
- * There is no entry point that reconstructs a vault key on demand. Background callers (Autofill,
- * Credential Provider) must go through [useVaultKeys], which never touches the unlocked state.
+ * Owns the lock state and the TOTP vault key, wrapped by [VaultKek], an authentication-bound
+ * Keystore key: unwrapping requires a cipher the framework has already authenticated.
  */
 object AppLockManager {
     private const val PREFS_NAME = "app_lock"
     private const val KEY_PIN_HASH = "pin_hash"
     private const val KEY_PIN_SALT = "pin_salt"
     private const val KEY_KEK_WRAPPED_KEYS = "kek_wrapped_keys"
-    private const val KEY_HAS_PASSWORD_VAULT_KEY = "has_password_vault_key"
     private const val KEY_VAULT_SALT = "vault_salt"
     private const val KEY_WRAPPED_VAULT_KEY = "wrapped_vault_key"
-    private const val KEY_PASSWORD_VAULT_SALT = "password_vault_salt"
-    private const val KEY_WRAPPED_PASSWORD_VAULT_KEY = "wrapped_password_vault_key"
     private const val KEY_PIN_ENABLED = "pin_enabled"
     private const val KEY_FAILED_ATTEMPTS = "failed_attempts"
     private const val KEY_RETRY_AFTER_EPOCH_SEC = "retry_after_epoch_sec"
 
     private const val LEGACY_BIOMETRIC_WRAPPED_VAULT_KEY = "biometric_wrapped_vault_key"
-    private const val LEGACY_BIOMETRIC_WRAPPED_PASSWORD_VAULT_KEY = "biometric_wrapped_password_vault_key"
 
-    private const val JSON_TOTP = "totp"
-    private const val JSON_PASSWORDS = "passwords"
-
-    /** The two vault keys as held for the duration of one operation. */
-    class VaultKeys(val totp: ByteArray, val passwords: ByteArray?) {
-        fun erase() {
-            totp.fill(0)
-            passwords?.fill(0)
-        }
-    }
+    // Retired with the password vault; removed so no wrapped key outlives it.
+    private const val RETIRED_HAS_PASSWORD_VAULT_KEY = "has_password_vault_key"
+    private const val RETIRED_PASSWORD_VAULT_SALT = "password_vault_salt"
+    private const val RETIRED_WRAPPED_PASSWORD_VAULT_KEY = "wrapped_password_vault_key"
+    private const val RETIRED_BIOMETRIC_WRAPPED_PASSWORD_VAULT_KEY = "biometric_wrapped_password_vault_key"
 
     @Volatile
     private var activeVaultKey: ByteArray? = null
-
-    @Volatile
-    private var activePasswordVaultKey: ByteArray? = null
 
     @Volatile
     private var isUnlocked: Boolean = false
@@ -63,8 +52,6 @@ object AppLockManager {
 
     fun getVaultKey(): ByteArray? = if (isUnlocked) activeVaultKey else null
 
-    fun getPasswordVaultKey(): ByteArray? = if (isUnlocked) activePasswordVaultKey else null
-
     @Synchronized
     fun lock() {
         lockGeneration++
@@ -72,8 +59,6 @@ object AppLockManager {
         isUnlocked = false
         activeVaultKey?.fill(0)
         activeVaultKey = null
-        activePasswordVaultKey?.fill(0)
-        activePasswordVaultKey = null
     }
 
     fun onWipe() {
@@ -110,29 +95,6 @@ object AppLockManager {
         saveFailureState(context, PinFailureState(0, 0L))
     }
 
-    fun hasPasswordVaultKey(context: Context): Boolean =
-        activePasswordVaultKey != null || getPrefs(context).getBoolean(KEY_HAS_PASSWORD_VAULT_KEY, false)
-
-    @Synchronized
-    fun setPasswordVaultKey(context: Context, key: ByteArray) {
-        check(isUnlocked) { "Unlock KyAuth before adding the password vault key" }
-        activePasswordVaultKey?.fill(0)
-        activePasswordVaultKey = key
-        persistWrappedKeys(context)
-    }
-
-    @Synchronized
-    fun clearPasswordVaultKey(context: Context) {
-        activePasswordVaultKey?.fill(0)
-        activePasswordVaultKey = null
-        getPrefs(context).edit()
-            .remove(KEY_PASSWORD_VAULT_SALT)
-            .remove(KEY_WRAPPED_PASSWORD_VAULT_KEY)
-            .putBoolean(KEY_HAS_PASSWORD_VAULT_KEY, false)
-            .apply()
-        if (isUnlocked) persistWrappedKeys(context)
-    }
-
     /**
      * Sets or changes the local PIN. Derives keys, wraps the vault key, and stores salt/hash.
      */
@@ -161,15 +123,6 @@ object AppLockManager {
             .putString(KEY_WRAPPED_VAULT_KEY, wrapped.serialize())
             .putBoolean(KEY_PIN_ENABLED, true)
 
-        val passwordVaultKey = activePasswordVaultKey
-        if (passwordVaultKey != null) {
-            val passwordVaultSalt = CredentialCipher.generateRandomSalt()
-            val passwordWrapped =
-                CredentialCipher.wrap(passwordVaultKey, CredentialCipher.deriveKey(pin, passwordVaultSalt))
-            editor.putString(KEY_PASSWORD_VAULT_SALT, Base64.getEncoder().encodeToString(passwordVaultSalt))
-                .putString(KEY_WRAPPED_PASSWORD_VAULT_KEY, passwordWrapped.serialize())
-        }
-
         editor.commit()
         clearFailureState(context)
     }
@@ -191,31 +144,17 @@ object AppLockManager {
      */
     @Synchronized
     fun unlockWithBiometrics(context: Context, authenticatedCipher: Cipher?): Boolean {
-        val keys = when {
+        val key = when {
             getPrefs(context).getString(KEY_KEK_WRAPPED_KEYS, null) != null -> {
                 val cipher = authenticatedCipher ?: return false
                 unwrapKeys(context, cipher) ?: return false
             }
             hasLegacyWrapping(context) -> migrateLegacyWrapping(context) ?: return false
-            else -> VaultKeys(CredentialCipher.generateVaultKey(), null)
+            else -> CredentialCipher.generateVaultKey()
         }
-        adopt(context, keys)
+        adopt(context, key)
         clearFailureState(context)
         return true
-    }
-
-    /**
-     * Runs [block] with the vault keys for a single background operation. The app stays locked and
-     * the keys are erased before returning, so an Autofill or Credential Provider request cannot
-     * leave the process holding vault material.
-     */
-    fun <T> useVaultKeys(context: Context, authenticatedCipher: Cipher, block: (VaultKeys) -> T): T? {
-        val keys = unwrapKeys(context, authenticatedCipher) ?: return null
-        return try {
-            block(keys)
-        } finally {
-            keys.erase()
-        }
     }
 
     /**
@@ -258,46 +197,35 @@ object AppLockManager {
         }.getOrNull() ?: return false
 
         clearFailureState(context)
-        adopt(context, VaultKeys(vaultKey, unlockPasswordVaultWithPin(context, pin)))
+        adopt(context, vaultKey)
         return true
     }
 
-    private fun adopt(context: Context, keys: VaultKeys) {
+    private fun adopt(context: Context, key: ByteArray) {
         activeVaultKey?.fill(0)
-        activePasswordVaultKey?.fill(0)
-        activeVaultKey = keys.totp
-        activePasswordVaultKey = keys.passwords
+        activeVaultKey = key
         isUnlocked = true
         persistWrappedKeys(context)
     }
 
-    private fun unwrapKeys(context: Context, authenticatedCipher: Cipher): VaultKeys? {
+    private fun unwrapKeys(context: Context, authenticatedCipher: Cipher): ByteArray? {
         val blob = getPrefs(context).getString(KEY_KEK_WRAPPED_KEYS, null) ?: return null
         return runCatching {
             val plain = VaultKek.unwrap(authenticatedCipher, Base64.getDecoder().decode(blob))
-            val json = JSONObject(String(plain, Charsets.UTF_8))
-            plain.fill(0)
-            VaultKeys(
-                totp = Base64.getDecoder().decode(json.getString(JSON_TOTP)),
-                passwords = json.optString(JSON_PASSWORDS).takeIf { it.isNotBlank() }
-                    ?.let { Base64.getDecoder().decode(it) },
-            )
+            try { parseWrappedKeys(plain) } finally { plain.fill(0) }
         }.getOrNull()
     }
 
     private fun persistWrappedKeys(context: Context) {
         val totpKey = activeVaultKey ?: return
-        val json = JSONObject().put(JSON_TOTP, Base64.getEncoder().encodeToString(totpKey))
-        val passwordKey = activePasswordVaultKey
-        if (passwordKey != null) {
-            json.put(JSON_PASSWORDS, Base64.getEncoder().encodeToString(passwordKey))
-        }
-        val wrapped = VaultKek.wrap(json.toString().toByteArray(Charsets.UTF_8))
+        val wrapped = VaultKek.wrap(serializeWrappedKeys(totpKey))
         getPrefs(context).edit()
             .putString(KEY_KEK_WRAPPED_KEYS, Base64.getEncoder().encodeToString(wrapped))
-            .putBoolean(KEY_HAS_PASSWORD_VAULT_KEY, passwordKey != null)
             .remove(LEGACY_BIOMETRIC_WRAPPED_VAULT_KEY)
-            .remove(LEGACY_BIOMETRIC_WRAPPED_PASSWORD_VAULT_KEY)
+            .remove(RETIRED_HAS_PASSWORD_VAULT_KEY)
+            .remove(RETIRED_PASSWORD_VAULT_SALT)
+            .remove(RETIRED_WRAPPED_PASSWORD_VAULT_KEY)
+            .remove(RETIRED_BIOMETRIC_WRAPPED_PASSWORD_VAULT_KEY)
             .commit()
     }
 
@@ -308,32 +236,13 @@ object AppLockManager {
      * One-shot upgrade from the pre-[VaultKek] wrapping, which any in-process code could undo.
      * Only reachable after a successful authentication. Delete once no v0.1 installs remain.
      */
-    private fun migrateLegacyWrapping(context: Context): VaultKeys? {
+    private fun migrateLegacyWrapping(context: Context): ByteArray? {
         val prefs = getPrefs(context)
-        fun unwrapLegacy(blobKey: String, saltKey: String): ByteArray? = runCatching {
-            val blob = prefs.getString(blobKey, null) ?: return null
-            val salt = Base64.getDecoder().decode(prefs.getString(saltKey, null) ?: return null)
+        return runCatching {
+            val blob = prefs.getString(LEGACY_BIOMETRIC_WRAPPED_VAULT_KEY, null) ?: return null
+            val salt = Base64.getDecoder().decode(prefs.getString(KEY_VAULT_SALT, null) ?: return null)
             val wrapped = WrappedSecret.deserialize(blob) ?: return null
             CredentialCipher.unwrap(wrapped, CredentialCipher.deriveLegacyWrapKey(salt))
-        }.getOrNull()
-
-        val totp = unwrapLegacy(LEGACY_BIOMETRIC_WRAPPED_VAULT_KEY, KEY_VAULT_SALT) ?: return null
-        return VaultKeys(
-            totp,
-            unwrapLegacy(LEGACY_BIOMETRIC_WRAPPED_PASSWORD_VAULT_KEY, KEY_PASSWORD_VAULT_SALT),
-        )
-    }
-
-    private fun unlockPasswordVaultWithPin(context: Context, pin: String): ByteArray? {
-        val prefs = getPrefs(context)
-        val vaultSaltB64 = prefs.getString(KEY_PASSWORD_VAULT_SALT, null) ?: return null
-        val wrappedB64 = prefs.getString(KEY_WRAPPED_PASSWORD_VAULT_KEY, null) ?: return null
-        return runCatching {
-            val wrapped = WrappedSecret.deserialize(wrappedB64) ?: return null
-            CredentialCipher.unwrap(
-                wrapped,
-                CredentialCipher.deriveKey(pin, Base64.getDecoder().decode(vaultSaltB64)),
-            )
         }.getOrNull()
     }
 }

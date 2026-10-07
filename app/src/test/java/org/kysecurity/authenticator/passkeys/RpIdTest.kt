@@ -1,7 +1,9 @@
 package org.kysecurity.authenticator.passkeys
 
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
+import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class RpIdTest {
@@ -49,5 +51,13 @@ class RpIdTest {
         // Offline we can only validate the shape; asset-link verification is still outstanding.
         assertEquals("example.com", RpId.validate("example.com", null))
         assertNull(RpId.validate("co.uk", null))
+    }
+
+    @Test
+    fun publicSuffixListCoversWildcardAndExceptionRules() {
+        assertTrue(PublicSuffix.isPublicSuffix("foo.ck"))
+        assertFalse(PublicSuffix.isPublicSuffix("www.ck"))
+        assertTrue(PublicSuffix.isPublicSuffix("co.uk"))
+        assertFalse(PublicSuffix.isPublicSuffix("example.co.uk"))
     }
 }

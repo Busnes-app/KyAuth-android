@@ -24,8 +24,7 @@ Run the test suite and build the debug APK before you submit a change:
 ## Product rules
 
 - Use `KyAuth` in user-visible text.
-- Keep TOTP and password data in separate KDBX files with separate vault keys.
-- Do not add KyPasswords sync or Android Autofill without a reviewed threat model and security tests.
+- KyAuth stores no passwords and no non-KyIdentity passkeys; those belong to the Bitwarden app.
 - Keep the 15 suite themes numerically aligned with the source palette in `ThemeManager.kt`.
 
 ## Documentation

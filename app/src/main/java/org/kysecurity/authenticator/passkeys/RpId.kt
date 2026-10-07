@@ -1,7 +1,5 @@
 package org.kysecurity.authenticator.passkeys
 
-import org.kysecurity.authenticator.passwords.PublicSuffix
-
 /**
  * Validation of the relying-party identifier a caller asks KyAuth to act for.
  *

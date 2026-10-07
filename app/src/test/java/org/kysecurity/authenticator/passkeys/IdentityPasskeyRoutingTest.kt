@@ -37,8 +37,7 @@ class IdentityPasskeyRoutingTest {
 
     @Test
     fun `keeps a www host instead of widening to its parent`() {
-        // DomainMatcher.normalizeHost would strip "www." here; that would let any sibling
-        // subdomain authorized for the parent route itself into the device-local store.
+        // Exact match only: a leading "www." is a different RP ID.
         assertEquals("www.identity.example.com", IdentityPasskey.identityRpId("https://www.identity.example.com"))
     }
 
@@ -50,80 +49,12 @@ class IdentityPasskeyRoutingTest {
         assertFalse(IdentityPasskey.isIdentityRpId("blog.identity.example.com", server))
     }
 
-    // suppressesVaultPasskeys is the deny-side test in CredentialEntryBuilder.kt that decides
-    // whether a synced-vault passkey is offered. Unlike isIdentityRpId it must be www-insensitive on
-    // BOTH sides: DomainMatcher.matchesPasskey (which selects the vault entries this guards) itself
-    // normalizes away a leading "www.", so an exact compare here would let a stranded KyIdentity
-    // passkey through whenever the stored rpId or the incoming request differs from the paired host
-    // only by that prefix.
-
     @Test
-    fun `suppresses vault passkeys for the paired host itself`() {
-        // Renamed rather than re-aimed: the stored passkey's rpId is not an input to this
-        // predicate, so the "stored passkey carries www." direction cannot be expressed through
-        // it — that leniency lives in DomainMatcher.matchesPasskey, which selects the entries this
-        // guards. What is actually pinned here is the plain exact-host case.
-        assertTrue(suppressesVaultPasskeys("identity.example.com", "https://identity.example.com"))
-    }
-
-    @Test
-    fun `suppresses vault passkeys when the request has a leading www the paired host lacks`() {
-        // The direction round 1 missed: paired host is bare, the request itself carries "www.".
-        // isIdentityRpId would say false here (exact compare), but matchesPasskey would still match
-        // a bare-host stored passkey against this request, so it must still be suppressed.
-        assertTrue(suppressesVaultPasskeys("www.identity.example.com", "https://identity.example.com"))
-    }
-
-    @Test
-    fun `an unpaired device never suppresses vault passkeys`() {
-        assertFalse(suppressesVaultPasskeys("identity.example.com", null))
-        assertFalse(suppressesVaultPasskeys("www.identity.example.com", null))
-    }
-
-    @Test
-    fun `an unrelated rp is never suppressed`() {
-        val server = "https://identity.example.com"
-        assertFalse(suppressesVaultPasskeys("example.com", server))
-        assertFalse(suppressesVaultPasskeys("attacker.test", server))
-        assertFalse(suppressesVaultPasskeys("login.identity.example.com", server))
-    }
-
-    @Test
-    fun `a www paired host suppresses the bare rp id that it will not route to hardware`() {
-        // The configuration the create path used to break on: the pairing URL carries "www." and
-        // the server's rp.id does not. The two predicates disagree here by design, and that
-        // disagreement is exactly what refusesVaultPasskeyCreate exists to catch.
-        val server = "https://www.identity.example.com"
-        assertTrue(suppressesVaultPasskeys("www.identity.example.com", server))
-        assertTrue(suppressesVaultPasskeys("identity.example.com", server))
-        assertTrue(IdentityPasskey.isIdentityRpId("www.identity.example.com", server))
-        assertFalse(IdentityPasskey.isIdentityRpId("identity.example.com", server))
-    }
-
-    @Test
-    fun `refuses to create in the vault when the rp is identity-ish but not exactly routable`() {
-        // Either direction of the "www." mismatch: minting into passwords_vault.kdbx would put a
-        // KyIdentity private key in a synced, exportable artifact, and the get path would hide it.
-        assertTrue(refusesVaultPasskeyCreate("identity.example.com", "https://www.identity.example.com"))
-        assertTrue(refusesVaultPasskeyCreate("www.identity.example.com", "https://identity.example.com"))
-    }
-
-    @Test
-    fun `allows vault creation for every rp that is not the paired host`() {
-        val server = "https://identity.example.com"
-        assertFalse(refusesVaultPasskeyCreate("example.com", server))
-        assertFalse(refusesVaultPasskeyCreate("attacker.test", server))
-        assertFalse(refusesVaultPasskeyCreate("login.identity.example.com", server))
-        // Unpaired: nothing is KyIdentity, so the vault path is untouched.
-        assertFalse(refusesVaultPasskeyCreate("identity.example.com", null))
-    }
-
-    @Test
-    fun `an exact paired host is routed to hardware rather than refused`() {
-        // refusesVaultPasskeyCreate must be false here: the service sends this to
-        // ACTION_CREATE_IDENTITY_PASSKEY, and refusing would break enrolment outright.
-        val server = "https://identity.example.com"
-        assertTrue(IdentityPasskey.isIdentityRpId("identity.example.com", server))
-        assertFalse(refusesVaultPasskeyCreate("identity.example.com", server))
+    fun createIsOfferedOnlyForTheExactPairedHost() {
+        assertTrue(identityCreateTarget("id.example.com", "https://id.example.com"))
+        assertFalse(identityCreateTarget("example.com", "https://id.example.com"))
+        assertFalse(identityCreateTarget("www.id.example.com", "https://id.example.com"))
+        assertFalse(identityCreateTarget("evil.test", "https://id.example.com"))
+        assertFalse(identityCreateTarget("id.example.com", null))
     }
 }
