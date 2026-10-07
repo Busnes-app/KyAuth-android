@@ -5,7 +5,6 @@
     <string name="app_status">KyAuth is locked. Pair a KyIdentity account to begin.</string>
     <string name="tab_totp">TOTP Vault</string>
     <string name="tab_approvals">Push MFA</string>
-    <string name="tab_passwords">Passwords</string>
     <string name="tab_settings">Settings</string>
     <string name="scan_qr">Scan QR Code</string>
     <string name="add_manually">Add Manually</string>
@@ -47,17 +46,6 @@
     <string name="add_totp_choice">Scan a QR code from your service or enter account details manually.</string>
     <string name="add_totp_description">Add a TOTP authentication code to your encrypted vault.</string>
     <string name="edit_account">Edit Account</string>
-    <string name="sync_issue">⚠️ Sync Issue: %1$s</string>
-    <string name="sync_issue_action">Tap to view details or retry sync.</string>
-    <string name="passkey_badge">PASSKEY</string>
-    <string name="local_password_storage">Stored only in your separate local password vault.</string>
-    <string name="webauthn_passkey">FIDO2 / WebAuthn Passkey</string>
-    <string name="passkey_details">Relying Party: %1$s\nSignatures: %2$d</string>
-    <string name="pair_kypasswords_server">Pair KyPasswords Server</string>
-    <string name="pair_kypasswords_description">Scan the QR code shown on your KyPasswords web dashboard (Security → Pair Device), or enter the 6-digit PIN manually.</string>
-    <string name="manual_kypasswords_pairing">Manual KyPasswords Pairing</string>
-    <string name="unlock_kypasswords_keyfile">Unlock KyPasswords Keyfile</string>
-    <string name="unlock_kypasswords_description">Enter your KyPasswords Master Password or Paper Recovery Key to unwrap your vault keyfile.</string>
     <string name="select_theme">Select Theme</string>
     <string name="mfa_empty_description">New sign-in requests will appear here.</string>
     <string name="identity_passkey_title">KyIdentity Passkey</string>
@@ -65,7 +53,6 @@
     <string name="identity_passkey_tee">Stored in this device\'s secure hardware. It does not sync and does not leave this device.</string>
     <string name="identity_passkey_none">No KyIdentity passkey on this device. Enrol one from KyIdentity to use it as a second factor.</string>
     <string name="identity_passkey_remove">Remove KyIdentity Passkey</string>
-    <string name="identity_passkey_restranded">Re-enroll on KyIdentity</string>
     <string name="signon_prompt">%1$s at %2$s wants to sign in as %3$s at %4$s.</string>
     <string name="signon_approve">Approve sign-in</string>
     <string name="signon_deny">Deny</string>

@@ -2,7 +2,6 @@ package org.kysecurity.authenticator
 
 import android.Manifest
 import android.content.ClipData
-import android.content.ActivityNotFoundException
 import android.content.ClipDescription
 import android.content.ClipboardManager
 import android.content.Context
@@ -12,7 +11,6 @@ import android.content.pm.PackageManager
 import android.content.res.ColorStateList
 import android.graphics.Typeface
 import android.graphics.drawable.GradientDrawable
-import android.net.Uri
 import android.os.Build
 import android.os.Bundle
 import android.os.Handler
@@ -56,7 +54,6 @@ import org.kysecurity.authenticator.pairing.attestationSummary
 import org.kysecurity.authenticator.pairing.DeviceSigningKey
 import org.kysecurity.authenticator.pairing.PairedAccount
 import org.kysecurity.authenticator.pairing.PairingClient
-import org.kysecurity.authenticator.pairing.PairingEndpoint
 import org.kysecurity.authenticator.pairing.PairingStore
 import org.kysecurity.authenticator.pairing.QrPairing
 import org.kysecurity.authenticator.pairing.QrPairingParser
@@ -64,35 +61,18 @@ import org.kysecurity.authenticator.signon.KyIdentityAccount
 import org.kysecurity.authenticator.signon.PendingAddAccount
 import org.kysecurity.authenticator.pairing.PushTokenProvider
 import org.kysecurity.authenticator.passkeys.IdentityPasskeyKey
-import org.kysecurity.authenticator.passkeys.PasskeyQr
 import org.kysecurity.authenticator.passkeys.IdentityPasskeyStore
-import org.kysecurity.authenticator.passwords.KdbxPasswordVault
-import org.kysecurity.authenticator.passwords.OfflineVaultKey
-import org.kysecurity.authenticator.passwords.PasswordEntry
-import org.kysecurity.authenticator.passwords.PasswordGenerator
-import org.kysecurity.authenticator.passwords.kypasswords.KyPasswordClient
-import org.kysecurity.authenticator.passwords.kypasswords.KyPasswordEnvelopeCrypto
-import org.kysecurity.authenticator.passwords.kypasswords.KyPasswordMetadata
-import org.kysecurity.authenticator.passwords.kypasswords.KyPasswordPairing
-import org.kysecurity.authenticator.passwords.kypasswords.KyPasswordPairingParser
-import org.kysecurity.authenticator.passwords.kypasswords.KyPasswordServerAccount
-import org.kysecurity.authenticator.passwords.kypasswords.KyPasswordVaultSync
-import org.kysecurity.authenticator.passwords.kypasswords.KyPasswordStore
 import org.kysecurity.authenticator.security.IdleLock
 import org.kysecurity.authenticator.security.AppLockManager
-import org.kysecurity.authenticator.security.CredentialCipher
 import org.kysecurity.authenticator.security.VaultUnlockPrompt
 import org.kysecurity.authenticator.security.PinFailurePolicy
 import org.kysecurity.authenticator.security.PinPolicy
-import org.kysecurity.authenticator.security.SecurityWipe
 import org.kysecurity.authenticator.totp.KdbxTotpVault
 import org.kysecurity.authenticator.totp.TotpEntry
 import org.kysecurity.authenticator.totp.TotpDisplay
-import org.kysecurity.authenticator.totp.TotpGenerator
 import org.kysecurity.authenticator.totp.TotpUriParser
 import java.io.File
 import java.net.URI
-import java.security.SecureRandom
 import java.util.UUID
 import java.util.concurrent.Executor
 import kotlin.math.max
@@ -101,31 +81,10 @@ import kotlin.math.min
 private const val STATE_ACTIVE_TAB = "active_tab"
 
 class MainActivity : AppCompatActivity() {
-    private var pendingConflictExport: List<File> = emptyList()
-    private val exportConflicts = registerForActivityResult(
-        androidx.activity.result.contract.ActivityResultContracts.CreateDocument("application/zip"),
-    ) { uri ->
-        val files = pendingConflictExport
-        pendingConflictExport = emptyList()
-        if (uri != null && files.isNotEmpty()) runCatching {
-            java.util.zip.ZipOutputStream(checkNotNull(contentResolver.openOutputStream(uri))).use { zip ->
-                files.forEach { file ->
-                    zip.putNextEntry(java.util.zip.ZipEntry(file.name))
-                    file.inputStream().use { it.copyTo(zip) }
-                    zip.closeEntry()
-                }
-            }
-        }.onFailure { Toast.makeText(this, "Could not export conflict vaults", Toast.LENGTH_LONG).show() }
-    }
     private lateinit var store: PairingStore
-    private val kyPasswordStore by lazy { KyPasswordStore(this) }
-    private val kyPasswordClient by lazy { KyPasswordClient() }
     private val executor: Executor by lazy { ContextCompat.getMainExecutor(this) }
     private val handler = Handler(Looper.getMainLooper())
     private val openDialogs = mutableSetOf<AlertDialog>()
-    private var vaultReportDialog: AlertDialog? = null
-    private var vaultReportRequest = 0L
-    private var refreshVaultReport: (() -> Unit)? = null
     private val idlePreferences by lazy { getSharedPreferences("app_lock", MODE_PRIVATE) }
     private fun idleMinutes() = IdleLock.validatedMinutes(idlePreferences.getInt("idle_lock_minutes", 5))
     private fun idleTimeoutMillis() = idleMinutes() * 60_000L
@@ -134,7 +93,6 @@ class MainActivity : AppCompatActivity() {
     private var pendingChallenge: MfaChallenge? = null
     private var pendingTotpEntry: TotpEntry? = null
     private var totpEntries = mutableListOf<TotpEntry>()
-    private var passwordEntries = mutableListOf<PasswordEntry>()
     private var copiedSensitiveLabel: String? = null
     private var isVaultLoading = false
     private var vaultLoadGeneration: Long? = null
@@ -146,7 +104,6 @@ class MainActivity : AppCompatActivity() {
     )
     private val totpViews = mutableListOf<TotpViews>()
     private val vaultFile: File by lazy { File(filesDir, "totp_vault.kdbx") }
-    private val passwordVaultFile: File by lazy { File(filesDir, "passwords_vault.kdbx") }
 
     private val ticker = object : Runnable {
         override fun run() {
@@ -161,7 +118,7 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
-    enum class Tab { TOTP, MFA, PASSWORDS, SETTINGS }
+    enum class Tab { TOTP, MFA, SETTINGS }
 
     companion object {
         const val EXTRA_ADD_ACCOUNT = "add_account"
@@ -194,7 +151,6 @@ class MainActivity : AppCompatActivity() {
         addAccountResponse = PendingAddAccount.take(intent.getStringExtra(EXTRA_ADD_ACCOUNT))
         KyAuthMessagingService.ensureChannel(this)
         handler.post(ticker)
-        Thread { KyPasswordVaultSync.clearInterruptedSnapshots(filesDir) }.start()
     }
 
     override fun onResume() {
@@ -205,7 +161,6 @@ class MainActivity : AppCompatActivity() {
             unlockWithPrompt(silent = true)
         } else {
             runCatching { loadTotpEntries() }
-            runCatching { loadPasswordEntries() }
         }
         renderContent()
         requestNotificationPermissionIfNeeded()
@@ -228,7 +183,6 @@ class MainActivity : AppCompatActivity() {
         handler.removeCallbacks(ticker)
         vaultLoadGeneration = null
         dismissSensitiveDialogs()
-        passwordEntries.clear()
         totpEntries.clear()
         totpViews.clear()
     }
@@ -534,7 +488,6 @@ class MainActivity : AppCompatActivity() {
         when (activeTab) {
             Tab.TOTP -> renderTotpTab(container)
             Tab.MFA -> renderMfaTab(container, account)
-            Tab.PASSWORDS -> renderPasswordsTab(container)
             Tab.SETTINGS -> renderSettingsTab(container, account)
         }
     }
@@ -999,84 +952,6 @@ class MainActivity : AppCompatActivity() {
         KdbxTotpVault.saveEntries(vaultFile, vaultKey, totpEntries)
     }
 
-    private fun <T> readPasswordVault(operation: (ByteArray) -> T, onSuccess: (T) -> Unit) {
-        val key = AppLockManager.getPasswordVaultKey() ?: return
-        Thread {
-            val result = runCatching {
-                check(AppLockManager.getPasswordVaultKey() === key) { "Vault session ended" }
-                operation(key)
-            }
-            runOnUiThread {
-                if (isDestroyed || AppLockManager.getPasswordVaultKey() !== key) return@runOnUiThread
-                result.onSuccess(onSuccess).onFailure {
-                    Toast.makeText(this, "Password vault operation failed: ${it.message}", Toast.LENGTH_LONG).show()
-                }
-            }
-        }.start()
-    }
-
-    private fun showPasskeyQrDialog() {
-        AlertDialog.Builder(this)
-            .setTitle("Sign in on another device")
-            .setMessage("On the other device, choose to use a passkey from a phone or tablet. " +
-                "Scan that QR code here, then choose KyAuth when Android asks for a passkey.\n\n" +
-                "Enable KyAuth in Android’s password and passkey provider settings. " +
-                "Keep both devices nearby with Bluetooth and internet enabled. " +
-                "Requires Android 14 or later and Google Play services.")
-            .setPositiveButton("Scan QR code") { _, _ -> scanPasskeyQr() }
-            .setNegativeButton("Cancel", null)
-            .showKyDialog()
-    }
-
-    private fun scanPasskeyQr() {
-        GmsBarcodeScanning.getClient(this).startScan()
-            .addOnSuccessListener { result ->
-                if (isFinishing || isDestroyed) return@addOnSuccessListener
-                val uri = PasskeyQr.parse(result.rawValue)
-                if (uri == null) {
-                    Toast.makeText(this, "This is not a passkey sign-in QR code", Toast.LENGTH_LONG).show()
-                    return@addOnSuccessListener
-                }
-                try {
-                    // ponytail: Play services owns hybrid transport and proximity verification;
-                    // our existing Credential Provider owns key access and user verification.
-                    // Pin the handler so an arbitrary FIDO URI receiver cannot intercept the session.
-                    startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(uri))
-                        .setPackage("com.google.android.gms"))
-                } catch (_: ActivityNotFoundException) {
-                    Toast.makeText(this, "Passkey QR sign-in is unavailable. Update Google Play services.", Toast.LENGTH_LONG).show()
-                } catch (_: SecurityException) {
-                    Toast.makeText(this, "Android could not open passkey QR sign-in", Toast.LENGTH_LONG).show()
-                }
-            }
-            .addOnFailureListener {
-                if (!isFinishing && !isDestroyed) {
-                    Toast.makeText(this, "Could not scan the QR code. Try again.", Toast.LENGTH_LONG).show()
-                }
-            }
-    }
-
-    private fun loadPasswordEntries() {
-        readPasswordVault(operation = { KdbxPasswordVault.loadEntries(passwordVaultFile, it) }, onSuccess = {
-            passwordEntries = it.toMutableList()
-            renderContent()
-            if (vaultReportDialog?.isShowing == true) refreshVaultReport?.invoke()
-        })
-    }
-
-    private fun mutatePasswords(afterSave: () -> Unit = {}, mutation: () -> Unit) {
-        readPasswordVault(operation = { key ->
-            mutation()
-            KdbxPasswordVault.loadEntries(passwordVaultFile, key)
-        }, onSuccess = { entries ->
-            passwordEntries = entries.toMutableList()
-            renderContent()
-            if (vaultReportDialog?.isShowing == true) refreshVaultReport?.invoke()
-            afterSave()
-            if (kyPasswordStore.account() != null) syncKyPasswordsVault(quiet = true)
-        })
-    }
-
     private fun addTotpEntry(entry: TotpEntry) {
         totpEntries.add(entry)
         saveTotpEntries()
@@ -1091,811 +966,6 @@ class MainActivity : AppCompatActivity() {
             Toast.makeText(this, "Unlock to save the scanned TOTP entry.", Toast.LENGTH_SHORT).show()
             renderContent()
         }
-    }
-
-    // ==========================================
-    // Tab 3: Password Vault
-    // ==========================================
-
-    private fun renderPasswordsTab(container: LinearLayout) {
-        val vaultKey = AppLockManager.getPasswordVaultKey()
-        val kyAccount = kyPasswordStore.account()
-
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
-            container.addView(secondaryButton("Scan passkey QR code").apply {
-                setOnClickListener { showPasskeyQrDialog() }
-            }, fullWidthParams(bottom = 12))
-        }
-
-        if (vaultKey == null) {
-            if (kyAccount == null) {
-                val card = settingsCard().apply {
-                    addView(title("Set up Passwords & Passkeys"))
-                    addView(message("Create an encrypted vault stored only on this device, or pair a KyPasswords server for sync."))
-                    val btnLocal = primaryButton("Create Local Vault").apply {
-                        setOnClickListener { createLocalPasswordVault() }
-                    }
-                    val btnPair = secondaryButton("Pair KyPasswords Server").apply {
-                        setOnClickListener { showPairKyPasswordsDialog() }
-                    }
-                    addView(btnLocal, fullWidthParams(top = 12, bottom = 8))
-                    addView(btnPair, fullWidthParams())
-                }
-                container.addView(card, fullWidthParams())
-                return
-            } else {
-                val card = settingsCard().apply {
-                    addView(title("Unlock KyPasswords Vault"))
-                    addView(message("Server: ${kyAccount.serverUrl}\nDevice ID: ${kyAccount.deviceId}\n\nEnter your KyPasswords master password to unlock your vault keyfile."))
-                    val btnUnlock = primaryButton("Unlock Vault").apply {
-                        setOnClickListener { showUnlockKyPasswordsDialog(kyAccount) }
-                    }
-                    val btnUnpair = secondaryButton("Unpair Server").apply {
-                        setTextColor(ThemeManager.color(context, R.color.ky_error))
-                        setOnClickListener { confirmUnpairKyPasswords() }
-                    }
-                    addView(btnUnlock, fullWidthParams(top = 12, bottom = 8))
-                    addView(btnUnpair, fullWidthParams())
-                }
-                container.addView(card, fullWidthParams())
-                return
-            }
-        }
-
-        val headerActions = LinearLayout(this).apply {
-            orientation = LinearLayout.HORIZONTAL
-        }
-        val addButton = primaryButton("Add password").apply {
-            layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
-            setOnClickListener { showAddPasswordDialog() }
-        }
-        val syncButton = secondaryButton("Sync").apply {
-            layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.WRAP_CONTENT, LinearLayout.LayoutParams.WRAP_CONTENT).apply {
-                marginStart = dp(8)
-            }
-            setOnClickListener { syncKyPasswordsVault() }
-        }
-        headerActions.addView(addButton)
-        if (kyAccount != null) {
-            headerActions.addView(syncButton)
-        }
-        container.addView(headerActions, fullWidthParams(bottom = 16))
-
-        container.addView(secondaryButton("Recycle Bin").apply {
-            setOnClickListener { showRecycleBin() }
-        }, fullWidthParams(bottom = 12))
-
-        container.addView(secondaryButton("Reused passwords").apply {
-            setOnClickListener { showReusedPasswords() }
-        }, fullWidthParams(bottom = 12))
-
-        val conflictFiles = File(filesDir, "password-vault-conflicts").listFiles()?.filter { it.extension == "kdbx" }.orEmpty()
-        if (conflictFiles.isNotEmpty()) {
-            container.addView(primaryButton("Resolve vault conflict").apply {
-                setOnClickListener { showResolveVaultConflict() }
-            }, fullWidthParams(bottom = 8))
-            container.addView(secondaryButton("Export conflict vaults").apply {
-                setOnClickListener {
-                    pendingConflictExport = conflictFiles
-                    exportConflicts.launch("KyAuth-conflict-vaults.zip")
-                }
-            }, fullWidthParams(bottom = 8))
-            container.addView(secondaryButton("Reveal offline vault key").apply {
-                setOnClickListener { confirmRevealOfflineVaultKey() }
-            }, fullWidthParams(bottom = 16))
-        }
-
-        if (kyAccount?.lastSyncError != null) {
-            val errorBanner = LinearLayout(this).apply {
-                orientation = LinearLayout.VERTICAL
-                background = GradientDrawable().apply {
-                    setColor(ThemeManager.color(context, R.color.ky_surface_elevated))
-                    cornerRadius = dp(12).toFloat()
-                    setStroke(dp(1), ThemeManager.color(context, R.color.ky_error))
-                }
-                setPadding(dp(16), dp(12), dp(16), dp(12))
-                setOnClickListener {
-                    showSyncErrorDialog("Sync Issue", kyAccount.lastSyncError ?: "Unknown error")
-                }
-            }
-            errorBanner.addView(TextView(this).apply {
-                text = getString(R.string.sync_issue, kyAccount.lastSyncError)
-                textSize = 13f
-                setTextColor(ThemeManager.color(context, R.color.ky_error))
-            })
-            errorBanner.addView(TextView(this).apply {
-                text = getString(R.string.sync_issue_action)
-                textSize = 12f
-                setTextColor(ThemeManager.color(context, R.color.ky_muted))
-                setPadding(0, dp(2), 0, 0)
-            })
-            container.addView(errorBanner, fullWidthParams(bottom = 12))
-        }
-
-        if (passwordEntries.isEmpty()) {
-            container.addView(emptyState("No passwords yet", "Add a password entry or sync with your KyPasswords server."))
-            return
-        }
-
-        val cards = mutableListOf<View>()
-        // Hoisted out of the loop: PairingStore wraps EncryptedSharedPreferences, which builds a
-        // Keystore-backed MasterKey. Constructing it once per card would be Keystore work on the
-        // UI thread on every render.
-        val pairedServerUrl = runCatching { PairingStore(this).account()?.serverUrl }.getOrNull()
-        passwordEntries.sortedBy { it.title.lowercase() }.forEach { entry ->
-            val card = LinearLayout(this).apply {
-                orientation = LinearLayout.VERTICAL
-                background = cardBackground()
-                setPadding(dp(20), dp(18), dp(20), dp(18))
-                layoutParams = fullWidthParams(bottom = 12)
-                setOnClickListener {
-                    authenticateWithBiometrics(
-                        reason = if (entry.isPasskey) "View passkey for ${entry.title}" else "Reveal password for ${entry.title}",
-                        onSuccess = { showPasswordDetails(entry) },
-                    )
-                }
-            }
-
-            val headerRow = LinearLayout(this).apply {
-                orientation = LinearLayout.HORIZONTAL
-                gravity = Gravity.CENTER_VERTICAL
-            }
-            headerRow.addView(TextView(this).apply {
-                text = entry.title
-                textSize = 18f
-                typeface = Typeface.DEFAULT_BOLD
-                setTextColor(ThemeManager.color(context, R.color.ky_heading))
-                layoutParams = LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f)
-            })
-
-            val stranded = false
-            if (entry.isPasskey) {
-                headerRow.addView(TextView(this).apply {
-                    text = if (stranded) {
-                        getString(R.string.identity_passkey_restranded)
-                    } else {
-                        getString(R.string.passkey_badge)
-                    }
-                    textSize = 11f
-                    typeface = Typeface.DEFAULT_BOLD
-                    val accent = if (stranded) R.color.ky_error else R.color.ky_cyan
-                    setTextColor(ThemeManager.color(context, accent))
-                    background = GradientDrawable().apply {
-                        setColor(ThemeManager.color(context, R.color.ky_surface_elevated))
-                        cornerRadius = dp(6).toFloat()
-                        setStroke(dp(1), ThemeManager.color(context, accent))
-                    }
-                    setPadding(dp(8), dp(2), dp(8), dp(2))
-                })
-            }
-            card.addView(headerRow)
-
-            card.addView(TextView(this).apply {
-                text = entry.username.ifBlank { if (entry.isPasskey) "Passkey credential" else "No username" }
-                textSize = 14f
-                setTextColor(ThemeManager.color(context, R.color.ky_muted))
-                setPadding(0, dp(4), 0, 0)
-            })
-            entry.url?.let { url ->
-                card.addView(TextView(this).apply {
-                    text = url
-                    textSize = 13f
-                    setTextColor(ThemeManager.color(context, R.color.ky_cyan))
-                    setPadding(0, dp(6), 0, 0)
-                })
-            }
-            cards.add(card)
-        }
-        addAdaptiveCards(container, cards)
-    }
-
-    private fun showRecycleBin() {
-        val request = ++vaultReportRequest
-        vaultReportDialog?.dismiss()
-        readPasswordVault(operation = { KdbxPasswordVault.recycledEntries(passwordVaultFile, it) }, onSuccess = report@{ entries ->
-            if (request != vaultReportRequest) return@report
-            val list = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; setPadding(dp(16), dp(8), dp(16), dp(8)) }
-            var dialog: AlertDialog? = null
-            if (entries.isEmpty()) list.addView(message("Recycle Bin is empty."))
-            entries.sortedBy { it.title.lowercase() }.forEach { entry ->
-                val card = settingsCard()
-                card.addView(title(entry.title))
-                card.addView(message(listOfNotNull(entry.username.takeIf { it.isNotEmpty() },
-                    if (entry.isPasskey) "Passkey" else null).joinToString(" · ")))
-                card.addView(secondaryButton("Restore to vault").apply {
-                    setOnClickListener {
-                        val currentKey = AppLockManager.getPasswordVaultKey() ?: return@setOnClickListener
-                        dialog?.dismiss()
-                        mutatePasswords(afterSave = ::showRecycleBin) { KdbxPasswordVault.restore(passwordVaultFile, currentKey, entry.id) }
-                    }
-                }, fullWidthParams(top = 8))
-                list.addView(card, fullWidthParams(bottom = 8))
-            }
-            dialog = AlertDialog.Builder(this).setTitle("Recycle Bin")
-                .setView(ScrollView(this).apply { addView(list) })
-                .setPositiveButton("Done", null).showKyDialog()
-            vaultReportDialog = dialog
-            refreshVaultReport = ::showRecycleBin
-        })
-    }
-
-    private fun showReusedPasswords() {
-        val request = ++vaultReportRequest
-        vaultReportDialog?.dismiss()
-        readPasswordVault(operation = { KdbxPasswordVault.reusedPasswords(passwordVaultFile, it) }, onSuccess = report@{ reused ->
-            if (request != vaultReportRequest) return@report
-            val list = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; setPadding(dp(16), dp(8), dp(16), dp(8)) }
-            if (reused.isEmpty()) list.addView(message("No reused passwords found."))
-            reused.sortedBy { it.entry.title.lowercase() }.forEach { match ->
-                list.addView(settingsCard().apply {
-                    addView(title(match.entry.title))
-                    if (match.entry.username.isNotEmpty()) addView(message(match.entry.username))
-                    addView(message("This password is used by ${match.count} live entries."))
-                }, fullWidthParams(bottom = 8))
-            }
-            vaultReportDialog = AlertDialog.Builder(this).setTitle("Reused passwords")
-                .setView(ScrollView(this).apply { addView(list) })
-                .setPositiveButton("Done", null).showKyDialog()
-            refreshVaultReport = ::showReusedPasswords
-        })
-    }
-
-    private fun createLocalPasswordVault() {
-        val generation = AppLockManager.lockGeneration
-        Thread {
-            val vaultKey = CredentialCipher.generateVaultKey()
-            val result = synchronized(KdbxPasswordVault) {
-                var created = false
-                runCatching {
-                    check(!passwordVaultFile.exists()) { "An existing vault must be recovered before creating another" }
-                    check(AppLockManager.isUnlocked() && AppLockManager.lockGeneration == generation) { "Vault session ended" }
-                    KdbxPasswordVault.saveEntries(passwordVaultFile, vaultKey, emptyList())
-                    created = true
-                    synchronized(AppLockManager) {
-                        check(AppLockManager.lockGeneration == generation) { "Vault session ended" }
-                        AppLockManager.setPasswordVaultKey(this, vaultKey)
-                    }
-                }.onFailure {
-                    if (created) passwordVaultFile.delete()
-                    if (AppLockManager.getPasswordVaultKey() === vaultKey) AppLockManager.clearPasswordVaultKey(this)
-                    vaultKey.fill(0)
-                }
-            }
-            runOnUiThread {
-                if (AppLockManager.lockGeneration != generation) return@runOnUiThread
-                result.onSuccess {
-                    passwordEntries.clear()
-                    Toast.makeText(this, "Local password vault created", Toast.LENGTH_SHORT).show()
-                    renderContent()
-                }.onFailure {
-                    Toast.makeText(this, "Could not create local vault: ${it.message}", Toast.LENGTH_LONG).show()
-                }
-            }
-        }.start()
-    }
-
-    private fun showAddPasswordDialog() {
-        val form = LinearLayout(this).apply {
-            orientation = LinearLayout.VERTICAL
-            setPadding(dp(24), dp(8), dp(24), dp(24))
-        }
-        val titleInput = EditText(this).apply { hint = "Account name"; styleInput(this) }
-        val usernameInput = EditText(this).apply { hint = "Username or email"; styleInput(this) }
-        val passwordInput = EditText(this).apply {
-            hint = "Password"
-            inputType = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_VARIATION_PASSWORD
-            styleInput(this)
-        }
-        val urlInput = EditText(this).apply { hint = "Website (optional)"; styleInput(this) }
-        val notesInput = EditText(this).apply {
-            hint = "Notes (optional)"
-            minLines = 3
-            gravity = Gravity.TOP
-            inputType = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_FLAG_CAP_SENTENCES or InputType.TYPE_TEXT_FLAG_MULTI_LINE
-            styleInput(this)
-        }
-        form.addView(TextView(this).apply {
-            text = getString(R.string.local_password_storage)
-            setTextColor(ThemeManager.color(this@MainActivity, R.color.ky_muted))
-            textSize = 14f
-        }, fullWidthParams(bottom = 16))
-        form.addView(titleInput, fullWidthParams(bottom = 10))
-        form.addView(usernameInput, fullWidthParams(bottom = 10))
-        form.addView(passwordInput, fullWidthParams(bottom = 10))
-        form.addView(secondaryButton("Generate a 20-character password").apply {
-            setOnClickListener { passwordInput.setText(generatePassword()) }
-        }, fullWidthParams(bottom = 18))
-        form.addView(urlInput, fullWidthParams(bottom = 10))
-        form.addView(notesInput, fullWidthParams())
-        val scrollView = ScrollView(this).apply {
-            clipToPadding = false
-            addView(form)
-        }
-
-        AlertDialog.Builder(this)
-            .setTitle("Add password")
-            .setView(scrollView)
-            .setNegativeButton("Cancel", null)
-            .setPositiveButton("Save") { _, _ ->
-                runCatching {
-                    PasswordEntry(
-                        title = titleInput.text.toString().trim(),
-                        username = usernameInput.text.toString().trim(),
-                        password = passwordInput.text.toString(),
-                        url = urlInput.text.toString().trim().ifBlank { null },
-                        notes = notesInput.text.toString().trim().ifBlank { null },
-                    )
-                }.onSuccess {
-                    val key = AppLockManager.getPasswordVaultKey() ?: return@onSuccess
-                    mutatePasswords { KdbxPasswordVault.update(passwordVaultFile, key) { entries -> entries.add(it); true } }
-                }.onFailure {
-                    Toast.makeText(this, "Account name and password are required", Toast.LENGTH_SHORT).show()
-                }
-            }
-            .showKyDialog()
-    }
-
-    private fun showPasswordDetails(entry: PasswordEntry) {
-        if (!AppLockManager.isUnlocked()) return
-        val container = LinearLayout(this).apply {
-            orientation = LinearLayout.VERTICAL
-            setPadding(dp(24), dp(8), dp(24), dp(8))
-        }
-        container.addView(TextView(this).apply {
-            text = entry.username.ifBlank { "No username" }
-            textSize = 15f
-            setTextColor(ThemeManager.color(context, R.color.ky_muted))
-        })
-
-        if (entry.isPasskey) {
-            val passkey = entry.passkey!!
-            container.addView(TextView(this).apply {
-                text = getString(R.string.webauthn_passkey)
-                textSize = 18f
-                typeface = Typeface.DEFAULT_BOLD
-                setTextColor(ThemeManager.color(context, R.color.ky_cyan))
-                setPadding(0, dp(12), 0, dp(4))
-            })
-            container.addView(TextView(this).apply {
-                text = getString(R.string.passkey_details, passkey.rpId, passkey.signCount)
-                textSize = 14f
-                setTextColor(ThemeManager.color(context, R.color.ky_text))
-                setPadding(0, 0, 0, dp(12))
-            })
-        } else {
-            container.addView(TextView(this).apply {
-                text = entry.password
-                textSize = 22f
-                typeface = Typeface.MONOSPACE
-                setTextIsSelectable(true)
-                setTextColor(ThemeManager.color(context, R.color.ky_text))
-                setPadding(0, dp(16), 0, dp(16))
-            })
-        }
-
-        entry.url?.let { container.addView(message(it)) }
-        entry.notes?.let { container.addView(message(it)) }
-
-        val builder = AlertDialog.Builder(this)
-            .setTitle(entry.title)
-            .setView(container)
-            .setNegativeButton("Delete") { _, _ ->
-                readPasswordVault(operation = { KdbxPasswordVault.recyclingEnabled(passwordVaultFile, it) }, onSuccess = { recycling ->
-                    AlertDialog.Builder(this)
-                        .setTitle(if (recycling) "Move to Recycle Bin?" else "Permanently delete entry?")
-                        .setMessage(if (recycling) "This entry will remain in the encrypted vault’s recycle bin." else
-                            "This vault disables recycling. This removes the entry from the current vault. Historical snapshots and backups remain unchanged.")
-                        .setNegativeButton("Cancel", null)
-                        .setPositiveButton("Delete") { _, _ ->
-                            val currentKey = AppLockManager.getPasswordVaultKey() ?: return@setPositiveButton
-                            mutatePasswords { KdbxPasswordVault.delete(passwordVaultFile, currentKey, entry.id, allowPermanent = !recycling) }
-                        }.showKyDialog()
-                })
-            }
-
-        if (!entry.isPasskey && entry.password.isNotEmpty()) {
-            builder.setNeutralButton("Copy") { _, _ ->
-                copySensitiveText(entry.password, 30)
-                Toast.makeText(this, "Password copied for 30 seconds", Toast.LENGTH_SHORT).show()
-            }
-        }
-
-        builder.setPositiveButton("Close", null).showKyDialog()
-    }
-
-    private fun generatePassword(length: Int = 20): String =
-        PasswordGenerator.generate(length = length)
-
-    // ==========================================
-    // KyPasswords Server Pairing & Sync Helpers
-    // ==========================================
-
-    private fun showPairKyPasswordsDialog() {
-        val container = LinearLayout(this).apply {
-            orientation = LinearLayout.VERTICAL
-            setPadding(dp(24), dp(24), dp(24), dp(20))
-        }
-        val titleView = TextView(this).apply {
-            text = getString(R.string.pair_kypasswords_server)
-            textSize = 20f
-            typeface = Typeface.DEFAULT_BOLD
-            setTextColor(ThemeManager.color(context, R.color.ky_heading))
-            setPadding(0, 0, 0, dp(8))
-        }
-        val subtitleView = TextView(this).apply {
-            text = getString(R.string.pair_kypasswords_description)
-            textSize = 14f
-            setTextColor(ThemeManager.color(context, R.color.ky_muted))
-            setPadding(0, 0, 0, dp(16))
-        }
-        container.addView(titleView)
-        container.addView(subtitleView)
-
-        var dialog: AlertDialog? = null
-
-        val btnScan = primaryButton("Scan QR Code").apply {
-            setOnClickListener {
-                dialog?.dismiss()
-                scanKyPasswordsQr()
-            }
-        }
-        val btnManual = secondaryButton("Enter Details Manually").apply {
-            setOnClickListener {
-                dialog?.dismiss()
-                showManualKyPasswordsPairingDialog()
-            }
-        }
-        val btnCancel = ghostButton("Cancel").apply {
-            setOnClickListener { dialog?.dismiss() }
-        }
-
-        container.addView(btnScan, fullWidthParams(bottom = 10))
-        container.addView(btnManual, fullWidthParams(bottom = 10))
-        container.addView(btnCancel, fullWidthParams())
-
-        dialog = AlertDialog.Builder(this)
-            .setView(container)
-            .showKyDialog()
-    }
-
-    private fun scanKyPasswordsQr() {
-        GmsBarcodeScanning.getClient(this).startScan()
-            .addOnSuccessListener { result ->
-                val raw = result.rawValue.orEmpty()
-                runCatching { KyPasswordPairingParser.parse(raw) }
-                    .onSuccess { pairing -> redeemAndUnlockKyPasswords(pairing) }
-                    .onFailure { Toast.makeText(this, "Invalid KyPasswords QR code: ${it.message}", Toast.LENGTH_SHORT).show() }
-            }
-            .addOnFailureListener {
-                Toast.makeText(this, "Scanner failed or canceled", Toast.LENGTH_SHORT).show()
-            }
-    }
-
-    private fun showManualKyPasswordsPairingDialog() {
-        val container = LinearLayout(this).apply {
-            orientation = LinearLayout.VERTICAL
-            setPadding(dp(24), dp(16), dp(24), dp(16))
-        }
-        val titleView = TextView(this).apply {
-            text = getString(R.string.manual_kypasswords_pairing)
-            textSize = 18f
-            typeface = Typeface.DEFAULT_BOLD
-            setTextColor(ThemeManager.color(context, R.color.ky_heading))
-            setPadding(0, 0, 0, dp(12))
-        }
-        container.addView(titleView)
-
-        val serverInput = EditText(this).apply { hint = "Server URL (e.g. https://passwords.example.com)"; styleInput(this) }
-        val pinInput = EditText(this).apply { hint = "6-digit PIN or Pairing Secret"; styleInput(this) }
-
-        container.addView(serverInput, fullWidthParams(bottom = 10))
-        container.addView(pinInput, fullWidthParams())
-
-        AlertDialog.Builder(this)
-            .setView(container)
-            .setNegativeButton("Cancel", null)
-            .setPositiveButton("Connect") { _, _ ->
-                val serverUrl = serverInput.text.toString().trim()
-                val pinOrSecret = pinInput.text.toString().trim()
-                if (serverUrl.isBlank() || pinOrSecret.isBlank()) {
-                    Toast.makeText(this, "Server URL and PIN/Secret are required", Toast.LENGTH_SHORT).show()
-                    return@setPositiveButton
-                }
-                runCatching {
-                    KyPasswordPairing(
-                        serverUrl = PairingEndpoint.validateServerUrl(serverUrl),
-                        secret = if (pinOrSecret.length > 6) pinOrSecret else null,
-                        pin = if (pinOrSecret.length <= 6) pinOrSecret else null,
-                    )
-                }.onSuccess { pairing ->
-                    redeemAndUnlockKyPasswords(pairing)
-                }.onFailure {
-                    Toast.makeText(this, it.message ?: "Invalid server URL", Toast.LENGTH_SHORT).show()
-                }
-            }
-            .showKyDialog()
-    }
-
-    private fun redeemAndUnlockKyPasswords(pairing: KyPasswordPairing) {
-        val progressToast = Toast.makeText(this, "Pairing with KyPasswords server…", Toast.LENGTH_SHORT)
-        progressToast.show()
-
-        Thread {
-            try {
-                val deviceName = "${Build.MANUFACTURER} ${Build.MODEL}".trim()
-                val session = kyPasswordClient.redeemPairing(
-                    serverUrl = pairing.serverUrl,
-                    codeOrPin = pairing.secret ?: pairing.pin!!,
-                    deviceName = deviceName,
-                )
-                val metadata = kyPasswordClient.fetchMetadata(pairing.serverUrl, session.sessionToken)
-                val account = KyPasswordServerAccount(
-                    serverUrl = pairing.serverUrl,
-                    deviceId = session.deviceId,
-                    sessionToken = session.sessionToken,
-                    userId = session.userId,
-                    vaultVersion = metadata.version,
-                )
-
-                runOnUiThread {
-                    if (passwordEntries.isNotEmpty()) {
-                        if (metadata.version == 0L) {
-                            showUploadLocalVaultDialog(account)
-                        } else {
-                            AlertDialog.Builder(this)
-                                .setTitle("Server Vault Already Exists")
-                                .setMessage("This device and server use different vault keys. The local vault was not changed or uploaded.")
-                                .setPositiveButton("OK", null)
-                                .showKyDialog()
-                        }
-                    } else {
-                        kyPasswordStore.save(account)
-                        showUnlockKyPasswordsDialog(account, metadata)
-                    }
-                }
-            } catch (e: Exception) {
-                runOnUiThread {
-                    Toast.makeText(this, "Pairing failed: ${e.message}", Toast.LENGTH_LONG).show()
-                }
-            }
-        }.start()
-    }
-
-    private fun showUploadLocalVaultDialog(account: KyPasswordServerAccount) {
-        val passwordInput = EditText(this).apply {
-            hint = "KyPasswords vault password"
-            inputType = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_VARIATION_PASSWORD
-            styleInput(this)
-        }
-        AlertDialog.Builder(this)
-            .setTitle("Upload Local Vault")
-            .setMessage("Choose the password that will unlock this vault in KyPasswords. The server receives only the encrypted vault and wrapped key.")
-            .setView(passwordInput)
-            .setNegativeButton("Cancel", null)
-            .setPositiveButton("Upload") { _, _ ->
-                val password = passwordInput.text.toString()
-                val vaultKey = AppLockManager.getPasswordVaultKey()
-                if (password.isBlank() || vaultKey == null) {
-                    Toast.makeText(this, "A vault password is required", Toast.LENGTH_SHORT).show()
-                    return@setPositiveButton
-                }
-                Thread {
-                    runCatching {
-                        val envelope = KyPasswordEnvelopeCrypto.wrapVaultKey(vaultKey, password)
-                        synchronized(KyPasswordVaultSync) {
-                            val result = KyPasswordVaultSync.sync(passwordVaultFile, vaultKey, account,
-                                kyPasswordClient, { AppLockManager.getPasswordVaultKey() === vaultKey }, envelope)
-                            check(AppLockManager.getPasswordVaultKey() === vaultKey) { "Vault session ended" }
-                            kyPasswordStore.save(account.copy(vaultVersion = result.version, lastSyncedFingerprint = result.fingerprint))
-                            result.version
-                        }
-                    }.onSuccess { version ->
-                        runOnUiThread {
-                            Toast.makeText(this, "Local vault uploaded to KyPasswords (v$version)", Toast.LENGTH_SHORT).show()
-                            renderContent()
-                        }
-                    }.onFailure { error ->
-                        runOnUiThread {
-                            Toast.makeText(this, "Upload failed: ${error.message}", Toast.LENGTH_LONG).show()
-                        }
-                    }
-                }.start()
-            }
-            .showKyDialog()
-    }
-
-    private fun showUnlockKyPasswordsDialog(
-        account: KyPasswordServerAccount,
-        cachedMetadata: KyPasswordMetadata? = null,
-    ) {
-        val container = LinearLayout(this).apply {
-            orientation = LinearLayout.VERTICAL
-            setPadding(dp(24), dp(16), dp(24), dp(16))
-        }
-        val titleView = TextView(this).apply {
-            text = getString(R.string.unlock_kypasswords_keyfile)
-            textSize = 18f
-            typeface = Typeface.DEFAULT_BOLD
-            setTextColor(ThemeManager.color(context, R.color.ky_heading))
-            setPadding(0, 0, 0, dp(4))
-        }
-        val subtitleView = TextView(this).apply {
-            text = getString(R.string.unlock_kypasswords_description)
-            textSize = 14f
-            setTextColor(ThemeManager.color(context, R.color.ky_muted))
-            setPadding(0, 0, 0, dp(12))
-        }
-        container.addView(titleView)
-        container.addView(subtitleView)
-
-        val passwordInput = EditText(this).apply {
-            hint = "Master Password or Recovery Key"
-            inputType = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_VARIATION_PASSWORD
-            styleInput(this)
-        }
-        container.addView(passwordInput, fullWidthParams())
-
-        AlertDialog.Builder(this)
-            .setView(container)
-            .setNegativeButton("Cancel") { _, _ ->
-                if (AppLockManager.getPasswordVaultKey() == null) {
-                    Toast.makeText(this, "KyPasswords is paired. You can enter your master password anytime from the Passwords tab.", Toast.LENGTH_SHORT).show()
-                }
-                renderContent()
-            }
-            .setPositiveButton("Unlock") { _, _ ->
-                val secret = passwordInput.text.toString()
-                if (secret.isBlank()) {
-                    Toast.makeText(this, "Password is required", Toast.LENGTH_SHORT).show()
-                    showUnlockKyPasswordsDialog(account, cachedMetadata)
-                    return@setPositiveButton
-                }
-                unlockKyPasswords(account, secret, cachedMetadata)
-            }
-            .showKyDialog()
-    }
-
-    private fun unlockKyPasswords(account: KyPasswordServerAccount, secret: String, cachedMetadata: KyPasswordMetadata?) {
-        val generation = AppLockManager.lockGeneration
-        Toast.makeText(this, "Unwrapping keyfile and loading vault…", Toast.LENGTH_SHORT).show()
-        Thread {
-            var candidateKey: ByteArray? = null
-            try {
-                val meta = cachedMetadata ?: kyPasswordClient.fetchMetadata(account.serverUrl, account.sessionToken)
-                val envelope = meta.passwordEnvelope ?: meta.recoveryEnvelope
-                    ?: error("No key envelope found on server")
-                val key = KyPasswordEnvelopeCrypto.unwrapVaultKey(envelope, secret)
-                candidateKey = key
-                fun current() = AppLockManager.lockGeneration == generation && AppLockManager.isUnlocked() &&
-                    kyPasswordStore.account()?.sessionToken == account.sessionToken
-                synchronized(KyPasswordVaultSync) {
-                    check(current()) { "Vault session ended" }
-                    synchronized(KdbxPasswordVault) {
-                        if (passwordVaultFile.exists()) KdbxPasswordVault.loadEntries(passwordVaultFile, key)
-                        else if (meta.version == 0L) KdbxPasswordVault.saveEntries(passwordVaultFile, key, emptyList())
-                        synchronized(AppLockManager) {
-                            check(current()) { "Vault session ended" }
-                            AppLockManager.setPasswordVaultKey(this@MainActivity, key)
-                        }
-                    }
-                    // A network/conflict error must not hide the resolution controls behind unlock.
-                    runCatching {
-                        KyPasswordVaultSync.sync(passwordVaultFile, key, checkNotNull(kyPasswordStore.account()),
-                            kyPasswordClient, { current() && AppLockManager.getPasswordVaultKey() === key })
-                    }.onSuccess { result ->
-                        if (current()) kyPasswordStore.updateSync(result.version, result.fingerprint)
-                    }.onFailure { error ->
-                        if (current()) kyPasswordStore.setSyncError(error.message ?: "Vault sync failed")
-                    }
-                }
-                runOnUiThread {
-                    if (!isDestroyed && current() && AppLockManager.getPasswordVaultKey() === key) {
-                        loadPasswordEntries()
-                        renderContent()
-                    }
-                }
-            } catch (error: Exception) {
-                runOnUiThread {
-                    if (isDestroyed || generation != AppLockManager.lockGeneration || !AppLockManager.isUnlocked()) return@runOnUiThread
-                    Toast.makeText(this, "Failed to unlock keyfile: ${error.message}", Toast.LENGTH_LONG).show()
-                    showUnlockKyPasswordsDialog(account, cachedMetadata)
-                }
-            } finally {
-                if (AppLockManager.getPasswordVaultKey() !== candidateKey) candidateKey?.fill(0)
-            }
-        }.start()
-    }
-
-    private fun syncKyPasswordsVault(quiet: Boolean = false, resolution: KyPasswordVaultSync.Resolution? = null) {
-        val key = AppLockManager.getPasswordVaultKey() ?: return
-        val session = kyPasswordStore.account() ?: return
-        fun current() = AppLockManager.getPasswordVaultKey() === key &&
-            kyPasswordStore.account()?.sessionToken == session.sessionToken
-        if (!quiet) Toast.makeText(this, "Syncing KyPasswords vault…", Toast.LENGTH_SHORT).show()
-        Thread {
-            runCatching {
-                synchronized(KyPasswordVaultSync) {
-                    check(current()) { "Vault session ended" }
-                    val account = checkNotNull(kyPasswordStore.account())
-                    val result = KyPasswordVaultSync.sync(passwordVaultFile, key, account, kyPasswordClient, ::current, resolution = resolution)
-                    if (current()) kyPasswordStore.updateSync(result.version, result.fingerprint)
-                    result.version
-                }
-            }.onSuccess { version ->
-                runOnUiThread {
-                    if (current()) {
-                        runCatching { loadPasswordEntries() }.onFailure {
-                            kyPasswordStore.setSyncError("Could not read synced vault")
-                        }
-                        if (!quiet) Toast.makeText(this, "Vault synced (v$version)", Toast.LENGTH_SHORT).show()
-                        renderContent()
-                    }
-                }
-            }.onFailure { error ->
-                if (current()) kyPasswordStore.setSyncError(error.message ?: "Vault sync failed")
-                runOnUiThread {
-                    if (current()) {
-                        if (!quiet) showSyncErrorDialog("Sync Failed", error.message ?: "Vault sync failed")
-                        renderContent()
-                    }
-                }
-            }
-        }.start()
-    }
-
-    private fun showResolveVaultConflict() {
-        AlertDialog.Builder(this).setTitle("Resolve vault conflict")
-            .setMessage("Choose which complete vault to keep. Export the conflict vaults first if you need entries from both versions.")
-            .setNegativeButton("Cancel", null)
-            .setPositiveButton("Keep this device") { _, _ ->
-                confirmVaultResolution(KyPasswordVaultSync.Resolution.KEEP_DEVICE)
-            }
-            .setNeutralButton("Keep server") { _, _ ->
-                confirmVaultResolution(KyPasswordVaultSync.Resolution.KEEP_SERVER)
-            }.showKyDialog()
-    }
-
-    private fun confirmVaultResolution(resolution: KyPasswordVaultSync.Resolution) {
-        AlertDialog.Builder(this).setTitle("Replace vault version?")
-            .setMessage(if (resolution == KyPasswordVaultSync.Resolution.KEEP_DEVICE)
-                "Upload this device's complete vault over the current server version. Saved conflict copies on this device will be removed after a successful sync."
-                else "Replace this device's vault with the current server version. Local changes and saved conflict copies will be removed after a successful sync.")
-            .setNegativeButton("Cancel", null)
-            .setPositiveButton("Replace") { _, _ -> syncKyPasswordsVault(resolution = resolution) }
-            .showKyDialog()
-    }
-
-    private fun showSyncErrorDialog(title: String, message: String) {
-        AlertDialog.Builder(this)
-            .setTitle(title)
-            .setMessage(message)
-            .setPositiveButton("OK", null)
-            .setNeutralButton("Retry") { _, _ -> syncKyPasswordsVault() }
-            .showKyDialog()
-    }
-
-    private fun confirmUnpairKyPasswords() {
-        AlertDialog.Builder(this)
-            .setTitle("Unpair KyPasswords Server")
-            .setMessage("Are you sure you want to unpair from KyPasswords? This will remove the local password keyfile and lock the password vault.")
-            .setNegativeButton("Cancel", null)
-            .setPositiveButton("Unpair") { _, _ ->
-                Thread {
-                    synchronized(KdbxPasswordVault) {
-                        kyPasswordStore.clear()
-                        AppLockManager.clearPasswordVaultKey(this)
-                        passwordVaultFile.delete()
-                        KyPasswordVaultSync.clearConflicts(filesDir)
-                    }
-                    runOnUiThread {
-                        if (isDestroyed) return@runOnUiThread
-                        passwordEntries.clear()
-                        Toast.makeText(this, "KyPasswords server unpaired", Toast.LENGTH_SHORT).show()
-                        renderContent()
-                    }
-                }.start()
-            }
-            .showKyDialog()
     }
 
     // ==========================================
@@ -2068,8 +1138,8 @@ class MainActivity : AppCompatActivity() {
         sections.add(appearanceSection)
 
         val providerSection = settingsCard()
-        providerSection.addView(title("Password & Passkey Provider"))
-        providerSection.addView(message("Set KyAuth as your default system provider to autofill passwords and use passkeys across apps and websites."))
+        providerSection.addView(title("KyIdentity passkey provider"))
+        providerSection.addView(message("Enable KyAuth as a passkey provider so KyIdentity sign-in can use this phone's passkey."))
         providerSection.addView(primaryButton("Set as default provider").apply {
             setOnClickListener { openCredentialProviderSettings() }
         }, fullWidthParams())
@@ -2113,47 +1183,6 @@ class MainActivity : AppCompatActivity() {
             signOnPasskeySection.addView(btnRemove, fullWidthParams())
         }
         sections.add(signOnPasskeySection)
-
-        val kyPasswordsSection = settingsCard()
-        kyPasswordsSection.addView(title("KyPasswords Server"))
-        val kyAccount = kyPasswordStore.account()
-        if (kyAccount != null) {
-            val syncDate = if (kyAccount.lastSyncedEpoch > 0) java.util.Date(kyAccount.lastSyncedEpoch * 1000).toLocaleString() else "Never"
-            kyPasswordsSection.addView(message("Server: ${kyAccount.serverUrl}\nDevice ID: ${kyAccount.deviceId}\nVault Version: ${kyAccount.vaultVersion}\nLast Synced: $syncDate"))
-            val btnSync = primaryButton("Sync Vault Now").apply {
-                setOnClickListener { syncKyPasswordsVault() }
-            }
-            val btnUnpair = secondaryButton("Unpair KyPasswords Server").apply {
-                setTextColor(ThemeManager.color(context, R.color.ky_error))
-                setOnClickListener { confirmUnpairKyPasswords() }
-            }
-            kyPasswordsSection.addView(btnSync, fullWidthParams(top = 10, bottom = 6))
-            kyPasswordsSection.addView(btnUnpair, fullWidthParams())
-        } else {
-            kyPasswordsSection.addView(message("A KyPasswords server is optional. Pair one to sync passwords and passkeys across devices."))
-            val btnPair = primaryButton("Pair KyPasswords Server").apply {
-                setOnClickListener { showPairKyPasswordsDialog() }
-            }
-            kyPasswordsSection.addView(btnPair, fullWidthParams(top = 10))
-        }
-        sections.add(kyPasswordsSection)
-
-        val offlineKeySection = settingsCard()
-        offlineKeySection.addView(title("Offline Vault Key"))
-        offlineKeySection.addView(
-            message(
-                "This key is the password of passwords_vault.kdbx. It opens a downloaded copy of " +
-                    "your vault in KeePassXC or KeePassDX with no server involved, which is what " +
-                    "you have left if KyIdentity is unreachable.",
-            ),
-        )
-        offlineKeySection.addView(
-            secondaryButton("Reveal offline vault key").apply {
-                setOnClickListener { confirmRevealOfflineVaultKey() }
-            },
-            fullWidthParams(top = 10),
-        )
-        sections.add(offlineKeySection)
 
         val accountSection = settingsCard()
         accountSection.addView(title("Paired Account"))
@@ -2339,81 +1368,9 @@ class MainActivity : AppCompatActivity() {
             .showKyDialog()
     }
 
-    /**
-     * The warning comes before the prompt, not after: authenticating is the user authorising the
-     * reveal, and they cannot authorise what they have not been told. Unlike the master password
-     * this key cannot be rotated without re-encrypting the vault, so a careless reveal is
-     * permanent.
-     */
-    private fun confirmRevealOfflineVaultKey() {
-        if (AppLockManager.getPasswordVaultKey() == null) {
-            Toast.makeText(this, "Unlock your vault first", Toast.LENGTH_SHORT).show()
-            return
-        }
-
-        AlertDialog.Builder(this)
-            .setTitle("Reveal offline vault key")
-            .setMessage(
-                "This key unlocks every password and passkey in your vault, on any device, " +
-                    "forever. Unlike your master password it cannot be changed without " +
-                    "re-encrypting the vault. Anyone who sees it has your vault.",
-            )
-            .setNegativeButton("Cancel", null)
-            .setPositiveButton("Reveal") { _, _ ->
-                authenticateWithBiometrics(
-                    reason = "Reveal offline vault key",
-                    onSuccess = { showOfflineVaultKey() },
-                )
-            }
-            .showKyDialog()
-    }
-
-    private fun showOfflineVaultKey() {
-        // Re-read rather than capture at confirmation time: the app can lock while the prompt is up.
-        val vaultKey = AppLockManager.getPasswordVaultKey()
-        if (vaultKey == null) {
-            Toast.makeText(this, "Unlock your vault first", Toast.LENGTH_SHORT).show()
-            return
-        }
-
-        val container = LinearLayout(this).apply {
-            orientation = LinearLayout.VERTICAL
-            setPadding(dp(24), dp(8), dp(24), dp(8))
-        }
-        container.addView(TextView(this).apply {
-            text = OfflineVaultKey.formatForDisplay(vaultKey)
-            textSize = 18f
-            typeface = Typeface.MONOSPACE
-            setTextIsSelectable(true)
-            setTextColor(ThemeManager.color(context, R.color.ky_text))
-            setPadding(0, dp(16), 0, dp(16))
-        })
-        container.addView(message("Type it without the spaces. Treat it like the vault itself."))
-
-        AlertDialog.Builder(this)
-            .setTitle("Offline Vault Key")
-            .setView(container)
-            // The grouping is a reading aid; the password is the unbroken hex.
-            .setNeutralButton("Copy") { _, _ ->
-                copySensitiveText(KyPasswordEnvelopeCrypto.bytesToHex(vaultKey), 30)
-                Toast.makeText(this, "Vault key copied for 30 seconds", Toast.LENGTH_SHORT).show()
-            }
-            .setPositiveButton("Done", null)
-            .showKyDialog()
-    }
-
     private fun openCredentialProviderSettings() {
-        val autofillIntent = Intent(Settings.ACTION_REQUEST_SET_AUTOFILL_SERVICE).apply {
-            data = Uri.parse("package:$packageName")
-        }
-        val credentialIntent = Intent("android.settings.CREDENTIAL_PROVIDER")
-
         runCatching {
-            startActivity(autofillIntent)
-            return
-        }
-        runCatching {
-            startActivity(credentialIntent)
+            startActivity(Intent("android.settings.CREDENTIAL_PROVIDER"))
             return
         }
         runCatching {
@@ -2440,11 +1397,7 @@ class MainActivity : AppCompatActivity() {
                     check(unlock())
                 }
                 val totpKey = checkNotNull(AppLockManager.getVaultKey())
-                val totp = KdbxTotpVault.loadEntries(vaultFile, totpKey)
-                val passwords = AppLockManager.getPasswordVaultKey()?.let {
-                    KdbxPasswordVault.loadEntries(passwordVaultFile, it)
-                }.orEmpty()
-                totp to passwords
+                KdbxTotpVault.loadEntries(vaultFile, totpKey)
             }
             runOnUiThread {
                 if (vaultLoadGeneration != generation) return@runOnUiThread
@@ -2458,9 +1411,8 @@ class MainActivity : AppCompatActivity() {
                     onError()
                     return@runOnUiThread
                 }
-                result.onSuccess { (totp, passwords) ->
+                result.onSuccess { totp ->
                     totpEntries = totp.toMutableList()
-                    passwordEntries = passwords.toMutableList()
                     pendingTotpEntry?.let { entry ->
                         pendingTotpEntry = null
                         runCatching { addTotpEntry(entry) }.onFailure {
@@ -2696,7 +1648,6 @@ class MainActivity : AppCompatActivity() {
                 renderContent()
             }
         })
-        addView(destination(getString(R.string.tab_passwords), Tab.PASSWORDS))
         addView(destination(getString(R.string.tab_settings), Tab.SETTINGS))
     }
 
@@ -2705,10 +1656,6 @@ class MainActivity : AppCompatActivity() {
             openDialogs.add(this)
             setOnDismissListener {
                 openDialogs.remove(this)
-                if (vaultReportDialog === this) {
-                    vaultReportDialog = null
-                    refreshVaultReport = null
-                }
             }
             val background = GradientDrawable().apply {
                 setColor(ThemeManager.color(this@MainActivity, R.color.ky_surface))
@@ -2875,7 +1822,6 @@ class MainActivity : AppCompatActivity() {
         pendingTotpEntry = null
         dismissSensitiveDialogs()
         totpEntries.clear()
-        passwordEntries.clear()
         totpViews.clear()
         copiedSensitiveLabel?.let { label ->
             val clipboard = getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager

@@ -69,7 +69,7 @@ object CredentialEntryBuilder {
         // Stop before the DigitalAssetLinks fetch below unless this is the enrolled KyIdentity
         // passkey: that fetch is an HTTPS request to a host the caller names, and it must not reveal
         // whether a KyIdentity passkey is enrolled.
-        if (identityPasskey?.rpId != rpId) return
+        val record = identityPasskey?.takeIf { it.rpId == rpId } ?: return
         // A native caller named this RP itself; only the RP can confirm the claim.
         if (webOriginHost == null &&
             !DigitalAssetLinks.isCallerAuthorized(rpId, callerPackage, callerSigningInfo)
@@ -82,31 +82,28 @@ object CredentialEntryBuilder {
             option.candidateQueryData.getByteArray(BUNDLE_KEY_CLIENT_DATA_HASH),
         )
 
-        // The hardware-backed KyIdentity passkey. Offered without any vault key, so it survives the
-        // password vault being locked, compromised, or in recovery.
-        if (identityPasskey != null && identityPasskey.rpId == rpId) {
-            val title = identityPasskey.username.ifBlank { rpId }
-            val intent = Intent(context, CredentialAuthActivity::class.java).apply {
-                putExtra(CredentialAuthActivity.EXTRA_ACTION, CredentialAuthActivity.ACTION_GET_IDENTITY_PASSKEY)
-                putExtra(CredentialAuthActivity.EXTRA_REQUEST_JSON, requestJson)
-                putExtra(CredentialAuthActivity.EXTRA_RP_ID, rpId)
-                putExtra(CredentialAuthActivity.EXTRA_ORIGIN, callerOrigin)
-                putExtra(CredentialAuthActivity.EXTRA_CALLER_PACKAGE, callerPackage)
-                putExtra(CredentialAuthActivity.EXTRA_CLIENT_DATA_HASH, clientDataHash)
-                putExtra(CredentialAuthActivity.EXTRA_DISPLAY_TITLE, "Sign in to KyIdentity")
-                putExtra(CredentialAuthActivity.EXTRA_DISPLAY_SUBTITLE, "$title (Passkey • this device)")
-            }
-            responseBuilder.addCredentialEntry(
-                CredentialSliceHelper.createGetCredentialEntry(
-                    context = context,
-                    option = option,
-                    title = title,
-                    subtitle = "Passkey • this device",
-                    fillIntent = intent,
-                    requestCode = requestCode + 500,
-                ),
-            )
+        // The hardware-backed KyIdentity passkey, offered whether or not KyAuth is unlocked.
+        val title = record.username.ifBlank { rpId }
+        val intent = Intent(context, CredentialAuthActivity::class.java).apply {
+            putExtra(CredentialAuthActivity.EXTRA_ACTION, CredentialAuthActivity.ACTION_GET_IDENTITY_PASSKEY)
+            putExtra(CredentialAuthActivity.EXTRA_REQUEST_JSON, requestJson)
+            putExtra(CredentialAuthActivity.EXTRA_RP_ID, rpId)
+            putExtra(CredentialAuthActivity.EXTRA_ORIGIN, callerOrigin)
+            putExtra(CredentialAuthActivity.EXTRA_CALLER_PACKAGE, callerPackage)
+            putExtra(CredentialAuthActivity.EXTRA_CLIENT_DATA_HASH, clientDataHash)
+            putExtra(CredentialAuthActivity.EXTRA_DISPLAY_TITLE, "Sign in to KyIdentity")
+            putExtra(CredentialAuthActivity.EXTRA_DISPLAY_SUBTITLE, "$title (Passkey • this device)")
         }
+        responseBuilder.addCredentialEntry(
+            CredentialSliceHelper.createGetCredentialEntry(
+                context = context,
+                option = option,
+                title = title,
+                subtitle = "Passkey • this device",
+                fillIntent = intent,
+                requestCode = requestCode + 500,
+            ),
+        )
     }
 
     const val TYPE_PUBLIC_KEY = "android.credentials.TYPE_PUBLIC_KEY_CREDENTIAL"

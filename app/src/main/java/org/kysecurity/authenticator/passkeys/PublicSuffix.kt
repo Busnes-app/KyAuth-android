@@ -1,4 +1,4 @@
-package org.kysecurity.authenticator.passwords
+package org.kysecurity.authenticator.passkeys
 
 import com.google.common.net.InternetDomainName
 

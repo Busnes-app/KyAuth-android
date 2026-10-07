@@ -37,7 +37,6 @@ Keep danger and success colors separate from the theme palette.
 - Keep the five-part navigation pill at the bottom of the dashboard.
 - Use a centered card for an empty Push MFA screen.
 - Group Settings content in padded cards.
-- Require a fresh biometric or device-authentication prompt before Passwords reveals or copies a password.
 
 ## Shape and depth
 

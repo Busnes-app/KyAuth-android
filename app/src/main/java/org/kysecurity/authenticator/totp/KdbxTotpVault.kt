@@ -18,7 +18,7 @@ import java.io.File
 import java.util.UUID
 import org.kysecurity.authenticator.security.writeAtomically
 
-/** Serialized like [org.kysecurity.authenticator.passwords.KdbxPasswordVault]; load throws on a corrupt vault. */
+/** Load throws on a corrupt vault. */
 object KdbxTotpVault {
     private const val VAULT_GROUP_NAME = "KyAuth TOTP"
 

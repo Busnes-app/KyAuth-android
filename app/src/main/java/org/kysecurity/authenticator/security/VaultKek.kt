@@ -12,7 +12,7 @@ import javax.crypto.spec.OAEPParameterSpec
 import javax.crypto.spec.PSource
 
 /**
- * Authentication-bound key-encryption key for the vault keys.
+ * Authentication-bound key-encryption key for the vault key.
  *
  * RSA-OAEP is used so that wrapping needs no prompt (public-key operation) while unwrapping
  * requires a fresh biometric or device-credential authentication carried by a

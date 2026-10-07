@@ -80,17 +80,6 @@ android {
         sourceCompatibility = JavaVersion.VERSION_17
         targetCompatibility = JavaVersion.VERSION_17
     }
-
-    packaging {
-        resources {
-            // BouncyCastle ships ~1.2 MB of post-quantum lookup tables and cert-path message
-            // bundles as resources. R8 shrinks classes, not resources, so these ride along
-            // untouched — measured as the entire APK growth from adding bcprov. Nothing here
-            // uses post-quantum algorithms or CertPathReviewer.
-            excludes += "/org/bouncycastle/pqc/**"
-            excludes += "/org/bouncycastle/x509/CertPathReviewerMessages*.properties"
-        }
-    }
 }
 
 dependencies {
@@ -102,12 +91,6 @@ dependencies {
     implementation("com.google.android.gms:play-services-code-scanner:16.1.0")
     implementation("com.google.firebase:firebase-messaging:25.1.2")
     implementation("app.keemobile:kotpass:0.13.0")
-    // Already a kotpass runtime dependency; expose its binary-reference types at compile time.
-    compileOnly("com.squareup.okio:okio-jvm:3.15.0")
-    // Argon2id for KyPasswords envelopes. kotpass bundles Argon2 but keeps it `internal`, and a
-    // native (NDK) Argon2 would push the interop vector test into androidTest, which CI does not
-    // run. BouncyCastle's lightweight API is pure Java, so the vector is checked on every push.
-    implementation("org.bouncycastle:bcprov-jdk18on:1.85")
     implementation("com.google.guava:guava:33.7.1-android")
 
     testImplementation("junit:junit:4.13.2")

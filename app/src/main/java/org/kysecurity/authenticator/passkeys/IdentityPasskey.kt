@@ -7,9 +7,8 @@ import org.json.JSONObject
 /**
  * Decides whether a relying party is the paired KyIdentity server.
  *
- * A KyIdentity login passkey must not live in `passwords_vault.kdbx`, because that vault syncs to
- * KyPasswords: a KyPasswords compromise plus the master password would otherwise yield a KyIdentity
- * authentication factor. This predicate is the single place that decision is made.
+ * A KyIdentity login passkey is hardware-resident and never enters a KDBX vault or any synced
+ * artifact. This predicate is the single place that decision is made.
  *
  * The paired server URL is a locally held fact, never a caller assertion, so a hostile relying
  * party cannot route itself into the local store by naming an RP ID.
@@ -18,8 +17,7 @@ object IdentityPasskey {
 
     /** The RP ID of the paired KyIdentity server, or null when unpaired or unusable as an RP ID.
      *
-     * Deliberately does not use DomainMatcher.extractDomain: that helper strips a leading "www."
-     * for autofill leniency, which would silently widen this match to the parent domain.
+     * The match is exact: no "www." stripping, which would silently widen it to the parent domain.
      */
     fun identityRpId(serverUrl: String?): String? {
         if (serverUrl.isNullOrBlank()) return null
