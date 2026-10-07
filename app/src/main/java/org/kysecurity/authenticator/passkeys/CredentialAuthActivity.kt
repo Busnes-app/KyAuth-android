@@ -291,7 +291,7 @@ class CredentialAuthActivity : AppCompatActivity() {
 
     /**
      * Enrols the KyIdentity passkey into secure hardware. Nothing here touches a vault key: that
-     * independence is the point, so the factor keeps working when the password vault does not.
+     * independence is the point, so the factor works while KyAuth is locked.
      *
      * The new key goes into the spare alias. The stored record is replaced and the old key
      * deleted only once the new key has been generated and authenticated, so a cancelled prompt

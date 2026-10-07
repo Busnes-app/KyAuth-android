@@ -1,6 +1,6 @@
 # Vaultwarden replaces KyPasswords
 
-Decided 2026-10-06. Status: decided, not implemented.
+Decided 2026-10-06. Status: implemented.
 
 ## Decision
 

@@ -89,7 +89,7 @@ class MainActivity : AppCompatActivity() {
     private fun idleMinutes() = IdleLock.validatedMinutes(idlePreferences.getInt("idle_lock_minutes", 5))
     private fun idleTimeoutMillis() = idleMinutes() * 60_000L
 
-    private var activeTab = Tab.TOTP
+    private var activeTab = Tab.VAULT
     private var pendingChallenge: MfaChallenge? = null
     private var pendingTotpEntry: TotpEntry? = null
     private var totpEntries = mutableListOf<TotpEntry>()
@@ -111,14 +111,20 @@ class MainActivity : AppCompatActivity() {
                 lockSensitiveState()
                 renderContent()
             }
-            if (!isVaultLoading && AppLockManager.isUnlocked() && activeTab == Tab.TOTP) {
+            if (!isVaultLoading && AppLockManager.isUnlocked() && activeTab == Tab.VAULT) {
                 updateTotpViews()
             }
             handler.postDelayed(this, 1000)
         }
     }
 
-    enum class Tab { TOTP, MFA, SETTINGS }
+    enum class Tab {
+        VAULT, SETTINGS;
+
+        companion object {
+            fun restore(name: String?): Tab = entries.firstOrNull { it.name == name } ?: VAULT
+        }
+    }
 
     companion object {
         const val EXTRA_ADD_ACCOUNT = "add_account"
@@ -141,8 +147,7 @@ class MainActivity : AppCompatActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        activeTab = savedInstanceState?.getString(STATE_ACTIVE_TAB)
-            ?.let { runCatching { Tab.valueOf(it) }.getOrNull() } ?: Tab.TOTP
+        activeTab = Tab.restore(savedInstanceState?.getString(STATE_ACTIVE_TAB))
         WindowCompat.setDecorFitsSystemWindows(window, false)
         if (!BuildConfig.ALLOW_SCREENSHOTS) {
             window.setFlags(WindowManager.LayoutParams.FLAG_SECURE, WindowManager.LayoutParams.FLAG_SECURE)
@@ -486,17 +491,16 @@ class MainActivity : AppCompatActivity() {
 
     private fun renderActiveTab(container: LinearLayout, account: PairedAccount) {
         when (activeTab) {
-            Tab.TOTP -> renderTotpTab(container)
-            Tab.MFA -> renderMfaTab(container, account)
+            Tab.VAULT -> renderTotpTab(container, account)
             Tab.SETTINGS -> renderSettingsTab(container, account)
         }
     }
 
     // ==========================================
-    // Tab 1: TOTP Vault
+    // Vault
     // ==========================================
 
-    private fun renderTotpTab(container: LinearLayout) {
+    private fun renderTotpTab(container: LinearLayout, account: PairedAccount) {
         totpViews.clear()
         val headerRow = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
@@ -529,6 +533,7 @@ class MainActivity : AppCompatActivity() {
         headerRow.addView(headerTitle)
         headerRow.addView(addButton)
         container.addView(headerRow)
+        renderPendingChallenge(container, account)
 
         if (totpEntries.isEmpty()) {
             container.addView(emptyState("No codes yet", "Tap + to add an account or scan from Settings."))
@@ -968,23 +973,13 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
-    // ==========================================
-    // Tab 4: Push MFA Approvals
-    // ==========================================
-
-    private fun renderMfaTab(container: LinearLayout, account: PairedAccount) {
-        val challenge = pendingChallenge
-        if (challenge == null) {
-            container.gravity = Gravity.CENTER
-            container.addView(mfaEmptyState())
-            return
-        }
+    /** The pending Push MFA request, at the top of Vault. Adds nothing when none is live. */
+    private fun renderPendingChallenge(container: LinearLayout, account: PairedAccount) {
+        val challenge = pendingChallenge ?: return
         val challengeStore = MfaPushChallengeStore(this)
         if (challengeStore.isExpired(challenge)) {
             pendingChallenge = null
             challengeStore.clear()
-            container.gravity = Gravity.CENTER
-            container.addView(emptyState("Request expired", "New sign-in requests will appear here."))
             return
         }
 
@@ -1004,15 +999,17 @@ class MainActivity : AppCompatActivity() {
         }
         card.addView(digits)
         card.addView(primaryButton("Approve request").apply {
+            layoutParams = fullWidthParams(bottom = 8)
             setOnClickListener { onNumberSelected(challenge, digits.text.toString().trim(), account) }
         })
 
         val btnDeny = secondaryButton("Deny request").apply {
+            layoutParams = fullWidthParams(bottom = 8)
             setTextColor(ThemeManager.color(context, R.color.ky_error))
             setOnClickListener { onDenyClicked(challenge, account) }
         }
         card.addView(btnDeny)
-        container.addView(card)
+        container.addView(card, fullWidthParams(bottom = 16))
     }
 
     private fun onNumberSelected(challenge: MfaChallenge, selectedDigit: String, account: PairedAccount) {
@@ -1123,7 +1120,7 @@ class MainActivity : AppCompatActivity() {
     }
 
     // ==========================================
-    // Tab 3: Settings & Security
+    // Settings & Security
     // ==========================================
 
     private fun renderSettingsTab(container: LinearLayout, account: PairedAccount) {
@@ -1138,9 +1135,9 @@ class MainActivity : AppCompatActivity() {
         sections.add(appearanceSection)
 
         val providerSection = settingsCard()
-        providerSection.addView(title("KyIdentity passkey provider"))
-        providerSection.addView(message("Enable KyAuth as a passkey provider so KyIdentity sign-in can use this phone's passkey."))
-        providerSection.addView(primaryButton("Set as default provider").apply {
+        providerSection.addView(title("KyIdentity passkey"))
+        providerSection.addView(message("Turn KyAuth on under Additional services so KyIdentity sign-in can use this phone's passkey. Keep Bitwarden as your preferred service."))
+        providerSection.addView(primaryButton("Open passkey settings").apply {
             setOnClickListener { openCredentialProviderSettings() }
         }, fullWidthParams())
         sections.add(providerSection)
@@ -1508,7 +1505,7 @@ class MainActivity : AppCompatActivity() {
     private fun loadPendingPushChallenge() {
         MfaPushChallengeStore(this).load()?.let {
             pendingChallenge = it
-            activeTab = Tab.MFA
+            activeTab = Tab.VAULT
         }
     }
 
@@ -1628,8 +1625,7 @@ class MainActivity : AppCompatActivity() {
             }
         }
 
-        addView(destination(getString(R.string.tab_totp), Tab.TOTP))
-        addView(destination(getString(R.string.tab_approvals), Tab.MFA))
+        addView(destination(getString(R.string.tab_totp), Tab.VAULT))
         addView(Button(this@MainActivity).apply {
             contentDescription = "Lock KyAuth"
             minWidth = 0
@@ -1759,35 +1755,6 @@ class MainActivity : AppCompatActivity() {
     private fun isCompactWidth() = resources.configuration.screenWidthDp < 600
 
     private fun isExpandedWidth() = resources.configuration.screenWidthDp >= 840
-
-    private fun mfaEmptyState() = LinearLayout(this).apply {
-        orientation = LinearLayout.VERTICAL
-        gravity = Gravity.CENTER
-        background = cardBackground()
-        minimumHeight = dp(260)
-        setPadding(dp(24), dp(32), dp(24), dp(32))
-        addView(TextView(context).apply {
-            text = "×"
-            textSize = 58f
-            typeface = Typeface.DEFAULT
-            gravity = Gravity.CENTER
-            setTextColor(ThemeManager.color(context, R.color.ky_cyan))
-        })
-        addView(TextView(context).apply {
-            text = getString(R.string.no_pending_challenges)
-            textSize = 19f
-            typeface = Typeface.DEFAULT_BOLD
-            gravity = Gravity.CENTER
-            setTextColor(ThemeManager.color(context, R.color.ky_heading))
-            setPadding(0, dp(12), 0, dp(8))
-        })
-        addView(TextView(context).apply {
-            text = getString(R.string.mfa_empty_description)
-            textSize = 14f
-            gravity = Gravity.CENTER
-            setTextColor(ThemeManager.color(context, R.color.ky_muted))
-        })
-    }.apply { layoutParams = fullWidthParams() }
 
     private fun dismissSensitiveDialogs() {
         openDialogs.toList().forEach { dialog ->
