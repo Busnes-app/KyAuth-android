@@ -8,6 +8,9 @@ The suite replaces KyPasswords with Vaultwarden. KyAuth does not become a Bitwar
 (option B). Android users manage passwords and passkeys with the official Bitwarden app
 pointed at Vaultwarden.
 
+KyAuth has no Vaultwarden integration of any kind: no client, sign-in, import, export or link.
+Passwords and passkeys are entirely the Bitwarden app's job.
+
 KyAuth becomes authenticator-only: TOTP, Push MFA, KyIdentity sign-on and the KyIdentity
 login passkey. It keeps no password or passkey vault, synced or device-only.
 
