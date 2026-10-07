@@ -3,25 +3,31 @@ package org.kysecurity.authenticator.mfa
 import android.content.Context
 import org.json.JSONArray
 import org.json.JSONObject
+import org.kysecurity.authenticator.pairing.PairedAccount
 
 object MfaPushChallengeParser {
-    const val DEFAULT_EXPIRES_AFTER_MS = 5 * 60 * 1000L
     const val MAX_EXPIRES_AFTER_MS = 10 * 60 * 1000L
     const val MAX_DECOYS = 3
 
     private val DIGITS = Regex("\\d{2}")
 
+    private val PURPOSES = setOf("login", "step_up")
+
     /**
      * Parses an FCM data message into a challenge.
      *
-     * [pairedServerUrl] is the server this device is paired with and is the only server a response
-     * may be sent to: a push payload that names its own server would let anyone who can reach the
-     * FCM sender collect a valid device signature. Anything in the payload that would widen the
-     * challenge — unbounded expiry, malformed or excess digits — is rejected or clamped.
+     * [paired] is the only server a response may be sent to, and the push must name this device and
+     * its account: a push for another device or user, or one naming its own server, is refused.
+     * Missing or unknown purpose, and an expiry that is absent, past or more than
+     * [MAX_EXPIRES_AFTER_MS] ahead, are refused rather than defaulted or clamped.
      */
-    fun parse(data: Map<String, String>, pairedServerUrl: String?, nowMs: Long = System.currentTimeMillis()): MfaChallenge {
-        val serverUrl = pairedServerUrl?.trim().orEmpty()
-        require(serverUrl.isNotBlank()) { "KyAuth is not paired with a server" }
+    fun parse(data: Map<String, String>, paired: PairedAccount?, nowMs: Long = System.currentTimeMillis()): MfaChallenge {
+        require(paired != null && paired.serverUrl.isNotBlank() && paired.deviceId.isNotBlank()) { "KyAuth is not paired with a server" }
+        val userId = paired.userId
+        require(!userId.isNullOrBlank()) { "This pairing has no account; pair KyAuth again" }
+        require(firstOrNull(data, "deviceId") == paired.deviceId) { "Push is for another device" }
+        require(firstOrNull(data, "deviceUserId") == userId) { "Push is for another account" }
+        val serverUrl = paired.serverUrl.trim()
 
         val challengeId = first(data, "challengeId", "challenge_id", "id")
         val matchDigits = firstOrNull(data, "matchDigits", "match_digits", "match").orEmpty()
@@ -33,11 +39,11 @@ object MfaPushChallengeParser {
             .filter { it != matchDigits }
             .take(MAX_DECOYS)
 
-        val claimedExpiry = firstOrNull(data, "expiresAtEpochMs", "expires_at_ms", "expiresAtMs")?.toLongOrNull()
-            ?: firstOrNull(data, "expiresAt", "expires_at")?.toLongOrNull()?.times(1_000)
-            ?: (nowMs + DEFAULT_EXPIRES_AFTER_MS)
-        val expiresAt = claimedExpiry.coerceAtMost(nowMs + MAX_EXPIRES_AFTER_MS)
-        require(expiresAt > nowMs) { "Challenge has already expired" }
+        val purpose = firstOrNull(data, "purpose")
+        require(purpose != null && purpose in PURPOSES) { "Unknown push purpose" }
+        val expiresAt = firstOrNull(data, "expiresAtEpochMs")?.toLongOrNull()
+        require(expiresAt != null && expiresAt > nowMs) { "Challenge has expired or has no expiry" }
+        require(expiresAt <= nowMs + MAX_EXPIRES_AFTER_MS) { "Challenge expiry is too far ahead" }
 
         return MfaChallenge(
             challengeId = challengeId,
@@ -45,7 +51,7 @@ object MfaPushChallengeParser {
             decoyDigits = decoys,
             serverUrl = serverUrl,
             username = firstOrNull(data, "username", "user"),
-            purpose = firstOrNull(data, "purpose") ?: "session",
+            purpose = purpose,
             expiresAtEpochMs = expiresAt,
         )
     }
@@ -113,7 +119,7 @@ class MfaPushChallengeStore(context: Context) {
             decoyDigits = if (decoys == null) emptyList() else (0 until decoys.length()).map { decoys.getString(it) },
             serverUrl = json.getString("serverUrl"),
             username = json.optString("username").takeIf { it.isNotBlank() },
-            purpose = json.optString("purpose", "session"),
+            purpose = json.getString("purpose"),
             expiresAtEpochMs = json.getLong("expiresAtEpochMs"),
         )
     }

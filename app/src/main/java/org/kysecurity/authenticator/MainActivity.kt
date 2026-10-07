@@ -988,7 +988,7 @@ class MainActivity : AppCompatActivity() {
             background = cardBackground()
             setPadding(dp(20), dp(20), dp(20), dp(20))
         }
-        card.addView(title("Sign-in Request"))
+        card.addView(title(if (challenge.purpose == "step_up") "Confirm a sensitive action" else "Sign-in request"))
         card.addView(message("A sign-in request was received for:\n${challenge.serverUrl}\nUser: ${challenge.username ?: account.deviceName}\nExpires in ${challengeStore.secondsRemaining(challenge)} seconds.\n\nEnter the 2-digit number shown on your computer screen:"))
         val digits = EditText(this).apply {
             hint = "00"
@@ -1012,6 +1012,19 @@ class MainActivity : AppCompatActivity() {
         container.addView(card, fullWidthParams(bottom = 16))
     }
 
+    private fun pushPayload(challenge: MfaChallenge, account: PairedAccount, approve: Boolean, digits: String): ByteArray? {
+        val userId = account.userId
+        return runCatching {
+            MfaMessage.formatPayload(
+                MfaMessage.origin(account.serverUrl), requireNotNull(userId), account.deviceId,
+                challenge.challengeId, challenge.purpose, challenge.expiresAtEpochMs, approve, digits,
+            )
+        }.getOrElse {
+            Toast.makeText(this, "This pairing cannot answer the request. Pair KyAuth again.", Toast.LENGTH_LONG).show()
+            null
+        }
+    }
+
     private fun onNumberSelected(challenge: MfaChallenge, selectedDigit: String, account: PairedAccount) {
         val sig = runCatching { DeviceSigningKey.initSignature() }.getOrElse {
             Toast.makeText(this, "Unable to authorize this request. Use your fingerprint or re-pair KyAuth.", Toast.LENGTH_LONG).show()
@@ -1021,7 +1034,7 @@ class MainActivity : AppCompatActivity() {
         val prompt = BiometricPrompt(this, executor, object : BiometricPrompt.AuthenticationCallback() {
             override fun onAuthenticationSucceeded(result: BiometricPrompt.AuthenticationResult) {
                 val authedSig = result.cryptoObject?.signature ?: sig
-                val payload = MfaMessage.formatPayload(challenge.challengeId, approve = true, selectedDigit)
+                val payload = pushPayload(challenge, account, approve = true, selectedDigit) ?: return
                 val signature = runCatching { DeviceSigningKey.sign(payload, authedSig) }.getOrElse {
                     Toast.makeText(this@MainActivity, "Unable to authorize this request. Use your fingerprint or re-pair KyAuth.", Toast.LENGTH_LONG).show()
                     return
@@ -1030,6 +1043,7 @@ class MainActivity : AppCompatActivity() {
                     val result = MfaResponseClient().respond(
                         serverUrl = challenge.serverUrl,
                         challengeId = challenge.challengeId,
+                        deviceId = account.deviceId,
                         selectedDigits = selectedDigit,
                         approve = true,
                         signature = signature,
@@ -1075,7 +1089,7 @@ class MainActivity : AppCompatActivity() {
         val prompt = BiometricPrompt(this, executor, object : BiometricPrompt.AuthenticationCallback() {
             override fun onAuthenticationSucceeded(result: BiometricPrompt.AuthenticationResult) {
                 val authedSig = result.cryptoObject?.signature ?: sig
-                val payload = MfaMessage.formatPayload(challenge.challengeId, approve = false, challenge.matchDigits)
+                val payload = pushPayload(challenge, account, approve = false, "") ?: return
                 val signature = runCatching { DeviceSigningKey.sign(payload, authedSig) }.getOrElse {
                     Toast.makeText(this@MainActivity, "Unable to authorize this request. Use your fingerprint or re-pair KyAuth.", Toast.LENGTH_LONG).show()
                     return
@@ -1084,7 +1098,8 @@ class MainActivity : AppCompatActivity() {
                     val result = MfaResponseClient().respond(
                         serverUrl = challenge.serverUrl,
                         challengeId = challenge.challengeId,
-                        selectedDigits = challenge.matchDigits,
+                        deviceId = account.deviceId,
+                        selectedDigits = "",
                         approve = false,
                         signature = signature,
                     )

@@ -22,10 +22,9 @@ class KyAuthMessagingService : FirebaseMessagingService() {
     }
 
     override fun onMessageReceived(message: RemoteMessage) {
-        // Only the paired server is ever used; an unpaired device drops the message.
-        val pairedServer = runCatching { PairingStore(this).account()?.serverUrl }.getOrNull()
+        // Only the paired server, device and account are accepted; anything else is dropped.
         val challenge = runCatching {
-            MfaPushChallengeParser.parse(message.data, pairedServer)
+            MfaPushChallengeParser.parse(message.data, PairingStore(this).account())
         }.getOrNull() ?: return
 
         MfaPushChallengeStore(this).save(challenge)
