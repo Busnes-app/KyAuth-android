@@ -25,7 +25,7 @@ KyAuth pairs an Android device with KyIdentity. It stores TOTP entries in an enc
 - Release builds disable screenshots and Android backup.
 - TOTP entries have no backup, export or sync, by decision: losing the phone loses its TOTP
   entries. KyIdentity access recovers through recovery codes or an admin MFA reset.
-- Push MFA receives KyIdentity FCM data-message challenges, posts a local notification, and opens the Push MFA tab for approve/deny. A response is only ever sent to the paired server; a `serverUrl` in the push payload is ignored. Digits must be two-digit, decoys are capped at 3, and expiry is clamped to 10 minutes.
+- Push MFA receives KyIdentity FCM data-message challenges, posts a local notification, and opens Vault, where the request card at the top approves or denies it. A response is only ever sent to the paired server; a `serverUrl` in the push payload is ignored. Digits must be two-digit, decoys are capped at 3, and expiry is clamped to 10 minutes.
 - An MFA response must carry an explicit decision. A 2xx with no `approved`/`success` field is a protocol error, not an approval.
 - A passkey whose RP ID is the paired KyIdentity server's host is the exception: its private key is
   generated in AndroidKeyStore (StrongBox where available, TEE otherwise), is non-exportable, and
@@ -96,8 +96,8 @@ KyAuth pairs an Android device with KyIdentity. It stores TOTP entries in an enc
 
 - Use the `KyAuth` name in user-visible text.
 - Use the KyPost mail stamp with the KyAuth wordmark in the header and lock screen; keep the KyAuth launcher icon.
-- Use the four-part bottom pill: TOTP Vault, Push MFA, lock shield, Settings.
-- The TOTP Vault screen provides a + icon to scan QR or add accounts manually with optional Website and Notes fields.
+- Use the three-part bottom pill: Vault, lock shield, Settings.
+- The Vault screen shows a pending Push MFA request at its top, then the TOTP list with a + icon to scan QR or add accounts manually with optional Website and Notes fields.
 - Use the 17 suite themes from `ThemeManager`. The default is Busnes Light; preserve valid saved choices.
 - Use rounded, flat buttons. Do not add elevation shadows to custom controls.
 
