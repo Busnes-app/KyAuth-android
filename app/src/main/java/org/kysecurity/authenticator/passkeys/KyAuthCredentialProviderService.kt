@@ -35,9 +35,7 @@ class KyAuthCredentialProviderService : CredentialProviderService() {
     }
 
     private fun buildGetResponse(request: BeginGetCredentialRequest): BeginGetCredentialResponse {
-        // EncryptedSharedPreferences can throw after a device restore or keyset invalidation; fail
-        // closed rather than crash the process.
-        val identityPasskey = runCatching { IdentityPasskeyStore(this).record() }.getOrNull()
+        val identityPasskey = IdentityPasskeyStore(this).record()
             ?: return BeginGetCredentialResponse.Builder().build()
         return CredentialEntryBuilder.build(this, request, identityPasskey)
     }

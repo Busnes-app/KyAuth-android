@@ -308,9 +308,8 @@ class CredentialAuthActivity : AppCompatActivity() {
         if (RpId.normalize(json.optJSONObject("rp")?.optString("id")) != rpId) {
             return finishWithFailure("Relying party does not match the request")
         }
-        // EncryptedSharedPreferences can throw after a device restore or keyset invalidation; a
-        // null here just means the RP cannot be confirmed as KyIdentity, and enrolment fails closed.
-        val pairedServerUrl = runCatching { PairingStore(this).account()?.serverUrl }.getOrNull()
+        // Unpaired (null) means the RP cannot be confirmed as KyIdentity; enrolment fails closed.
+        val pairedServerUrl = PairingStore(this).account()?.serverUrl
         if (!IdentityPasskey.isIdentityRpId(rpId, pairedServerUrl)) {
             return finishWithFailure("This relying party is not the paired KyIdentity server")
         }

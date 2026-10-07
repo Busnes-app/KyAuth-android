@@ -109,9 +109,9 @@ KyAuth pairs an Android device with KyIdentity. It stores TOTP entries in an enc
 ## Project layout
 
 - `app/src/main/java/org/kysecurity/authenticator/MainActivity.kt`: app UI and workflows.
-- `pairing/`: QR parsing, endpoint validation, pairing network client, device key, `AttestationChallenge`, and encrypted pairing store.
+- `pairing/`: QR parsing, endpoint validation, pairing network client, device key, `AttestationChallenge`, and the pairing store (plain app-private prefs).
 - `mfa/`: push challenge model, FCM receive service, signed payload, and response client.
-- `security/`: lock state, PIN policy, `VaultKek` authentication-bound key wrapping, `VaultUnlockPrompt`, atomic file writes, and local wipe.
+- `security/`: lock state, PIN policy, `VaultKek` authentication-bound key wrapping, `VaultUnlockPrompt`, atomic file writes, and local wipe (clears pairing, passkey record, push challenge and push token prefs, legacy encrypted files and the androidx master key).
 - `totp/`: TOTP parsing, generation, and KDBX persistence.
 - `signon/`: `DeviceAssertion` (assertion builder), `TrustedConsumers` (caller pins),
   `KyIdentityAccount` (system account lifecycle), `KyIdentityAuthenticator` + service,
@@ -173,7 +173,7 @@ Recorded so it is not mistaken for done:
   "Restore system account"; `getAuthToken` from KyPost launching the exported activity from KyPost's
   process; rotating the device mid-prompt keeps the prompt; a launch after the 120 s nonce expiry
   returns CANCELED to the caller; rotating the device during pairing keeps the addAccount request alive. Do not claim these until observed.
-- **Deprecated platform APIs.** `Slice` and `EncryptedSharedPreferences`/`MasterKey` are deprecated.
+- **Deprecated platform APIs.** `Slice` is deprecated.
   Moving to `androidx.credentials` would remove most of the Slice usage.
 
 ## Child DOX Index

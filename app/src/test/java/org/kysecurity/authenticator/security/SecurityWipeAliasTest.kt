@@ -31,9 +31,8 @@ class SecurityWipeAliasTest {
     }
 
     @Test
-    fun `leaves the androidx master key alone`() {
-        // EncryptedSharedPreferences cannot re-open its files once this key is gone, so deleting it
-        // turns a wipe into a crash on next launch. The prefs are cleared by content instead.
+    fun `prefix sweep does not match the androidx master key`() {
+        // The prefix sweep does not match it; SecurityWipe deletes it by name.
         assertFalse(SecurityWipe.isAppAlias("_androidx_security_master_key_"))
     }
 

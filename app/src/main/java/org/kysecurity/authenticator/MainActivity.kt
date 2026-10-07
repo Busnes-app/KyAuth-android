@@ -1159,9 +1159,7 @@ class MainActivity : AppCompatActivity() {
 
         val signOnPasskeySection = settingsCard()
         signOnPasskeySection.addView(title(getString(R.string.identity_passkey_title)))
-        // EncryptedSharedPreferences can throw after a device restore or keyset invalidation;
-        // Settings must still render, showing "none" rather than crashing the app.
-        val signOnRecord = runCatching { IdentityPasskeyStore(this).record() }.getOrNull()
+        val signOnRecord = IdentityPasskeyStore(this).record()
         if (signOnRecord == null) {
             signOnPasskeySection.addView(message(getString(R.string.identity_passkey_none)))
         } else {
