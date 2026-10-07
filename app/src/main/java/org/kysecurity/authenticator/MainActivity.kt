@@ -989,7 +989,7 @@ class MainActivity : AppCompatActivity() {
             setPadding(dp(20), dp(20), dp(20), dp(20))
         }
         card.addView(title(if (challenge.purpose == "step_up") "Confirm a sensitive action" else "Sign-in request"))
-        card.addView(message("A sign-in request was received for:\n${challenge.serverUrl}\nUser: ${challenge.username ?: account.deviceName}\nExpires in ${challengeStore.secondsRemaining(challenge)} seconds.\n\nEnter the 2-digit number shown on your computer screen:"))
+        card.addView(message("A request was received for:\n${challenge.serverUrl}\nUser: ${challenge.username ?: account.deviceName}\nExpires in ${challengeStore.secondsRemaining(challenge)} seconds.\n\nEnter the 2-digit number shown on your computer screen:"))
         val digits = EditText(this).apply {
             hint = "00"
             inputType = InputType.TYPE_CLASS_NUMBER
@@ -1026,6 +1026,7 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun onNumberSelected(challenge: MfaChallenge, selectedDigit: String, account: PairedAccount) {
+        val payload = pushPayload(challenge, account, approve = true, selectedDigit) ?: return
         val sig = runCatching { DeviceSigningKey.initSignature() }.getOrElse {
             Toast.makeText(this, "Unable to authorize this request. Use your fingerprint or re-pair KyAuth.", Toast.LENGTH_LONG).show()
             return
@@ -1034,7 +1035,6 @@ class MainActivity : AppCompatActivity() {
         val prompt = BiometricPrompt(this, executor, object : BiometricPrompt.AuthenticationCallback() {
             override fun onAuthenticationSucceeded(result: BiometricPrompt.AuthenticationResult) {
                 val authedSig = result.cryptoObject?.signature ?: sig
-                val payload = pushPayload(challenge, account, approve = true, selectedDigit) ?: return
                 val signature = runCatching { DeviceSigningKey.sign(payload, authedSig) }.getOrElse {
                     Toast.makeText(this@MainActivity, "Unable to authorize this request. Use your fingerprint or re-pair KyAuth.", Toast.LENGTH_LONG).show()
                     return
@@ -1081,6 +1081,7 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun onDenyClicked(challenge: MfaChallenge, account: PairedAccount) {
+        val payload = pushPayload(challenge, account, approve = false, "") ?: return
         val sig = runCatching { DeviceSigningKey.initSignature() }.getOrElse {
             Toast.makeText(this, "Unable to authorize this request. Use your fingerprint or re-pair KyAuth.", Toast.LENGTH_LONG).show()
             return
@@ -1089,7 +1090,6 @@ class MainActivity : AppCompatActivity() {
         val prompt = BiometricPrompt(this, executor, object : BiometricPrompt.AuthenticationCallback() {
             override fun onAuthenticationSucceeded(result: BiometricPrompt.AuthenticationResult) {
                 val authedSig = result.cryptoObject?.signature ?: sig
-                val payload = pushPayload(challenge, account, approve = false, "") ?: return
                 val signature = runCatching { DeviceSigningKey.sign(payload, authedSig) }.getOrElse {
                     Toast.makeText(this@MainActivity, "Unable to authorize this request. Use your fingerprint or re-pair KyAuth.", Toast.LENGTH_LONG).show()
                     return

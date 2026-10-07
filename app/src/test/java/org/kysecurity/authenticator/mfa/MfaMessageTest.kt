@@ -30,6 +30,8 @@ class MfaMessageTest {
         assertEquals("https://id.example.com", MfaMessage.origin("https://id.example.com:443"))
         assertEquals("https://id.example.com:8443", MfaMessage.origin("https://id.example.com:8443/kyidentity"))
         assertEquals("http://127.0.0.1:8080", MfaMessage.origin("http://127.0.0.1:8080"))
+        assertEquals("https://[::1]", MfaMessage.origin("https://[::1]"))
+        assertEquals("https://[::1]:8443", MfaMessage.origin("https://[::1]:8443/x"))
         assertThrows(IllegalArgumentException::class.java) { MfaMessage.origin("not a url") }
     }
 

@@ -11,8 +11,6 @@ object MfaPushChallengeParser {
 
     private val DIGITS = Regex("\\d{2}")
 
-    private val PURPOSES = setOf("login", "step_up")
-
     /**
      * Parses an FCM data message into a challenge.
      *
@@ -40,7 +38,7 @@ object MfaPushChallengeParser {
             .take(MAX_DECOYS)
 
         val purpose = firstOrNull(data, "purpose")
-        require(purpose != null && purpose in PURPOSES) { "Unknown push purpose" }
+        require(purpose != null && purpose in MfaMessage.PUSH_PURPOSES) { "Unknown push purpose" }
         val expiresAt = firstOrNull(data, "expiresAtEpochMs")?.toLongOrNull()
         require(expiresAt != null && expiresAt > nowMs) { "Challenge has expired or has no expiry" }
         require(expiresAt <= nowMs + MAX_EXPIRES_AFTER_MS) { "Challenge expiry is too far ahead" }

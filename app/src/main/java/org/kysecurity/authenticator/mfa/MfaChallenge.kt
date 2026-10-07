@@ -27,7 +27,7 @@ data class MfaChallenge(
 object MfaMessage {
     // Wire contract: must equal what KyIdentity's internal/mfa PushResponseMessage builds.
     private const val PREFIX = "kyidentity-push-v2"
-    private val PURPOSES = setOf("login", "step_up")
+    internal val PUSH_PURPOSES = setOf("login", "step_up")
 
     /** scheme://host[:port], lowercased, default port dropped; the same rule KyIdentity uses. */
     fun origin(serverUrl: String): String {
@@ -44,7 +44,7 @@ object MfaMessage {
         origin: String, userId: String, deviceId: String, challengeId: String,
         purpose: String, expiresAtMs: Long, approve: Boolean, selectedDigits: String,
     ): ByteArray {
-        require(purpose in PURPOSES) { "Unknown push purpose" }
+        require(purpose in PUSH_PURPOSES) { "Unknown push purpose" }
         for (field in listOf(origin, userId, deviceId, challengeId)) {
             require(field.isNotEmpty() && '|' !in field) { "Invalid push binding field" }
         }
