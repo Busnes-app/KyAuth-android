@@ -30,6 +30,11 @@ object AppLockManager {
 
     private const val LEGACY_BIOMETRIC_WRAPPED_VAULT_KEY = "biometric_wrapped_vault_key"
 
+    // Retired with the password vault; removed so no wrapped key outlives it.
+    private const val RETIRED_HAS_PASSWORD_VAULT_KEY = "has_password_vault_key"
+    private const val RETIRED_PASSWORD_VAULT_SALT = "password_vault_salt"
+    private const val RETIRED_WRAPPED_PASSWORD_VAULT_KEY = "wrapped_password_vault_key"
+    private const val RETIRED_BIOMETRIC_WRAPPED_PASSWORD_VAULT_KEY = "biometric_wrapped_password_vault_key"
 
     @Volatile
     private var activeVaultKey: ByteArray? = null
@@ -217,6 +222,10 @@ object AppLockManager {
         getPrefs(context).edit()
             .putString(KEY_KEK_WRAPPED_KEYS, Base64.getEncoder().encodeToString(wrapped))
             .remove(LEGACY_BIOMETRIC_WRAPPED_VAULT_KEY)
+            .remove(RETIRED_HAS_PASSWORD_VAULT_KEY)
+            .remove(RETIRED_PASSWORD_VAULT_SALT)
+            .remove(RETIRED_WRAPPED_PASSWORD_VAULT_KEY)
+            .remove(RETIRED_BIOMETRIC_WRAPPED_PASSWORD_VAULT_KEY)
             .commit()
     }
 

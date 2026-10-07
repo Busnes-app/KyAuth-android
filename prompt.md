@@ -22,4 +22,3 @@ KyAuth is an on-device authenticator for the KySecurity suite.
 ## Planned work
 
 - Add a production Push MFA challenge-receive path.
-- Define encrypted record sync, revisions, and conflict behavior before network sync work starts.
