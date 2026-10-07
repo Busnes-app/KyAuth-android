@@ -43,17 +43,12 @@ KyAuth pairs an Android device with KyIdentity. It stores TOTP entries in an enc
   never enters a KDBX vault or any synced artifact. Only its metadata is stored, in
   `IdentityPasskeyStore`. The assertion path never calls `AppLockManager.useVaultKeys`, so KyIdentity
   MFA keeps working while the password vault is locked, compromised, or in recovery. The Credential
-  Provider therefore offers this one entry while KyAuth is locked, alongside the unlock action.
+  Provider offers it whether or not KyAuth is unlocked.
   Losing the device means falling back to KyIdentity recovery codes or an admin MFA reset.
 - Passkeys use native ES256 / P-256 WebAuthn cryptography with COSE public key encoding and ECDSA assertion signing.
-- KyAuth acts as an Android 14+ (API 34+) system Credential Provider for both Passkeys and Passwords via `KyAuthCredentialProviderService` (with `CredentialAuthActivity`) and an Android 12+ (API 31+) system Autofill Service via `KyAuthAutofillService`.
-- While locked, neither provider touches vault material. Autofill returns a `FillResponse` with an
-  authentication `IntentSender` (`AutofillUnlockActivity`). The Credential Provider returns an
-  authentication `Action` (`CredentialUnlockActivity`) for anything vault-backed, and, when a
-  KyIdentity passkey is enrolled, a real credential entry for it directly alongside that action — the
-  passkey entry needs no vault key, which is why it can be offered while locked. The vault-backed
-  paths unwrap the keys for one operation via `AppLockManager.useVaultKeys` and erase them again, so
-  a background request never unlocks the app.
+- KyAuth is an Android 14+ (API 34+) system Credential Provider for one credential: the KyIdentity
+  login passkey (`KyAuthCredentialProviderService`, `CredentialAuthActivity`). It mints a passkey only
+  for the exact paired KyIdentity host (`identityCreateTarget`), checked before any network work.
 - Passkey RP IDs are validated by `RpId`: syntactically valid, not a public suffix, and for browser
   callers equal to or a registrable parent of the caller's web origin. Native-app callers are bound
   to the RP by `DigitalAssetLinks`, which fetches `https://<rpId>/.well-known/assetlinks.json` and
@@ -228,13 +223,6 @@ Recorded so it is not mistaken for done:
   `IdentityPasskeyKeyTest` are gated behind a JUnit assumption and SKIP rather than pass. Running
   them on a physical device is what closes this; until then, do not claim the key is
   hardware-resident.
-- **Credential picker accumulation is unverified.** While locked, the provider returns the KyIdentity
-  entry alongside the unlock action, and `CredentialUnlockActivity` deliberately passes
-  `identityPasskey = null` so the entry is not duplicated after unlocking. That is correct only if the
-  framework ADDS an authentication action's entries to those already shown rather than replacing
-  them. This was decided by reading AOSP, not by observation. Verify on a device: with KyAuth locked,
-  trigger a KyIdentity sign-in, tap "Unlock KyAuth", and confirm the KyIdentity passkey is still offered.
-  If it disappears, pass the record through in `CredentialUnlockActivity` instead of null.
 - **Device verification.** Emulator tests cover secure-lock-backed `VaultKek` creation and backup
   flags. Full biometric prompts, `useVaultKeys`, provider unlock flows, and the per-use
   `BiometricPrompt` for the KyIdentity passkey (enrolment and assertion, via

@@ -14,6 +14,17 @@ import org.junit.Test
  */
 class WebAuthnAssertionTest {
 
+    private fun p256(): java.security.KeyPair = java.security.KeyPairGenerator.getInstance("EC")
+        .apply { initialize(java.security.spec.ECGenParameterSpec("secp256r1")) }
+        .generateKeyPair()
+
+    private fun signWith(keyPair: java.security.KeyPair, authData: ByteArray, hash: ByteArray) =
+        WebAuthnEngine.signAssertion(
+            java.security.Signature.getInstance("SHA256withECDSA").apply { initSign(keyPair.private) },
+            authData,
+            hash,
+        )
+
     private val challenge = "Q0hBTExFTkdF"
     private val origin = "android:apk-key-hash:abc123"
 
@@ -41,16 +52,12 @@ class WebAuthnAssertionTest {
 
     @Test
     fun aRelyingPartyCanVerifyTheAssertionFromTheReturnedClientDataJson() {
-        val keyPair = WebAuthnEngine.generateEcKeyPair()
+        val keyPair = p256()
         val authData = WebAuthnEngine.buildAssertionAuthData("example.com", signCount = 7)
 
         // What KyAuth returns to the relying party.
         val returnedClientDataJson = clientData(ClientData.TYPE_GET)
-        val signature = WebAuthnEngine.signAssertion(
-            WebAuthnEngine.restorePrivateKey(keyPair.private.encoded),
-            authData,
-            WebAuthnEngine.sha256(returnedClientDataJson),
-        )
+        val signature = signWith(keyPair, authData, WebAuthnEngine.sha256(returnedClientDataJson))
 
         // What the relying party does with it.
         val verifier = Signature.getInstance("SHA256withECDSA").apply {
@@ -63,16 +70,12 @@ class WebAuthnAssertionTest {
 
     @Test
     fun signingTheRawChallengeInsteadOfTheClientDataHashDoesNotVerify() {
-        val keyPair = WebAuthnEngine.generateEcKeyPair()
+        val keyPair = p256()
         val authData = WebAuthnEngine.buildAssertionAuthData("example.com", signCount = 1)
         val returnedClientDataJson = clientData(ClientData.TYPE_GET)
 
         // The pre-fix behaviour: sign the decoded challenge, hand back some other JSON.
-        val signature = WebAuthnEngine.signAssertion(
-            WebAuthnEngine.restorePrivateKey(keyPair.private.encoded),
-            authData,
-            challenge.toByteArray(Charsets.UTF_8),
-        )
+        val signature = signWith(keyPair, authData, challenge.toByteArray(Charsets.UTF_8))
 
         val verifier = Signature.getInstance("SHA256withECDSA").apply {
             initVerify(keyPair.public)
@@ -96,25 +99,5 @@ class WebAuthnAssertionTest {
             authData[32].toInt(),
         )
         assertArrayEquals(byteArrayOf(0, 0, 1, 2), authData.copyOfRange(33, 37))
-    }
-
-    @Test
-    fun `signing through a Signature matches signing through a private key`() {
-        val keyPair = WebAuthnEngine.generateEcKeyPair()
-        val authData = WebAuthnEngine.buildAssertionAuthData("example.com", 1)
-        val clientDataHash = WebAuthnEngine.sha256("client data".toByteArray())
-
-        val viaSignature = java.security.Signature.getInstance("SHA256withECDSA").apply {
-            initSign(keyPair.private)
-        }
-        val fromSignature = WebAuthnEngine.signAssertion(viaSignature, authData, clientDataHash)
-
-        // ECDSA is randomised, so the bytes differ every time; both must verify against the key.
-        val verifier = java.security.Signature.getInstance("SHA256withECDSA").apply {
-            initVerify(keyPair.public)
-            update(authData)
-            update(clientDataHash)
-        }
-        org.junit.Assert.assertTrue(verifier.verify(fromSignature))
     }
 }

@@ -66,7 +66,6 @@ import org.kysecurity.authenticator.pairing.PushTokenProvider
 import org.kysecurity.authenticator.passkeys.IdentityPasskeyKey
 import org.kysecurity.authenticator.passkeys.PasskeyQr
 import org.kysecurity.authenticator.passkeys.IdentityPasskeyStore
-import org.kysecurity.authenticator.passkeys.suppressesVaultPasskeys
 import org.kysecurity.authenticator.passwords.KdbxPasswordVault
 import org.kysecurity.authenticator.passwords.OfflineVaultKey
 import org.kysecurity.authenticator.passwords.PasswordEntry
@@ -1249,13 +1248,7 @@ class MainActivity : AppCompatActivity() {
                 layoutParams = LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f)
             })
 
-            // Badge exactly what the Credential Provider refuses to offer: suppressesVaultPasskeys
-            // is www-insensitive on both sides, unlike SignOnPasskey.isSignOnRpId, so a passkey
-            // suppressed from autofill must use the same predicate here or it looks merely broken
-            // instead of explained.
-            val stranded = entry.passkey?.let {
-                suppressesVaultPasskeys(it.rpId, pairedServerUrl)
-            } == true
+            val stranded = false
             if (entry.isPasskey) {
                 headerRow.addView(TextView(this).apply {
                     text = if (stranded) {

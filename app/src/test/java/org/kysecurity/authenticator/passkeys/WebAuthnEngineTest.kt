@@ -10,11 +10,21 @@ import org.junit.Test
 
 class WebAuthnEngineTest {
 
+    private fun p256(): java.security.KeyPair = java.security.KeyPairGenerator.getInstance("EC")
+        .apply { initialize(java.security.spec.ECGenParameterSpec("secp256r1")) }
+        .generateKeyPair()
+
+    private fun signWith(keyPair: java.security.KeyPair, authData: ByteArray, hash: ByteArray) =
+        WebAuthnEngine.signAssertion(
+            java.security.Signature.getInstance("SHA256withECDSA").apply { initSign(keyPair.private) },
+            authData,
+            hash,
+        )
+
     @Test
     fun generatesValidEcKeyPairAndSignsAssertion() {
-        val keyPair = WebAuthnEngine.generateEcKeyPair()
+        val keyPair = p256()
         val publicKey = keyPair.public as ECPublicKey
-        val privateKey = WebAuthnEngine.restorePrivateKey(keyPair.private.encoded)
 
         val credentialId = WebAuthnEngine.generateCredentialId()
         assertEquals(32, credentialId.size)
@@ -31,7 +41,7 @@ class WebAuthnEngineTest {
         val clientData = "{\"type\":\"webauthn.get\",\"challenge\":\"dGVzdA\"}".toByteArray(StandardCharsets.UTF_8)
         val clientDataHash = WebAuthnEngine.sha256(clientData)
 
-        val signature = WebAuthnEngine.signAssertion(privateKey, authData, clientDataHash)
+        val signature = signWith(keyPair, authData, clientDataHash)
         assertTrue("Signature should not be empty", signature.isNotEmpty())
 
         // Verify signature with public key
@@ -47,7 +57,7 @@ class WebAuthnEngineTest {
 
     @Test
     fun buildsRegistrationAuthDataAndAttestationObject() {
-        val keyPair = WebAuthnEngine.generateEcKeyPair()
+        val keyPair = p256()
         val publicKey = keyPair.public as ECPublicKey
         val credentialId = WebAuthnEngine.generateCredentialId()
         val coseKey = WebAuthnEngine.encodeCosePublicKey(publicKey)

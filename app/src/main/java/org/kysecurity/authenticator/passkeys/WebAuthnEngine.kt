@@ -2,16 +2,10 @@ package org.kysecurity.authenticator.passkeys
 
 import java.io.ByteArrayOutputStream
 import java.nio.ByteBuffer
-import java.security.KeyFactory
-import java.security.KeyPair
-import java.security.KeyPairGenerator
 import java.security.MessageDigest
 import java.security.SecureRandom
 import java.security.Signature
-import java.security.interfaces.ECPrivateKey
 import java.security.interfaces.ECPublicKey
-import java.security.spec.ECGenParameterSpec
-import java.security.spec.PKCS8EncodedKeySpec
 
 object WebAuthnEngine {
 
@@ -19,22 +13,10 @@ object WebAuthnEngine {
     const val FLAG_USER_VERIFIED: Byte = 0x04
     const val FLAG_ATTESTED_CREDENTIAL_DATA: Byte = 0x40
 
-    fun generateEcKeyPair(): KeyPair {
-        val kpg = KeyPairGenerator.getInstance("EC")
-        kpg.initialize(ECGenParameterSpec("secp256r1"), SecureRandom())
-        return kpg.generateKeyPair()
-    }
-
     fun generateCredentialId(): ByteArray {
         val bytes = ByteArray(32)
         SecureRandom().nextBytes(bytes)
         return bytes
-    }
-
-    fun restorePrivateKey(pkcs8Bytes: ByteArray): ECPrivateKey {
-        val keyFactory = KeyFactory.getInstance("EC")
-        val keySpec = PKCS8EncodedKeySpec(pkcs8Bytes)
-        return keyFactory.generatePrivate(keySpec) as ECPrivateKey
     }
 
     fun encodeCosePublicKey(publicKey: ECPublicKey): ByteArray {
@@ -156,16 +138,6 @@ object WebAuthnEngine {
         signature.update(clientDataHash)
         return signature.sign()
     }
-
-    fun signAssertion(
-        privateKey: ECPrivateKey,
-        authData: ByteArray,
-        clientDataHash: ByteArray,
-    ): ByteArray = signAssertion(
-        Signature.getInstance("SHA256withECDSA").apply { initSign(privateKey) },
-        authData,
-        clientDataHash,
-    )
 
     fun sha256(data: ByteArray): ByteArray =
         MessageDigest.getInstance("SHA-256").digest(data)
