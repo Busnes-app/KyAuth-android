@@ -50,20 +50,29 @@ class VaultTabTest {
         if (view is ViewGroup) for (i in 0 until view.childCount) addAll(texts(view.getChildAt(i)))
     }
 
-    private fun challenge(expiresInMs: Long) = MfaChallenge(
+    private fun challenge(expiresInMs: Long, purpose: String = "login") = MfaChallenge(
         challengeId = "c1", matchDigits = "42", decoyDigits = listOf("17"),
-        serverUrl = "https://example.test", username = "fixture-user",
+        serverUrl = "https://example.test", username = "fixture-user", purpose = purpose,
         expiresAtEpochMs = System.currentTimeMillis() + expiresInMs,
     )
+
+    @Test fun stepUpRequestShowsSensitiveActionTitle() {
+        MfaPushChallengeStore(context).save(challenge(60_000, "step_up"))
+        ActivityScenario.launch(MainActivity::class.java).use { scenario ->
+            scenario.onActivity { activity ->
+                assertTrue(texts(activity.window.decorView).contains("Confirm a sensitive action"))
+            }
+        }
+    }
 
     @Test fun pendingRequestShowsWithNoTotpEntries() {
         MfaPushChallengeStore(context).save(challenge(60_000))
         ActivityScenario.launch(MainActivity::class.java).use { scenario ->
             scenario.onActivity { activity ->
                 val shown = texts(activity.window.decorView)
-                assertTrue(shown.contains("Sign-in Request"))
+                assertTrue(shown.contains("Sign-in request"))
                 assertTrue(shown.contains("No codes yet"))
-                assertTrue(shown.indexOf("Sign-in Request") < shown.indexOf("No codes yet"))
+                assertTrue(shown.indexOf("Sign-in request") < shown.indexOf("No codes yet"))
                 assertTrue(shown.contains("Vault"))
                 assertFalse(shown.contains("Push MFA"))
                 assertFalse(shown.contains("Passwords"))
@@ -75,7 +84,7 @@ class VaultTabTest {
         MfaPushChallengeStore(context).save(challenge(-1_000))
         ActivityScenario.launch(MainActivity::class.java).use { scenario ->
             scenario.onActivity { activity ->
-                assertFalse(texts(activity.window.decorView).contains("Sign-in Request"))
+                assertFalse(texts(activity.window.decorView).contains("Sign-in request"))
             }
         }
         assertNull(MfaPushChallengeStore(context).load())
@@ -90,7 +99,7 @@ class VaultTabTest {
                 // save, not load: load() would drop the expired challenge itself.
                 MfaPushChallengeStore(context).save(expired)
                 MainActivity::class.java.getDeclaredMethod("renderContent").apply { isAccessible = true }.invoke(activity)
-                assertFalse(texts(activity.window.decorView).contains("Sign-in Request"))
+                assertFalse(texts(activity.window.decorView).contains("Sign-in request"))
                 assertNull(field.get(activity))
                 val raw = context.getSharedPreferences("mfa_push_challenge", Context.MODE_PRIVATE).getString("challenge", null)
                 assertNull(raw)

@@ -13,6 +13,7 @@ class MfaResponseClient {
     fun respond(
         serverUrl: String,
         challengeId: String,
+        deviceId: String,
         selectedDigits: String,
         approve: Boolean,
         signature: String,
@@ -26,6 +27,7 @@ class MfaResponseClient {
 
         val request = JSONObject()
             .put("challengeId", challengeId.trim())
+            .put("deviceId", deviceId)
             .put("selectedDigits", selectedDigits.trim())
             .put("approve", approve)
             .put("signature", signature.trim())

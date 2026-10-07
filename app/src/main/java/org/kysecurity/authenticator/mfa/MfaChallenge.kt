@@ -6,8 +6,8 @@ data class MfaChallenge(
     val decoyDigits: List<String>,
     val serverUrl: String,
     val username: String? = null,
-    val purpose: String = "session",
-    val expiresAtEpochMs: Long = System.currentTimeMillis(),
+    val purpose: String,
+    val expiresAtEpochMs: Long,
 ) {
     init {
         require(challengeId.isNotBlank()) { "Challenge ID is required" }
@@ -25,22 +25,32 @@ data class MfaChallenge(
 }
 
 object MfaMessage {
-    // Wire contract: must equal the prefix kyidentity-server verifies (internal/mfa/mfa.go).
-    // The product was renamed; this string was not. Changing it breaks every push approval.
-    private const val PREFIX = "kysignon-push-v1"
+    // Wire contract: must equal what KyIdentity's internal/mfa PushResponseMessage builds.
+    private const val PREFIX = "kyidentity-push-v2"
+    internal val PUSH_PURPOSES = setOf("login", "step_up")
 
-    /**
-     * Builds the exact domain-separated byte array that the device must sign with its
-     * hardware-backed ECDSA P-256 key to answer a challenge.
-     *
-     * The payload does not yet bind the server origin, account or expiry. Doing so is the right
-     * fix for a compromised push sender, but changes the wire format and needs a matching
-     * KyIdentity change; until then the client refuses to answer any server but the paired one.
-     * Tracked in AGENTS.md.
-     */
-    fun formatPayload(challengeId: String, approve: Boolean, selectedDigits: String): ByteArray {
+    /** scheme://host[:port], lowercased, default port dropped; the same rule KyIdentity uses. */
+    fun origin(serverUrl: String): String {
+        val uri = runCatching { java.net.URI(serverUrl.trim()) }.getOrNull()
+        val scheme = uri?.scheme?.lowercase()
+        val host = uri?.host?.lowercase()
+        require(scheme != null && !host.isNullOrBlank()) { "Server URL has no origin" }
+        val port = uri.port.takeUnless { it == -1 || (scheme == "https" && it == 443) || (scheme == "http" && it == 80) }
+        return if (port == null) "$scheme://$host" else "$scheme://$host:$port"
+    }
+
+    /** The exact bytes the device key signs to answer a challenge; see the push v2 spec. */
+    fun formatPayload(
+        origin: String, userId: String, deviceId: String, challengeId: String,
+        purpose: String, expiresAtMs: Long, approve: Boolean, selectedDigits: String,
+    ): ByteArray {
+        require(purpose in PUSH_PURPOSES) { "Unknown push purpose" }
+        for (field in listOf(origin, userId, deviceId, challengeId)) {
+            require(field.isNotEmpty() && '|' !in field) { "Invalid push binding field" }
+        }
+        require('|' !in selectedDigits) { "Invalid digits" }
         val verb = if (approve) "approve" else "deny"
-        val payload = "$PREFIX|$challengeId|$verb|$selectedDigits"
-        return payload.toByteArray(Charsets.UTF_8)
+        return listOf(PREFIX, origin, userId, deviceId, challengeId, purpose, expiresAtMs.toString(), verb, selectedDigits)
+            .joinToString("|").toByteArray(Charsets.UTF_8)
     }
 }
