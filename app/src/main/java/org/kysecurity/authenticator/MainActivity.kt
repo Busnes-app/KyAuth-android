@@ -61,6 +61,7 @@ import org.kysecurity.authenticator.pairing.PairingStore
 import org.kysecurity.authenticator.pairing.QrPairing
 import org.kysecurity.authenticator.pairing.QrPairingParser
 import org.kysecurity.authenticator.signon.KyIdentityAccount
+import org.kysecurity.authenticator.signon.PendingAddAccount
 import org.kysecurity.authenticator.pairing.PushTokenProvider
 import org.kysecurity.authenticator.passkeys.IdentityPasskeyKey
 import org.kysecurity.authenticator.passkeys.PasskeyQr
@@ -163,6 +164,10 @@ class MainActivity : AppCompatActivity() {
 
     enum class Tab { TOTP, MFA, PASSWORDS, SETTINGS }
 
+    companion object {
+        const val EXTRA_ADD_ACCOUNT = "add_account"
+    }
+
     private var addAccountResponse: android.accounts.AccountAuthenticatorResponse? = null
 
     // Completes the AccountManager addAccount future once pairing has produced the account.
@@ -187,7 +192,7 @@ class MainActivity : AppCompatActivity() {
             window.setFlags(WindowManager.LayoutParams.FLAG_SECURE, WindowManager.LayoutParams.FLAG_SECURE)
         }
         store = PairingStore(this)
-        addAccountResponse = intent.parcelable(android.accounts.AccountManager.KEY_ACCOUNT_AUTHENTICATOR_RESPONSE)
+        addAccountResponse = PendingAddAccount.take(intent.getStringExtra(EXTRA_ADD_ACCOUNT))
         KyAuthMessagingService.ensureChannel(this)
         handler.post(ticker)
         Thread { KyPasswordVaultSync.clearInterruptedSnapshots(filesDir) }.start()

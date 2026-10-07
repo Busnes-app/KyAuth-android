@@ -7,6 +7,7 @@ import android.accounts.AccountManager
 import android.content.Context
 import android.content.Intent
 import android.os.Bundle
+import android.os.Process
 import org.kysecurity.authenticator.MainActivity
 import org.kysecurity.authenticator.pairing.PairedAccount
 import org.kysecurity.authenticator.pairing.PairingStore
@@ -35,6 +36,14 @@ internal fun decideSignOn(caller: TrustedCaller?, authTokenType: String?, rawOri
 internal fun cleanupAfterRefusal(readSucceeded: Boolean, decision: SignOnRequest): Boolean =
     readSucceeded && decision is SignOnRequest.Refuse && decision.code == AccountManager.ERROR_CODE_BAD_REQUEST
 
+/**
+ * The add-account result names the account, which [KyIdentityAccount] shows only to pinned
+ * consumers. Settings (system UID) and those consumers may add it; anyone else would learn the
+ * name, immediately when already paired.
+ */
+internal fun mayAddAccount(callerUid: Int, trusted: Boolean): Boolean =
+    callerUid == Process.SYSTEM_UID || trusted
+
 /** `getAuthToken` option carrying the relay URL the consumer's user typed. */
 const val ORIGIN_OPTION = "org.kysecurity.identity.origin"
 
@@ -51,8 +60,13 @@ class KyIdentityAuthenticator(private val context: Context) : AbstractAccountAut
         requiredFeatures: Array<out String>?,
         options: Bundle?,
     ): Bundle {
+        val uid = options?.getInt(AccountManager.KEY_CALLER_UID, -1) ?: -1
+        val trusted = uid > 0 && TrustedConsumers.isTrusted(context, uid) != null
+        if (!mayAddAccount(uid, trusted) || response == null) {
+            return error(AccountManager.ERROR_CODE_UNSUPPORTED_OPERATION, "This app is not allowed to add a KyIdentity account")
+        }
         val intent = Intent(context, MainActivity::class.java)
-            .putExtra(AccountManager.KEY_ACCOUNT_AUTHENTICATOR_RESPONSE, response)
+            .putExtra(MainActivity.EXTRA_ADD_ACCOUNT, PendingAddAccount.issue(response))
         return Bundle().apply { putParcelable(AccountManager.KEY_INTENT, intent) }
     }
 

@@ -135,8 +135,11 @@ KyAuth pairs an Android device with KyIdentity. It stores TOTP entries in an enc
   old; KyAuth's window is 120 s.
 - Settings shows the sign-on state and a "Restore system account" action when the account is missing;
   `KyIdentityAccount.sync` returns false if the system refused to add it and Settings says so.
-- `addAccount` launches `MainActivity` with the authenticator response; pairing success completes it
-  with the account, and `onDestroy` answers `ERROR_CODE_CANCELED` if still pending.
+- `addAccount` serves only system Settings (`Process.SYSTEM_UID`) and pinned consumers
+  (`mayAddAccount`); its result names the account, which only they may see. It hands
+  `MainActivity` a `PendingAddAccount` nonce, never the response itself, so a forged launch's
+  response extra is ignored. Pairing success, or an existing pairing, completes it with the
+  account, and `onDestroy` answers `ERROR_CODE_CANCELED` if still pending.
 
 ## UI contract
 
@@ -162,7 +165,7 @@ KyAuth pairs an Android device with KyIdentity. It stores TOTP entries in an enc
 - `passwords/`: password/passkey entry models, domain matcher, password generator, autofill service, and KDBX persistence.
 - `signon/`: `DeviceAssertion` (assertion builder), `TrustedConsumers` (caller pins),
   `KyIdentityAccount` (system account lifecycle), `KyIdentityAuthenticator` + service,
-  `PendingSignOn` (nonce handoff), `SignOnActivity`, `TokenClient`.
+  `PendingSignOn`/`PendingAddAccount` (nonce handoffs), `SignOnActivity`, `TokenClient`.
 - `passkeys/`: FIDO2 WebAuthn crypto engine, `ClientData` (CollectedClientData), `RpId` validation,
   `IdentityPasskey` routing plus its hardware key and metadata store, CredentialProviderService, entry
   builder, slice builder, unlock activity, and auth activity.
