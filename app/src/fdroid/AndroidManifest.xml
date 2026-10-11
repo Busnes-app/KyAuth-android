@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- zxing scans in-process, so only fdroid asks for CAMERA; ML Kit runs it in Play Services. -->
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+    <uses-permission android:name="android.permission.CAMERA" />
+    <uses-feature android:name="android.hardware.camera" android:required="false" />
+    <application>
+        <!-- zxing's CaptureActivity attributes, plus FLAG_SECURE (set in code) and fullSensor for setOrientationLocked(false). -->
+        <activity
+            android:name=".SecureCaptureActivity"
+            android:exported="false"
+            android:clearTaskOnLaunch="true"
+            android:screenOrientation="fullSensor"
+            android:stateNotNeeded="true"
+            android:theme="@style/zxing_CaptureTheme"
+            android:windowSoftInputMode="stateAlwaysHidden" />
+    </application>
+</manifest>
