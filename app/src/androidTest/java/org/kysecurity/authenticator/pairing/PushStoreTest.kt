@@ -63,4 +63,17 @@ class PushStoreTest {
         store.forgetUnifiedPush()
         assertEquals(null, store.unifiedPushCredential())
     }
+
+    @Test fun lateAcknowledgementDoesNotRestoreARetiredEndpoint() {
+        val store = PushStore(context)
+        val up = PushCredential(PushCredential.UNIFIED_PUSH, "https://push.example.net/up", "p256dh", "auth")
+        store.transport = PushCredential.UNIFIED_PUSH
+        store.tokenChanged(paired = true, up) // refresh for up starts
+        store.transport = PushCredential.FCM
+        store.forgetUnifiedPush() // "Use Firebase"
+        store.transport = PushCredential.UNIFIED_PUSH // and back, awaiting a fresh endpoint
+        store.markRegistered(up) // the old refresh's 2xx lands
+        assertEquals(null, store.unifiedPushCredential())
+        assertTrue(store.refreshPending())
+    }
 }

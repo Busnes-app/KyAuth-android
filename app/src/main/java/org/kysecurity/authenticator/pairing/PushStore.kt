@@ -48,8 +48,11 @@ class PushStore(context: Context) {
      */
     fun markRegistered(credential: PushCredential): Unit = synchronized(LOCK) {
         val edit = preferences.edit().putCredential("registered", credential)
-        if (preferences.credential(latestKey(credential.transport)) == null) {
-            edit.putCredential(latestKey(credential.transport), credential)
+        // An FCM token can come from getToken() at pairing with no onNewToken, so the first one
+        // acknowledged seeds it. A UnifiedPush endpoint only ever comes from onNewEndpoint: an
+        // acknowledgement must never restore one that forgetUnifiedPush retired.
+        if (credential.transport == FCM && preferences.credential(latestKey(FCM)) == null) {
+            edit.putCredential(latestKey(FCM), credential)
         }
         edit.commit()
         // No usable credential for the selected transport (a switch awaiting its endpoint) stays pending too.
