@@ -45,8 +45,7 @@ import androidx.core.content.ContextCompat
 import androidx.core.view.ViewCompat
 import androidx.core.view.WindowCompat
 import androidx.core.view.WindowInsetsCompat
-import org.kysecurity.authenticator.mfa.KyAuthMessagingService
-import com.google.mlkit.vision.codescanner.GmsBarcodeScanning
+import org.kysecurity.authenticator.mfa.IncomingPush
 import org.kysecurity.authenticator.mfa.MfaChallenge
 import org.kysecurity.authenticator.mfa.MfaMessage
 import org.kysecurity.authenticator.mfa.MfaPushChallengeStore
@@ -62,7 +61,12 @@ import org.kysecurity.authenticator.pairing.QrPairing
 import org.kysecurity.authenticator.pairing.QrPairingParser
 import org.kysecurity.authenticator.signon.KyIdentityAccount
 import org.kysecurity.authenticator.signon.PendingAddAccount
-import org.kysecurity.authenticator.pairing.PushTokenProvider
+import org.kysecurity.authenticator.pairing.ChannelPush
+import org.kysecurity.authenticator.pairing.PushCredential
+import org.kysecurity.authenticator.pairing.PushRefreshClient
+import org.kysecurity.authenticator.pairing.PushStore
+import org.kysecurity.authenticator.pairing.UnifiedPushRegistrar
+import org.kysecurity.authenticator.security.SecurityWipe
 import org.kysecurity.authenticator.passkeys.IdentityPasskeyKey
 import org.kysecurity.authenticator.passkeys.IdentityPasskeyStore
 import org.kysecurity.authenticator.security.IdleLock
@@ -85,6 +89,7 @@ private const val STATE_ACTIVE_TAB = "active_tab"
 
 class MainActivity : AppCompatActivity() {
     private lateinit var store: PairingStore
+    private lateinit var qrScanner: QrScanner
     private val executor: Executor by lazy { ContextCompat.getMainExecutor(this) }
     private val handler = Handler(Looper.getMainLooper())
     private val openDialogs = mutableSetOf<AlertDialog>()
@@ -96,6 +101,9 @@ class MainActivity : AppCompatActivity() {
     private var pendingChallenge: MfaChallenge? = null
     private var challengeObserver: android.content.SharedPreferences.OnSharedPreferenceChangeListener? = null
     private var pendingTotpEntry: TotpEntry? = null
+    /** A pairing scan result for the enrollment screen to act on: text, or failure. */
+    private var scannedPairing: Result<String>? = null
+    private var askedForDistributor = false
     private var totpEntries = mutableListOf<TotpEntry>()
     private var copiedSensitiveLabel: String? = null
     private var isVaultLoading = false
@@ -158,8 +166,9 @@ class MainActivity : AppCompatActivity() {
             window.setFlags(WindowManager.LayoutParams.FLAG_SECURE, WindowManager.LayoutParams.FLAG_SECURE)
         }
         store = PairingStore(this)
+        qrScanner = ChannelQrScanner.create(this, ::onQrScanned)
         addAccountResponse = PendingAddAccount.take(intent.getStringExtra(EXTRA_ADD_ACCOUNT))
-        KyAuthMessagingService.ensureChannel(this)
+        IncomingPush.ensureChannel(this)
         handler.post(ticker)
         // A request answered by the activity this one replaced, or a new push, shows up without a resume.
         challengeObserver = MfaPushChallengeStore(this).observe {
@@ -181,6 +190,19 @@ class MainActivity : AppCompatActivity() {
         }
         renderContent()
         requestNotificationPermissionIfNeeded()
+        prepareUnifiedPushForPairing()
+    }
+
+    /**
+     * An unpaired UnifiedPush device asks for a distributor now, not at the Pair tap: the endpoint
+     * arrives asynchronously, and a KyIdentity pairing QR expires in 90 seconds.
+     */
+    private fun prepareUnifiedPushForPairing() {
+        val push = PushStore(this)
+        if (askedForDistributor || store.account() != null) return
+        if (push.transport != PushCredential.UNIFIED_PUSH || push.unifiedPushCredential() != null) return
+        askedForDistributor = true
+        registerUnifiedPush { it?.let(::toast) }
     }
 
     override fun onStop() {
@@ -262,14 +284,15 @@ class MainActivity : AppCompatActivity() {
         val btnScan = primaryButton(getString(R.string.scan_qr)).apply {
             setOnClickListener {
                 error.text = ""
-                GmsBarcodeScanning.getClient(this@MainActivity).startScan()
-                    .addOnSuccessListener { result ->
-                        val pairing = runCatching { QrPairingParser.parse(result.rawValue.orEmpty()) }
-                        pairing.onSuccess { showPairingConfirmation(it, this, progress, error) }
-                            .onFailure { error.text = it.message ?: "Invalid KyIdentity QR code" }
-                    }
-                    .addOnFailureListener { error.text = getString(R.string.scan_failed) }
+                qrScanner.scan(ScanPurpose.PAIRING)
             }
+        }
+        scannedPairing?.let { scanned ->
+            scannedPairing = null
+            scanned.onFailure { error.text = getString(R.string.scan_failed) }
+                .mapCatching { QrPairingParser.parse(it) }
+                .onSuccess { showPairingConfirmation(it, btnScan, progress, error) }
+                .onFailure { if (scanned.isSuccess) error.text = it.message ?: "Invalid KyIdentity QR code" }
         }
 
         val btnManual = secondaryButton("Enter code manually").apply {
@@ -289,6 +312,14 @@ class MainActivity : AppCompatActivity() {
             .setMessage("QR code read. Pair this device with $host?")
             .setNegativeButton("Cancel", null)
             .setPositiveButton("Pair") { _, _ ->
+                // Resolved before the device key is replaced, so a missing endpoint never costs the pairing.
+                val pushStore = PushStore(this)
+                val transport = pushStore.transport
+                val unifiedPush = pushStore.unifiedPushCredential()
+                if (transport == PushCredential.UNIFIED_PUSH && unifiedPush == null) {
+                    registerUnifiedPush { error.text = it ?: getString(R.string.push_waiting_for_distributor) }
+                    return@setPositiveButton
+                }
                 authenticateWithBiometrics(
                     reason = "Pair with $host",
                     onSuccess = {
@@ -296,8 +327,9 @@ class MainActivity : AppCompatActivity() {
                         progress.visibility = ProgressBar.VISIBLE
                         Thread {
                             var keyReplaced = false
+                            var push: PushCredential? = null
                             val result = runCatching {
-                                val pushToken = PushTokenProvider.currentToken().getOrThrow()
+                                push = if (transport == PushCredential.UNIFIED_PUSH) unifiedPush else ChannelPush.fcmCredential().getOrThrow()
                                 val hadAccount = runCatching { store.account() != null }.getOrDefault(false)
                                 keyReplaced = hadAccount
                                 val key = DeviceSigningKey.regenerate(AttestationChallenge.forPairing(pairing))
@@ -305,7 +337,7 @@ class MainActivity : AppCompatActivity() {
                                     pairing = pairing,
                                     deviceName = android.os.Build.MODEL,
                                     deviceIdentifier = store.deviceIdentifier(),
-                                    pushToken = pushToken,
+                                    push = push,
                                     publicKeyBase64 = key.publicKeyBase64,
                                     attestationChain = key.attestationChain,
                                 )
@@ -324,6 +356,7 @@ class MainActivity : AppCompatActivity() {
                                     }
                                     clearPendingChallenge()
                                     store.save(account)
+                                    push?.let { pushStore.markRegistered(it) }
                                     runCatching { KyIdentityAccount.sync(this@MainActivity, account) }
                                     if (answerAddAccountIfPossible()) return@onSuccess
                                     unlockWithPrompt()
@@ -553,6 +586,7 @@ class MainActivity : AppCompatActivity() {
         }
         headerRow.addView(headerTitle)
         headerRow.addView(addButton)
+        renderPushBanner(container, account)
         container.addView(headerRow)
         renderPendingChallenge(container, account)
 
@@ -700,13 +734,29 @@ class MainActivity : AppCompatActivity() {
             .showKyDialog()
     }
 
-    private fun scanTotpQr() {
-        GmsBarcodeScanning.getClient(this).startScan()
-            .addOnSuccessListener { result ->
-                runCatching { TotpUriParser.parse(result.rawValue.orEmpty()) }
-                    .onSuccess { queueTotpEntry(it) }
-                    .onFailure { Toast.makeText(this, "Invalid OTP QR code", Toast.LENGTH_SHORT).show() }
+    private fun scanTotpQr() = qrScanner.scan(ScanPurpose.TOTP)
+
+    /**
+     * A scan result can arrive in an activity recreated while the scanner was open, before
+     * onResume has loaded the vault or rendered a screen. Until then it is only stashed: adding a
+     * TOTP entry to the not-yet-loaded list and saving would overwrite the vault.
+     */
+    private fun onQrScanned(purpose: ScanPurpose, text: String?) {
+        val resumed = lifecycle.currentState.isAtLeast(androidx.lifecycle.Lifecycle.State.RESUMED)
+        when (purpose) {
+            ScanPurpose.PAIRING -> {
+                scannedPairing = text?.let { Result.success(it) } ?: Result.failure(IllegalStateException())
+                if (resumed) renderContent() // else onResume renders and the enrollment screen consumes it
             }
+            ScanPurpose.TOTP -> {
+                if (text == null) return
+                val entry = runCatching { TotpUriParser.parse(text) }.getOrElse {
+                    Toast.makeText(this, "Invalid OTP QR code", Toast.LENGTH_SHORT).show()
+                    return
+                }
+                if (resumed) queueTotpEntry(entry) else pendingTotpEntry = entry // loadTotpEntries adds it
+            }
+        }
     }
 
     private fun showAddTotpDialog() {
@@ -1046,6 +1096,71 @@ class MainActivity : AppCompatActivity() {
         return true
     }
 
+    private fun renderPushBanner(container: LinearLayout, account: PairedAccount) {
+        val push = PushStore(this)
+        val broken = push.broken()
+        if (!push.refreshPending() && broken == null) return
+        val banner = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            background = cardBackground()
+            setPadding(dp(20), dp(16), dp(20), dp(16))
+        }
+        banner.addView(message(listOfNotNull("Sign-in requests paused", broken).joinToString("\n")))
+        banner.addView(primaryButton("Reconnect").apply {
+            setOnClickListener { reconnectPush(account) }
+        }, fullWidthParams())
+        container.addView(banner, fullWidthParams(bottom = 16))
+    }
+
+    private fun reconnectPush(account: PairedAccount) {
+        val push = PushStore(this)
+        if (push.transport == PushCredential.UNIFIED_PUSH) {
+            val credential = push.unifiedPushCredential()
+            if (credential != null) {
+                refreshPush(account, credential)
+            } else {
+                registerUnifiedPush { toast(it ?: getString(R.string.push_waiting_for_distributor)) }
+            }
+            return
+        }
+        Thread {
+            val credential = ChannelPush.fcmCredential()
+            runOnUiThread {
+                credential.onSuccess { refreshPush(account, it) }
+                    .onFailure { toast(it.message ?: "Firebase is unavailable") }
+            }
+        }.start()
+    }
+
+    /** One prompt signs the refresh; the registered credential changes only after KyIdentity's 2xx. */
+    private fun refreshPush(account: PairedAccount, credential: PushCredential) {
+        val issuedAt = System.currentTimeMillis()
+        val message = runCatching { PushRefreshClient.message(account.serverUrl, account.deviceId, issuedAt, credential) }
+            .getOrElse { return toast("This pairing cannot reconnect. Pair KyAuth again.") }
+        val signature = runCatching { DeviceSigningKey.initSignature() }
+            .getOrElse { return toast("Unable to use the device key. Pair KyAuth again.") }
+        VaultUnlockPrompt.showForSignature(this, "Reconnect sign-in requests", signature, onAuthenticated = { authenticated ->
+            val signed = runCatching { DeviceSigningKey.sign(message, authenticated) }
+                .getOrElse { return@showForSignature toast("Unable to use the device key. Pair KyAuth again.") }
+            Thread {
+                val result = PushRefreshClient().refresh(account.serverUrl, account.deviceId, credential, issuedAt, signed)
+                runOnUiThread {
+                    result.onSuccess {
+                        val push = PushStore(this)
+                        push.markRegistered(credential)
+                        toast("Sign-in requests reconnected")
+                    }.onFailure { toast(it.message ?: "Reconnecting failed") }
+                    renderContent()
+                }
+            }.start()
+        }, onFailed = { toast("Unlock required: $it") })
+    }
+
+    private fun registerUnifiedPush(onResult: (String?) -> Unit) =
+        UnifiedPushRegistrar.register(this, { it.showKyDialog() }, onResult)
+
+    private fun toast(text: String) = Toast.makeText(this, text, Toast.LENGTH_LONG).show()
+
     /** Signs and sends one answer. The device key's own prompt is the only authentication. */
     private fun respondToChallenge(challenge: MfaChallenge, account: PairedAccount, approve: Boolean, digits: String) {
         // A mistyped number would be a denial at the server, so it never reaches the prompt.
@@ -1212,6 +1327,8 @@ class MainActivity : AppCompatActivity() {
         accountSection.addView(btnUnpair, fullWidthParams())
         sections.add(accountSection)
 
+        sections.add(pushDeliverySection())
+
         val securitySection = settingsCard()
         securitySection.addView(title("Security & App Lock"))
         val pinSwitch = Switch(this).apply {
@@ -1255,6 +1372,48 @@ class MainActivity : AppCompatActivity() {
         sections.add(aboutSection)
 
         addAdaptiveCards(container, sections)
+    }
+
+    private fun pushDeliverySection(): View {
+        val push = PushStore(this)
+        val section = settingsCard()
+        section.addView(title("Sign-in request delivery"))
+        val unifiedPush = push.transport == PushCredential.UNIFIED_PUSH
+        val status = when {
+            !unifiedPush -> "Firebase"
+            push.broken() != null -> "UnifiedPush: ${push.broken()}"
+            push.unifiedPushCredential() == null -> "UnifiedPush: waiting for a distributor"
+            else -> "UnifiedPush via ${UnifiedPushRegistrar.distributor(this) ?: "unknown distributor"}"
+        }
+        section.addView(message(if (push.refreshPending()) "$status\nPaused until you reconnect on the Vault tab." else status))
+        if (unifiedPush) {
+            section.addView(secondaryButton("Choose distributor").apply {
+                setOnClickListener { UnifiedPushRegistrar.pick(this@MainActivity) { it?.let(::toast); renderContent() } }
+            }, fullWidthParams(bottom = 8))
+        }
+        if (BuildConfig.HAS_FCM) {
+            section.addView(secondaryButton(if (unifiedPush) "Use Firebase" else "Use UnifiedPush").apply {
+                setOnClickListener { if (unifiedPush) selectFirebase() else selectUnifiedPush() }
+            }, fullWidthParams())
+        }
+        return section
+    }
+
+    private fun selectUnifiedPush() = registerUnifiedPush { failure ->
+        if (failure != null) return@registerUnifiedPush toast(failure)
+        val push = PushStore(this)
+        push.transport = PushCredential.UNIFIED_PUSH
+        if (push.registered()?.transport != PushCredential.UNIFIED_PUSH) push.markRefreshPending()
+        renderContent()
+    }
+
+    private fun selectFirebase() {
+        val push = PushStore(this)
+        push.transport = PushCredential.FCM
+        UnifiedPushRegistrar.unregister(this)
+        push.forgetUnifiedPush() // the connector reports no onUnregistered for an explicit unregister
+        if (push.registered()?.transport != PushCredential.FCM) push.markRefreshPending()
+        renderContent()
     }
 
     private fun showSetPinDialog() {
@@ -1764,11 +1923,13 @@ class MainActivity : AppCompatActivity() {
         // its key must not outlive the pairing.
         IdentityPasskeyKey.deleteAll()
         IdentityPasskeyStore(this).clear()
+        SecurityWipe.clearPush(this)
         clearPairing()
     }
 
     private fun clearPairing() {
         store.clear()
+        PushStore(this).forgetRegistration()
         clearPendingChallenge()
         runCatching { KyIdentityAccount.remove(this) }
         lockSensitiveState()

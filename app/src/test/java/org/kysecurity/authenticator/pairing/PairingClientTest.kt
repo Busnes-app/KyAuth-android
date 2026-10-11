@@ -15,7 +15,7 @@ class PairingClientTest {
                 ),
                 deviceName = " SM-F971U1 ",
                 deviceIdentifier = " install-id ",
-                pushToken = " fcm-token ",
+                push = PushCredential(PushCredential.FCM, " fcm-token "),
                 publicKeyBase64 = "public-key",
             ),
         )
@@ -26,6 +26,26 @@ class PairingClientTest {
         assertEquals("android", request.getString("platform"))
         assertEquals("public-key", request.getString("publicKey"))
         assertEquals("fcm-token", request.getString("pushToken"))
+        assertEquals("fcm", request.getString("pushTransport"))
+        assertEquals(false, request.has("pushP256dh"))
+        assertEquals(false, request.has("pushAuth"))
+    }
+
+    @Test
+    fun registrationRequestJson_carriesUnifiedPushKeys() {
+        val request = JSONObject(
+            PairingClient().registrationRequestJson(
+                pairing = QrPairing(serverUrl = "https://signin.example.com", pairingToken = "pair-token"),
+                deviceName = "Pixel",
+                deviceIdentifier = "i",
+                push = PushCredential(PushCredential.UNIFIED_PUSH, "https://ntfy.example.net/upAbC123?up=1", "p256", "authsecret"),
+                publicKeyBase64 = "pk",
+            ),
+        )
+        assertEquals("https://ntfy.example.net/upAbC123?up=1", request.getString("pushToken"))
+        assertEquals("unifiedpush", request.getString("pushTransport"))
+        assertEquals("p256", request.getString("pushP256dh"))
+        assertEquals("authsecret", request.getString("pushAuth"))
     }
 
     @Test
@@ -45,14 +65,14 @@ class PairingClientTest {
     fun registrationRequestJson_includesAttestationChainWhenPresent() {
         val with = JSONObject(PairingClient().registrationRequestJson(
             pairing = QrPairing(serverUrl = "https://signin.example.com", pairingToken = "pair-token"),
-            deviceName = "Pixel", deviceIdentifier = "i", pushToken = "fcm", publicKeyBase64 = "pk",
+            deviceName = "Pixel", deviceIdentifier = "i", push = PushCredential(PushCredential.FCM, "fcm"), publicKeyBase64 = "pk",
             attestationChain = listOf("leafB64", "intB64", "rootB64"),
         ))
         val arr = with.getJSONArray("attestation")
         assertEquals(3, arr.length()); assertEquals("leafB64", arr.getString(0))
         val without = JSONObject(PairingClient().registrationRequestJson(
             pairing = QrPairing(serverUrl = "https://signin.example.com", pairingToken = "pair-token"),
-            deviceName = "Pixel", deviceIdentifier = "i", pushToken = "fcm", publicKeyBase64 = "pk",
+            deviceName = "Pixel", deviceIdentifier = "i", push = PushCredential(PushCredential.FCM, "fcm"), publicKeyBase64 = "pk",
             attestationChain = emptyList(),
         ))
         assertEquals(false, without.has("attestation"))

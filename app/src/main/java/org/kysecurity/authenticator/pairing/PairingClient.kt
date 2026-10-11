@@ -11,7 +11,7 @@ class PairingClient {
         pairing: QrPairing,
         deviceName: String,
         deviceIdentifier: String,
-        pushToken: String? = null,
+        push: PushCredential? = null,
         publicKeyBase64: String = DeviceSigningKey.publicKeyBase64(),
         attestationChain: List<String> = emptyList(),
     ): PairedAccount {
@@ -20,7 +20,7 @@ class PairingClient {
         require(publicKeyBase64.isNotBlank()) { "Device public key is required" }
 
         val endpoint = PairingEndpoint.validatedRegistrationUrl(pairing.serverUrl, pairing.registrationUrl)
-        val request = registrationRequestJson(pairing, deviceName, deviceIdentifier, pushToken, publicKeyBase64, attestationChain)
+        val request = registrationRequestJson(pairing, deviceName, deviceIdentifier, push, publicKeyBase64, attestationChain)
 
         val connection = (endpoint.toURL().openConnection() as HttpURLConnection).apply {
             requestMethod = "POST"
@@ -82,7 +82,7 @@ class PairingClient {
         pairing: QrPairing,
         deviceName: String,
         deviceIdentifier: String,
-        pushToken: String?,
+        push: PushCredential?,
         publicKeyBase64: String,
         attestationChain: List<String> = emptyList(),
     ): String = JSONObject().apply {
@@ -99,8 +99,11 @@ class PairingClient {
         put("deviceIdentifier", deviceIdentifier.trim())
         put("platform", "android")
         put("publicKey", publicKeyBase64)
-        if (!pushToken.isNullOrBlank()) {
-            put("pushToken", pushToken.trim())
+        if (push != null) {
+            put("pushToken", push.token.trim())
+            put("pushTransport", push.transport)
+            push.p256dh?.let { put("pushP256dh", it) }
+            push.auth?.let { put("pushAuth", it) }
         }
         if (attestationChain.isNotEmpty()) put("attestation", JSONArray(attestationChain))
     }.toString()

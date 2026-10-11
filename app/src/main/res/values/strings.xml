@@ -34,6 +34,7 @@
     <string name="boot_locked_custom_os">Bootloader locked (custom OS).</string>
     <string name="boot_unlocked">Bootloader unlocked.</string>
     <string name="scan_failed">Unable to scan QR code</string>
+    <string name="push_waiting_for_distributor">Waiting for your UnifiedPush distributor to connect. Try again in a moment.</string>
     <string name="manual_pairing_required">Server URL and Pairing Token/PIN are required</string>
     <string name="vault_locked">VAULT LOCKED</string>
     <string name="unlock_your_vault">Unlock your vault</string>
