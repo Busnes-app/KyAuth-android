@@ -77,7 +77,7 @@ class IdentityPasskeyStoreTest {
     fun securityWipeClearsEveryPrefsFileAndTheMasterKey() {
         val context = ApplicationProvider.getApplicationContext<Context>()
         val names = listOf(
-            "mfa_push_challenge", "push", "pairing", "identity_passkey",
+            "mfa_push_challenge", "push", "unifiedpush.connector", "pairing", "identity_passkey",
             "pairing_store", "kypasswords_pairing",
         )
         names.forEach { context.getSharedPreferences(it, Context.MODE_PRIVATE).edit().putString("k", "v").commit() }

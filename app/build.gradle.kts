@@ -56,6 +56,36 @@ android {
 
     buildFeatures { buildConfig = true }
 
+    // One applicationId for every channel: KyIdentity pins attestation to it, and the
+    // org.kysecurity.identity account type can have only one owner on a device.
+    flavorDimensions += "channel"
+    productFlavors {
+        create("play") {
+            dimension = "channel"
+            isDefault = true
+            buildConfigField("boolean", "HAS_FCM", "true")
+        }
+        create("github") {
+            dimension = "channel"
+            buildConfigField("boolean", "HAS_FCM", "true")
+        }
+        // F-Droid ships no Google code: UnifiedPush only, zxing for QR.
+        create("fdroid") {
+            dimension = "channel"
+            buildConfigField("boolean", "HAS_FCM", "false")
+        }
+    }
+
+    sourceSets {
+        // Both: java.srcDir alone does not reach kotlinc for a flavor source set.
+        listOf("play", "github").forEach { flavor ->
+            getByName(flavor).java.srcDir("src/gms/java")
+            getByName(flavor).kotlin.srcDir("src/gms/java")
+            getByName(flavor).res.srcDir("src/gms/res")
+            getByName(flavor).manifest.srcFile("src/gms/AndroidManifest.xml")
+        }
+    }
+
     buildTypes {
         debug {
             // Debug builds run in an emulator/IDE capture surface. Release remains secure by default.
@@ -82,13 +112,20 @@ android {
     }
 }
 
+// Google dependencies, named once and extended into play and github only.
+val gmsImplementation by configurations.creating
+configurations.named("playImplementation") { extendsFrom(gmsImplementation) }
+configurations.named("githubImplementation") { extendsFrom(gmsImplementation) }
+
 dependencies {
     implementation("androidx.core:core-ktx:1.18.0")
     implementation("androidx.appcompat:appcompat:1.8.0")
     implementation("com.google.android.material:material:1.14.0")
     implementation("androidx.biometric:biometric:1.1.0")
-    implementation("com.google.android.gms:play-services-code-scanner:16.1.0")
-    implementation("com.google.firebase:firebase-messaging:25.1.2")
+    gmsImplementation("com.google.android.gms:play-services-code-scanner:16.1.0")
+    gmsImplementation("com.google.firebase:firebase-messaging:25.1.2")
+    "fdroidImplementation"("com.journeyapps:zxing-android-embedded:4.3.0")
+    implementation("org.unifiedpush.android:connector:3.3.3")
     implementation("app.keemobile:kotpass:0.13.0")
     implementation("com.google.guava:guava:33.7.1-android")
 

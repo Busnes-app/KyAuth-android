@@ -31,10 +31,10 @@
             tools:targetApi="34"
             android:theme="@style/Theme.KyAuth" />
         <service
-            android:name=".mfa.KyAuthMessagingService"
+            android:name=".mfa.KyAuthUnifiedPushService"
             android:exported="false">
             <intent-filter>
-                <action android:name="com.google.firebase.MESSAGING_EVENT" />
+                <action android:name="org.unifiedpush.android.connector.PUSH_EVENT" />
             </intent-filter>
         </service>
         <service
