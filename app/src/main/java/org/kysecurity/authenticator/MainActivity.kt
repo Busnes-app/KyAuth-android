@@ -97,6 +97,7 @@ class MainActivity : AppCompatActivity() {
     private var activeTab = Tab.VAULT
     private var pendingChallenge: MfaChallenge? = null
     private var pendingTotpEntry: TotpEntry? = null
+    private var askedForDistributor = false
     private var totpEntries = mutableListOf<TotpEntry>()
     private var copiedSensitiveLabel: String? = null
     private var isVaultLoading = false
@@ -175,6 +176,19 @@ class MainActivity : AppCompatActivity() {
         }
         renderContent()
         requestNotificationPermissionIfNeeded()
+        prepareUnifiedPushForPairing()
+    }
+
+    /**
+     * An unpaired UnifiedPush device asks for a distributor now, not at the Pair tap: the endpoint
+     * arrives asynchronously, and a KyIdentity pairing QR expires in 90 seconds.
+     */
+    private fun prepareUnifiedPushForPairing() {
+        val push = PushStore(this)
+        if (askedForDistributor || store.account() != null) return
+        if (push.transport != PushCredential.UNIFIED_PUSH || push.unifiedPushCredential() != null) return
+        askedForDistributor = true
+        registerUnifiedPush { it?.let(::toast) }
     }
 
     override fun onStop() {
