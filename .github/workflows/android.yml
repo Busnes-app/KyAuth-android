@@ -14,7 +14,16 @@ jobs:
           distribution: temurin
           java-version: 17
           cache: gradle
-      - run: ./gradlew test assembleDebug lintDebug compileDebugAndroidTestSources
+      # Release APKs are unsigned here: the build signs only when the KYAUTH_* signing material exists.
+      - run: >-
+          ./gradlew testPlayDebugUnitTest testGithubDebugUnitTest testFdroidDebugUnitTest
+          lintPlayDebug lintGithubDebug lintFdroidDebug
+          assemblePlayRelease assembleGithubRelease assembleFdroidRelease
+          compilePlayDebugAndroidTestSources
+      - name: F-Droid build carries no Google Play code
+        run: |
+          deps=$(./gradlew -q :app:dependencies --configuration fdroidReleaseRuntimeClasspath)
+          if grep -E 'com\.google\.(firebase|android\.gms|mlkit)' <<<"$deps"; then exit 1; fi
 
   device:
     runs-on: ubuntu-latest
@@ -43,4 +52,4 @@ jobs:
             adb shell wm dismiss-keyguard
             adb shell locksettings set-pin 246810
             python3 tools/unlock_test_emulator.py
-            ./gradlew connectedDebugAndroidTest
+            ./gradlew connectedPlayDebugAndroidTest
