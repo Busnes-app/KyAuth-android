@@ -7,7 +7,7 @@ import org.json.JSONObject
 /**
  * Decides whether a relying party is the paired KyIdentity server.
  *
- * A KyIdentity login passkey is hardware-resident and never enters a KDBX vault or any synced
+ * A KyIdentity login passkey is hardware-resident and never enters the TOTP vault or any synced
  * artifact. This predicate is the single place that decision is made.
  *
  * The paired server URL is a locally held fact, never a caller assertion, so a hostile relying

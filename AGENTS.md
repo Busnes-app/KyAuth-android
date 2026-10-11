@@ -4,7 +4,7 @@ KyAuth is the native Android authenticator for the KySecurity suite.
 
 ## Purpose
 
-KyAuth pairs an Android device with KyIdentity. It stores TOTP entries in an encrypted local KDBX v4 vault. It also provides a local biometric and optional PIN lock.
+KyAuth pairs an Android device with KyIdentity. It stores TOTP entries in an encrypted local AES-256-GCM vault file. It also provides a local biometric and optional PIN lock.
 
 ## Current product contract
 
@@ -13,7 +13,12 @@ KyAuth pairs an Android device with KyIdentity. It stores TOTP entries in an enc
 - The optional registration URL must use the same origin as the pairing server.
 - Each pairing generates a fresh P-256 device signing key (alias unchanged) with an attestation challenge derived from the pairing credential (`AttestationChallenge`), StrongBox first, TEE fallback, plain key when the device cannot attest. The registration request carries the attestation chain (`attestation`, base64 DER, leaf first); KyIdentity grades it `none`/`tee`/`strongbox` and returns `device.attestedLevel` and `device.bootState`, which `PairedAccount` stores and Settings shows, with an `attestationReason` (`AttestationReason`: server silent, keystore software-only, or chain not accepted) that lets the `none` hint say whether pairing again can help. Re-pairing rotates the key: the old key is deleted before registration, so a failed re-pair clears the local pairing and system account, because the phone has already deleted the key; the user pairs again. Unlike Unpair, it keeps the KyIdentity passkey. Settings shows the boot state on its own line. Only an attested device earns MFA-grade sign-on; see the attestation spec.
 - Frozen identifier, kept through the KyIdentity rename: the Keystore alias `kysignon-device-signing-v1` (renaming it orphans every paired device's key). Rename nothing the Keystore already holds.
-- TOTP entries use KeePass `TimeOtp-*` fields in `totp_vault.kdbx`, along with standard KeePass title, URL, and notes.
+- TOTP entries live in `totp_vault.bin` (`TotpVault`): version byte `0x01` || 12-byte random nonce
+  (fresh per save) || AES-256-GCM ciphertext and 16-byte tag over a JSON array of every
+  `TotpEntry` field; AAD is UTF-8 `kyauth-totp-v1` || version. Writes are atomic. A missing file
+  is an empty vault; any other unreadable file throws `TotpVaultException`, KyAuth stays locked
+  and says so, and `saveTotpEntries` refuses to write a list that did not come from a successful
+  load. The KDBX vault was replaced with no migration: its `totp_vault.kdbx` is deleted on load.
 - The TOTP vault uses an app-private file and an independent random vault key.
 - The TOTP vault key is wrapped by `VaultKek`, an authentication-bound Keystore RSA-OAEP key
   (`setUserAuthenticationRequired(true)`, per-use), as `{"totp": base64}`. Wrapping needs no prompt;
@@ -35,7 +40,7 @@ KyAuth pairs an Android device with KyIdentity. It stores TOTP entries in an enc
 - An MFA response must carry an explicit decision. A 2xx with no `approved`/`success` field is a protocol error, not an approval.
 - A passkey whose RP ID is the paired KyIdentity server's host is the exception: its private key is
   generated in AndroidKeyStore (StrongBox where available, TEE otherwise), is non-exportable, and
-  never enters a KDBX vault or any synced artifact. Only its metadata is stored, in
+  never enters the TOTP vault or any synced artifact. Only its metadata is stored, in
   `IdentityPasskeyStore`. The assertion path never touches the vault key, so KyIdentity
   MFA keeps working while KyAuth is locked. The Credential Provider offers it whether or not KyAuth
   is unlocked.
@@ -116,7 +121,7 @@ KyAuth pairs an Android device with KyIdentity. It stores TOTP entries in an enc
 - Per-flavor seams with one implementation in `src/gms` and one in `src/fdroid`: `ChannelPush` (FCM credential; fdroid fails) and `ChannelQrScanner` (ML Kit or zxing, created in `onCreate`). A scan carries a `ScanPurpose` (pairing or TOTP); zxing keeps it in saved state so a result returning to a recreated activity still routes. `MainActivity.onQrScanned` only stashes a result until the activity is resumed: a TOTP entry goes to `pendingTotpEntry` for `loadTotpEntries`, never into the unloaded list, which a save would write over the vault.
 - `mfa/`: push challenge model, `IncomingPush` (the one receive path and its notifications), the UnifiedPush service, signed payload, and response client. The FCM service is in `src/gms`.
 - `security/`: lock state, PIN policy, `VaultKek` authentication-bound key wrapping, `VaultUnlockPrompt`, atomic file writes, and local wipe (clears pairing, passkey record, legacy encrypted files and the androidx master key; `clearPush`, also run by Unpair, unregisters UnifiedPush through the connector, which deletes the instance's registration and WebPush keys and its distributor, then deletes the `push` and `mfa_push_challenge` prefs and cancels notifications. Never delete the `unifiedpush-connector` database by file: the connector keeps it open as a process-wide singleton, so later registrations would write to the unlinked file and lose their keys at the next start).
-- `totp/`: TOTP parsing, generation, and KDBX persistence.
+- `totp/`: TOTP parsing, generation, and `TotpVault` persistence.
 - `signon/`: `DeviceAssertion` (assertion builder), `TrustedConsumers` (caller pins),
   `KyIdentityAccount` (system account lifecycle), `KyIdentityAuthenticator` + service,
   `PendingSignOn`/`PendingAddAccount` (nonce handoffs), `SignOnActivity`, `TokenClient`.

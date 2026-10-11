@@ -74,7 +74,8 @@ import org.kysecurity.authenticator.security.AppLockManager
 import org.kysecurity.authenticator.security.VaultUnlockPrompt
 import org.kysecurity.authenticator.security.PinFailurePolicy
 import org.kysecurity.authenticator.security.PinPolicy
-import org.kysecurity.authenticator.totp.KdbxTotpVault
+import org.kysecurity.authenticator.totp.TotpVault
+import org.kysecurity.authenticator.totp.TotpVaultException
 import org.kysecurity.authenticator.totp.TotpEntry
 import org.kysecurity.authenticator.totp.TotpDisplay
 import org.kysecurity.authenticator.totp.TotpUriParser
@@ -86,6 +87,7 @@ import kotlin.math.max
 import kotlin.math.min
 
 private const val STATE_ACTIVE_TAB = "active_tab"
+private const val VAULT_UNREADABLE = "The TOTP vault could not be read. KyAuth stays locked and has not changed it."
 
 class MainActivity : AppCompatActivity() {
     private lateinit var store: PairingStore
@@ -108,6 +110,8 @@ class MainActivity : AppCompatActivity() {
     private var copiedSensitiveLabel: String? = null
     private var isVaultLoading = false
     private var vaultLoadGeneration: Long? = null
+    /** [totpEntries] came from a successful load; only then may it be saved. */
+    private var vaultLoaded = false
     private data class TotpViews(
         val entry: TotpEntry,
         val code: TextView,
@@ -115,7 +119,7 @@ class MainActivity : AppCompatActivity() {
         val progress: ProgressBar,
     )
     private val totpViews = mutableListOf<TotpViews>()
-    private val vaultFile: File by lazy { File(filesDir, "totp_vault.kdbx") }
+    private val vaultFile: File by lazy { File(filesDir, "totp_vault.bin") }
 
     private val ticker = object : Runnable {
         override fun run() {
@@ -186,7 +190,10 @@ class MainActivity : AppCompatActivity() {
             // unlock prompt first would only add a second one.
             if (pendingChallenge == null) unlockWithPrompt(silent = true)
         } else {
-            runCatching { loadTotpEntries() }
+            runCatching { loadTotpEntries() }.onFailure {
+                lockSensitiveState()
+                toast(VAULT_UNREADABLE)
+            }
         }
         renderContent()
         requestNotificationPermissionIfNeeded()
@@ -1015,7 +1022,8 @@ class MainActivity : AppCompatActivity() {
 
     private fun loadTotpEntries() {
         val vaultKey = AppLockManager.getVaultKey() ?: return
-        totpEntries = KdbxTotpVault.loadEntries(vaultFile, vaultKey).toMutableList()
+        totpEntries = TotpVault.load(vaultFile, vaultKey).toMutableList()
+        vaultLoaded = true
         pendingTotpEntry?.let {
             pendingTotpEntry = null
             totpEntries.add(it)
@@ -1024,8 +1032,12 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun saveTotpEntries() {
-        val vaultKey = AppLockManager.getVaultKey() ?: return
-        KdbxTotpVault.saveEntries(vaultFile, vaultKey, totpEntries)
+        val vaultKey = AppLockManager.getVaultKey()
+        if (vaultKey == null || !vaultLoaded) {
+            toast("TOTP vault is not open. The change was not saved.")
+            return
+        }
+        TotpVault.save(vaultFile, vaultKey, totpEntries)
     }
 
     private fun addTotpEntry(entry: TotpEntry) {
@@ -1545,7 +1557,7 @@ class MainActivity : AppCompatActivity() {
                     check(unlock())
                 }
                 val totpKey = checkNotNull(AppLockManager.getVaultKey())
-                KdbxTotpVault.loadEntries(vaultFile, totpKey)
+                TotpVault.load(vaultFile, totpKey)
             }
             runOnUiThread {
                 if (vaultLoadGeneration != generation) return@runOnUiThread
@@ -1561,6 +1573,7 @@ class MainActivity : AppCompatActivity() {
                 }
                 result.onSuccess { totp ->
                     totpEntries = totp.toMutableList()
+                    vaultLoaded = true
                     pendingTotpEntry?.let { entry ->
                         pendingTotpEntry = null
                         runCatching { addTotpEntry(entry) }.onFailure {
@@ -1570,7 +1583,12 @@ class MainActivity : AppCompatActivity() {
                     renderContent()
                 }.onFailure {
                     lockSensitiveState()
-                    onError()
+                    if (it is TotpVaultException) {
+                        renderContent()
+                        toast(VAULT_UNREADABLE)
+                    } else {
+                        onError()
+                    }
                 }
             }
         }.start()
@@ -1953,6 +1971,7 @@ class MainActivity : AppCompatActivity() {
         AppLockManager.lock()
         isVaultLoading = false
         vaultLoadGeneration = null
+        vaultLoaded = false
         pendingTotpEntry = null
         dismissSensitiveDialogs()
         totpEntries.clear()
