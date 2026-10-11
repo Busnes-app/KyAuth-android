@@ -98,6 +98,11 @@ class MfaPushChallengeStore(context: Context) {
         preferences.edit().clear().apply()
     }
 
+    /** Clears the stored request only if it is [challengeId]: a newer one must survive a late answer. */
+    fun clear(challengeId: String) {
+        if (load()?.challengeId == challengeId) clear()
+    }
+
     private fun encode(challenge: MfaChallenge): String = JSONObject()
         .put("challengeId", challenge.challengeId)
         .put("matchDigits", challenge.matchDigits)

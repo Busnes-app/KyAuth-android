@@ -94,6 +94,42 @@ class VaultTabTest {
         }
     }
 
+    @Test fun lateClearSparesANewerRequest() {
+        val store = MfaPushChallengeStore(context)
+        store.save(challenge(60_000).copy(challengeId = "newer"))
+        store.clear("c1")
+        assertTrue(store.load()?.challengeId == "newer")
+        store.clear("newer")
+        assertNull(store.load())
+    }
+
+    @Test fun pairingChangeClearsTheStoredRequest() {
+        MfaPushChallengeStore(context).save(challenge(60_000))
+        ActivityScenario.launch(MainActivity::class.java).use { scenario ->
+            scenario.onActivity { activity ->
+                MainActivity::class.java.getDeclaredMethod("clearPairing").apply { isAccessible = true }.invoke(activity)
+            }
+        }
+        assertNull(MfaPushChallengeStore(context).load())
+    }
+
+    // Answered elsewhere (e.g. by the activity this one replaced): no second prompt, card dropped.
+    @Test fun requestNoLongerStoredIsDroppedWithoutAPrompt() {
+        val shown = challenge(60_000)
+        MfaPushChallengeStore(context).save(shown)
+        ActivityScenario.launch(MainActivity::class.java).use { scenario ->
+            scenario.onActivity { activity ->
+                MfaPushChallengeStore(context).clear()
+                MainActivity::class.java.getDeclaredMethod(
+                    "respondToChallenge", MfaChallenge::class.java, PairedAccount::class.java,
+                    Boolean::class.javaPrimitiveType, String::class.java,
+                ).apply { isAccessible = true }.invoke(activity, shown, PairingStore(context).account(), false, "")
+                assertFalse(texts(activity.window.decorView).contains("Sign-in request"))
+                assertTrue(activity.supportFragmentManager.fragments.none { it.javaClass.name.contains("Biometric") })
+            }
+        }
+    }
+
     @Test fun expiredRequestIsClearedAndNotShown() {
         MfaPushChallengeStore(context).save(challenge(-1_000))
         ActivityScenario.launch(MainActivity::class.java).use { scenario ->

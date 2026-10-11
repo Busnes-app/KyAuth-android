@@ -315,6 +315,7 @@ class MainActivity : AppCompatActivity() {
                                         IdentityPasskeyKey.deleteAll()
                                         runCatching { IdentityPasskeyStore(this@MainActivity).clear() }
                                     }
+                                    clearPendingChallenge()
                                     store.save(account)
                                     runCatching { KyIdentityAccount.sync(this@MainActivity, account) }
                                     if (answerAddAccountIfPossible()) return@onSuccess
@@ -1045,10 +1046,13 @@ class MainActivity : AppCompatActivity() {
             Toast.makeText(this, "Enter the 2-digit number shown on your computer screen.", Toast.LENGTH_SHORT).show()
             return
         }
-        // Answers go to the current pairing only; a request left over from an earlier one is dropped.
-        if (challenge.serverUrl.trim() != account.serverUrl.trim()) {
-            pendingChallenge = null
-            MfaPushChallengeStore(this).clear()
+        // Answers go to the current pairing only, and only while the request is still stored:
+        // one answered from another activity instance, or left from an earlier pairing, is dropped.
+        val challengeStore = MfaPushChallengeStore(this)
+        if (challenge.serverUrl.trim() != account.serverUrl.trim()) challengeStore.clear(challenge.challengeId)
+        val stored = challengeStore.load()
+        if (stored?.challengeId != challenge.challengeId) {
+            pendingChallenge = stored // whatever is still open, possibly a newer request
             renderContent()
             return
         }
@@ -1084,12 +1088,13 @@ class MainActivity : AppCompatActivity() {
                         approve = approve,
                         signature = signature,
                     )
+                    // Before the UI hop: an activity recreated mid-request must not see the request as open.
+                    if (result is MfaResponseResult.Success) MfaPushChallengeStore(applicationContext).clear(challenge.challengeId)
                     runOnUiThread {
                         if (isDestroyed) return@runOnUiThread
                         when (result) {
                             is MfaResponseResult.Success -> {
                                 pendingChallenge = null
-                                MfaPushChallengeStore(this).clear()
                                 val message = if (result.approved) "Sign-in Approved" else "Sign-in Denied"
                                 Toast.makeText(this, message, Toast.LENGTH_SHORT).show()
                             }
@@ -1759,9 +1764,16 @@ class MainActivity : AppCompatActivity() {
 
     private fun clearPairing() {
         store.clear()
+        clearPendingChallenge()
         runCatching { KyIdentityAccount.remove(this) }
         lockSensitiveState()
         renderContent()
+    }
+
+    /** A pairing change invalidates any stored request: it named the old device and account. */
+    private fun clearPendingChallenge() {
+        pendingChallenge = null
+        MfaPushChallengeStore(this).clear()
     }
 
     private fun lockSensitiveState() {
