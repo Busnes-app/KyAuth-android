@@ -97,6 +97,8 @@ class MainActivity : AppCompatActivity() {
     private var activeTab = Tab.VAULT
     private var pendingChallenge: MfaChallenge? = null
     private var pendingTotpEntry: TotpEntry? = null
+    /** A pairing scan result for the enrollment screen to act on: text, or failure. */
+    private var scannedPairing: Result<String>? = null
     private var askedForDistributor = false
     private var totpEntries = mutableListOf<TotpEntry>()
     private var copiedSensitiveLabel: String? = null
@@ -159,7 +161,7 @@ class MainActivity : AppCompatActivity() {
             window.setFlags(WindowManager.LayoutParams.FLAG_SECURE, WindowManager.LayoutParams.FLAG_SECURE)
         }
         store = PairingStore(this)
-        qrScanner = ChannelQrScanner.create(this)
+        qrScanner = ChannelQrScanner.create(this, ::onQrScanned)
         addAccountResponse = PendingAddAccount.take(intent.getStringExtra(EXTRA_ADD_ACCOUNT))
         IncomingPush.ensureChannel(this)
         handler.post(ticker)
@@ -269,16 +271,15 @@ class MainActivity : AppCompatActivity() {
         val btnScan = primaryButton(getString(R.string.scan_qr)).apply {
             setOnClickListener {
                 error.text = ""
-                qrScanner.scan { text ->
-                    if (text == null) {
-                        error.text = getString(R.string.scan_failed)
-                        return@scan
-                    }
-                    runCatching { QrPairingParser.parse(text) }
-                        .onSuccess { showPairingConfirmation(it, this, progress, error) }
-                        .onFailure { error.text = it.message ?: "Invalid KyIdentity QR code" }
-                }
+                qrScanner.scan(ScanPurpose.PAIRING)
             }
+        }
+        scannedPairing?.let { scanned ->
+            scannedPairing = null
+            scanned.onFailure { error.text = getString(R.string.scan_failed) }
+                .mapCatching { QrPairingParser.parse(it) }
+                .onSuccess { showPairingConfirmation(it, btnScan, progress, error) }
+                .onFailure { if (scanned.isSuccess) error.text = it.message ?: "Invalid KyIdentity QR code" }
         }
 
         val btnManual = secondaryButton("Enter code manually").apply {
@@ -712,12 +713,28 @@ class MainActivity : AppCompatActivity() {
             .showKyDialog()
     }
 
-    private fun scanTotpQr() {
-        qrScanner.scan { text ->
-            if (text == null) return@scan
-            runCatching { TotpUriParser.parse(text) }
-                .onSuccess { queueTotpEntry(it) }
-                .onFailure { Toast.makeText(this, "Invalid OTP QR code", Toast.LENGTH_SHORT).show() }
+    private fun scanTotpQr() = qrScanner.scan(ScanPurpose.TOTP)
+
+    /**
+     * A scan result can arrive in an activity recreated while the scanner was open, before
+     * onResume has loaded the vault or rendered a screen. Until then it is only stashed: adding a
+     * TOTP entry to the not-yet-loaded list and saving would overwrite the vault.
+     */
+    private fun onQrScanned(purpose: ScanPurpose, text: String?) {
+        val resumed = lifecycle.currentState.isAtLeast(androidx.lifecycle.Lifecycle.State.RESUMED)
+        when (purpose) {
+            ScanPurpose.PAIRING -> {
+                scannedPairing = text?.let { Result.success(it) } ?: Result.failure(IllegalStateException())
+                if (resumed) renderContent() // else onResume renders and the enrollment screen consumes it
+            }
+            ScanPurpose.TOTP -> {
+                if (text == null) return
+                val entry = runCatching { TotpUriParser.parse(text) }.getOrElse {
+                    Toast.makeText(this, "Invalid OTP QR code", Toast.LENGTH_SHORT).show()
+                    return
+                }
+                if (resumed) queueTotpEntry(entry) else pendingTotpEntry = entry // loadTotpEntries adds it
+            }
         }
     }
 
