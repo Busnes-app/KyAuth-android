@@ -28,13 +28,13 @@ class PushStore(context: Context) {
     fun broken(): String? = preferences.getString("broken", null)
 
     /** Records a new credential from a transport; true when KyIdentity now holds a stale one. */
-    fun tokenChanged(paired: Boolean, current: PushCredential): Boolean {
-        if (current.transport == UNIFIED_PUSH) {
-            preferences.edit().putCredential("up", current).remove("broken").apply()
-        }
+    fun tokenChanged(paired: Boolean, current: PushCredential): Boolean = synchronized(LOCK) {
+        preferences.edit().putCredential(latestKey(current.transport), current)
+            .apply { if (current.transport == UNIFIED_PUSH) remove("broken") }
+            .commit()
         val stale = paired && current.transport == transport && current != registered()
         if (stale) markRefreshPending()
-        return stale
+        stale
     }
 
     fun markRefreshPending() = preferences.edit().putBoolean("refresh_pending", true).apply()
@@ -42,15 +42,26 @@ class PushStore(context: Context) {
     /** UnifiedPush stopped: the endpoint is no longer trusted until a new one arrives. */
     fun markBroken(reason: String) = preferences.edit().putString("broken", reason).apply()
 
-    fun markRegistered(credential: PushCredential) = preferences.edit()
-        .putCredential("registered", credential)
-        .remove("refresh_pending")
-        .apply()
+    /**
+     * KyIdentity acknowledged [credential]. Pending clears only if it is still the selected
+     * transport's latest: a rotation or transport switch that landed mid-request stays pending.
+     */
+    fun markRegistered(credential: PushCredential): Unit = synchronized(LOCK) {
+        val edit = preferences.edit().putCredential("registered", credential)
+        if (preferences.credential(latestKey(credential.transport)) == null) {
+            edit.putCredential(latestKey(credential.transport), credential)
+        }
+        edit.commit()
+        val latest = if (transport == UNIFIED_PUSH) unifiedPushCredential() else preferences.credential(latestKey(FCM))
+        preferences.edit().putBoolean("refresh_pending", latest != null && latest != credential).commit()
+    }
 
     fun forgetRegistration() = preferences.edit()
         .putCredential("registered", null)
         .remove("refresh_pending")
         .apply()
+
+    private fun latestKey(transport: String) = if (transport == UNIFIED_PUSH) "up" else "fcm"
 
     private fun SharedPreferences.credential(prefix: String): PushCredential? = runCatching {
         PushCredential(
@@ -66,4 +77,9 @@ class PushStore(context: Context) {
         .putString("${prefix}_token", credential?.token)
         .putString("${prefix}_p256dh", credential?.p256dh)
         .putString("${prefix}_auth", credential?.auth)
+
+    private companion object {
+        // Services and the activity write from different threads; reconcile must see one state.
+        val LOCK = Any()
+    }
 }

@@ -1097,8 +1097,6 @@ class MainActivity : AppCompatActivity() {
                     result.onSuccess {
                         val push = PushStore(this)
                         push.markRegistered(credential)
-                        // An endpoint that arrived mid-request is still stale.
-                        push.unifiedPushCredential()?.let { push.tokenChanged(true, it) }
                         toast("Sign-in requests reconnected")
                     }.onFailure { toast(it.message ?: "Reconnecting failed") }
                     renderContent()
@@ -1394,7 +1392,7 @@ class MainActivity : AppCompatActivity() {
         section.addView(message(if (push.refreshPending()) "$status\nPaused until you reconnect on the Vault tab." else status))
         if (unifiedPush) {
             section.addView(secondaryButton("Choose distributor").apply {
-                setOnClickListener { registerUnifiedPush { it?.let(::toast); renderContent() } }
+                setOnClickListener { UnifiedPushRegistrar.pick(this@MainActivity) { it?.let(::toast); renderContent() } }
             }, fullWidthParams(bottom = 8))
         }
         if (BuildConfig.HAS_FCM) {

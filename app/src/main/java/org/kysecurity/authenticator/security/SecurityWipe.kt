@@ -65,13 +65,13 @@ object SecurityWipe {
     )
 
     /**
-     * Push delivery state, for wipe and unpair. Unregister FIRST: it needs the connector's records
-     * to unsubscribe, and the connector database holds the WebPush private key.
+     * Push delivery state, for wipe and unpair. The connector's unregister deletes the instance's
+     * registration and WebPush keys, and its distributor once no instance is left. Its database
+     * is not deleted by file: the connector holds it open as a process-wide singleton, and later
+     * registrations would write to the unlinked file and lose their keys at the next start.
      */
     fun clearPush(context: Context) {
         runCatching { UnifiedPushRegistrar.unregister(context) }
-        runCatching { context.deleteDatabase("unifiedpush-connector") }
-        runCatching { context.deleteSharedPreferences("unifiedpush.connector") }
         listOf("push", "mfa_push_challenge").forEach { runCatching { context.deleteSharedPreferences(it) } }
         runCatching { context.getSystemService(NotificationManager::class.java).cancelAll() }
     }

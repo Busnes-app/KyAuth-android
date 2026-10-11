@@ -26,6 +26,15 @@ object UnifiedPushRegistrar {
         }
     }
 
+    /** An explicit change: always shows the picker, even when a distributor is already in use. */
+    fun pick(activity: Activity, onResult: (String?) -> Unit) {
+        if (UnifiedPush.resolveDefaultDistributor(activity) == ResolvedDistributor.NoneAvailable) return onResult(NO_DISTRIBUTOR)
+        UnifiedPush.tryPickDistributor(activity) { success ->
+            if (success) UnifiedPush.register(activity, INSTANCE)
+            onResult(if (success) null else "No distributor was selected.")
+        }
+    }
+
     private fun useDistributor(activity: Activity, onResult: (String?) -> Unit) {
         UnifiedPush.tryUseCurrentOrDefaultDistributor(activity) { success ->
             if (success) UnifiedPush.register(activity, INSTANCE)
