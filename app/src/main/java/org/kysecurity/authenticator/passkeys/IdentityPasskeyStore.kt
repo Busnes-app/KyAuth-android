@@ -22,7 +22,8 @@ class IdentityPasskeyStore(context: Context) {
     }
 
     fun clear() {
-        preferences.edit().remove(KEY_RECORD).apply()
+        // Synchronous: SecurityWipe deletes the file next, and a queued write would recreate it.
+        preferences.edit().remove(KEY_RECORD).commit()
     }
 
     private companion object {

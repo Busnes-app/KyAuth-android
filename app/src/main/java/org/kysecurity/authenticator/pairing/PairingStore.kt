@@ -64,7 +64,7 @@ class PairingStore(context: Context) {
             .remove("attested_level")
             .remove("boot_state")
             .remove("attestation_reason")
-            .apply()
+            .commit() // synchronous: SecurityWipe deletes the file next, and a queued write would recreate it
     }
 }
 
