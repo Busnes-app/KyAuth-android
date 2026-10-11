@@ -28,7 +28,7 @@ KyAuth pairs an Android device with KyIdentity. It stores TOTP entries in an enc
   code period ends, or when KyAuth locks.
 - TOTP entries have no backup, export or sync, by decision: losing the phone loses its TOTP
   entries. KyIdentity access recovers through recovery codes or an admin MFA reset.
-- Push MFA receives KyIdentity FCM data-message challenges, posts a local notification, and opens Vault, where the request card at the top approves or denies it. A response is only ever sent to the paired server; a `serverUrl` in the push payload is ignored. A push must name this device and account and carry `purpose` (`login`|`step_up`) and `expiresAtEpochMs` (in the future, at most 10 minutes ahead), else it is refused, never clamped; the card shows the purpose. The signed message prefix `kyidentity-push-v2` is a wire contract that must equal what `kyidentity-server` `internal/mfa` `PushResponseMessage` builds; it binds origin, user, device, challenge, purpose and expiry; deny signs empty digits. Digits must be two-digit and decoys are capped at 3.
+- Push MFA receives KyIdentity FCM data-message challenges, posts a local notification, and opens KyAuth on the request card: at the top of Vault when unlocked, alone on the lock screen when locked. Answering takes exactly one prompt, the per-use `DeviceSigningKey` signature; a pending request suppresses the automatic vault-unlock prompt and never needs the vault key. Approve refuses anything but two digits before prompting, since a wrong number is a denial at the server. A response is only ever sent to the current pairing's server; a `serverUrl` in the push payload is ignored, and a stored request from an earlier pairing is dropped. A push must name this device and account and carry `purpose` (`login`|`step_up`) and `expiresAtEpochMs` (in the future, at most 10 minutes ahead), else it is refused, never clamped; the card shows the purpose. The signed message prefix `kyidentity-push-v2` is a wire contract that must equal what `kyidentity-server` `internal/mfa` `PushResponseMessage` builds; it binds origin, user, device, challenge, purpose and expiry; deny signs empty digits. Digits must be two-digit and decoys are capped at 3.
 - An MFA response must carry an explicit decision. A 2xx with no `approved`/`success` field is a protocol error, not an approval.
 - A passkey whose RP ID is the paired KyIdentity server's host is the exception: its private key is
   generated in AndroidKeyStore (StrongBox where available, TEE otherwise), is non-exportable, and
@@ -102,7 +102,7 @@ KyAuth pairs an Android device with KyIdentity. It stores TOTP entries in an enc
 - Settings sends the user to the credential-provider screen to turn KyAuth on as an additional
   service; Bitwarden stays the preferred service.
 - Use the three-part bottom pill: Vault, lock shield, Settings.
-- The Vault screen shows a pending Push MFA request at its top, then the TOTP list with a + icon to scan QR or add accounts manually with optional Website and Notes fields.
+- The Vault screen shows a pending Push MFA request at its top (the lock screen shows it alone while locked), then the TOTP list with a + icon to scan QR or add accounts manually with optional Website and Notes fields.
 - Use the 17 suite themes from `ThemeManager`. The default is Busnes Light; preserve valid saved choices.
 - Use rounded, flat buttons. Do not add elevation shadows to custom controls.
 

@@ -17,11 +17,14 @@ import android.os.Handler
 import android.os.Looper
 import android.os.PersistableBundle
 import android.provider.Settings
+import android.text.InputFilter
 import android.text.InputType
 import android.view.Gravity
 import android.view.View
 import android.view.ViewGroup
 import android.view.WindowManager
+import android.view.inputmethod.EditorInfo
+import android.view.inputmethod.InputMethodManager
 import android.widget.Button
 import android.widget.EditText
 import android.widget.FrameLayout
@@ -128,6 +131,7 @@ class MainActivity : AppCompatActivity() {
 
     companion object {
         const val EXTRA_ADD_ACCOUNT = "add_account"
+        private val TWO_DIGITS = Regex("\\d{2}")
     }
 
     private var addAccountResponse: android.accounts.AccountAuthenticatorResponse? = null
@@ -163,7 +167,9 @@ class MainActivity : AppCompatActivity() {
         if (answerAddAccountIfPossible()) return
         loadPendingPushChallenge()
         if (!AppLockManager.isUnlocked()) {
-            unlockWithPrompt(silent = true)
+            // A push request is answered from the lock screen with one signing prompt; a vault
+            // unlock prompt first would only add a second one.
+            if (pendingChallenge == null) unlockWithPrompt(silent = true)
         } else {
             runCatching { loadTotpEntries() }
         }
@@ -380,6 +386,13 @@ class MainActivity : AppCompatActivity() {
         root.gravity = Gravity.CENTER
 
         root.addView(kyAuthWordmark(textSize = 34f, iconSizeDp = 64, centered = true))
+        // The request is signed by the device key, never the vault key, so it needs no unlock.
+        if (renderPendingChallenge(root, account)) {
+            root.addView(secondaryButton(getString(R.string.unlock_biometrics)).apply {
+                setOnClickListener { unlockWithPrompt() }
+            }, fullWidthParams(top = 8))
+            return
+        }
         root.addView(TextView(this).apply {
             text = getString(R.string.vault_locked)
             textSize = 12f
@@ -973,14 +986,17 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
-    /** The pending Push MFA request, at the top of Vault. Adds nothing when none is live. */
-    private fun renderPendingChallenge(container: LinearLayout, account: PairedAccount) {
-        val challenge = pendingChallenge ?: return
+    /**
+     * The pending Push MFA request: at the top of Vault, or alone on the lock screen. Adds nothing
+     * and returns false when none is live.
+     */
+    private fun renderPendingChallenge(container: LinearLayout, account: PairedAccount): Boolean {
+        val challenge = pendingChallenge ?: return false
         val challengeStore = MfaPushChallengeStore(this)
         if (challengeStore.isExpired(challenge)) {
             pendingChallenge = null
             challengeStore.clear()
-            return
+            return false
         }
 
         val card = LinearLayout(this).apply {
@@ -993,144 +1009,97 @@ class MainActivity : AppCompatActivity() {
         val digits = EditText(this).apply {
             hint = "00"
             inputType = InputType.TYPE_CLASS_NUMBER
+            filters = arrayOf(InputFilter.LengthFilter(2))
+            imeOptions = EditorInfo.IME_ACTION_DONE or EditorInfo.IME_FLAG_NO_PERSONALIZED_LEARNING
             setSingleLine(true)
             gravity = Gravity.CENTER
             textSize = 24f
         }
+        val approve = { respondToChallenge(challenge, account, approve = true, digits.text.toString().trim()) }
+        digits.setOnEditorActionListener { _, actionId, _ ->
+            (actionId == EditorInfo.IME_ACTION_DONE).also { if (it) approve() }
+        }
         card.addView(digits)
         card.addView(primaryButton("Approve request").apply {
             layoutParams = fullWidthParams(bottom = 8)
-            setOnClickListener { onNumberSelected(challenge, digits.text.toString().trim(), account) }
+            setOnClickListener { approve() }
         })
 
         val btnDeny = secondaryButton("Deny request").apply {
             layoutParams = fullWidthParams(bottom = 8)
             setTextColor(ThemeManager.color(context, R.color.ky_error))
-            setOnClickListener { onDenyClicked(challenge, account) }
+            setOnClickListener { respondToChallenge(challenge, account, approve = false, "") }
         }
         card.addView(btnDeny)
         container.addView(card, fullWidthParams(bottom = 16))
+        if (digits.requestFocus()) {
+            digits.post { getSystemService(InputMethodManager::class.java).showSoftInput(digits, 0) }
+        }
+        return true
     }
 
-    private fun pushPayload(challenge: MfaChallenge, account: PairedAccount, approve: Boolean, digits: String): ByteArray? {
-        val userId = account.userId
-        return runCatching {
+    /** Signs and sends one answer. The device key's own prompt is the only authentication. */
+    private fun respondToChallenge(challenge: MfaChallenge, account: PairedAccount, approve: Boolean, digits: String) {
+        // A mistyped number would be a denial at the server, so it never reaches the prompt.
+        if (approve && !TWO_DIGITS.matches(digits)) {
+            Toast.makeText(this, "Enter the 2-digit number shown on your computer screen.", Toast.LENGTH_SHORT).show()
+            return
+        }
+        // Answers go to the current pairing only; a request left over from an earlier one is dropped.
+        if (challenge.serverUrl.trim() != account.serverUrl.trim()) {
+            pendingChallenge = null
+            MfaPushChallengeStore(this).clear()
+            renderContent()
+            return
+        }
+        val payload = runCatching {
             MfaMessage.formatPayload(
-                MfaMessage.origin(account.serverUrl), requireNotNull(userId), account.deviceId,
+                MfaMessage.origin(account.serverUrl), requireNotNull(account.userId), account.deviceId,
                 challenge.challengeId, challenge.purpose, challenge.expiresAtEpochMs, approve, digits,
             )
         }.getOrElse {
             Toast.makeText(this, "This pairing cannot answer the request. Pair KyAuth again.", Toast.LENGTH_LONG).show()
-            null
-        }
-    }
-
-    private fun onNumberSelected(challenge: MfaChallenge, selectedDigit: String, account: PairedAccount) {
-        val payload = pushPayload(challenge, account, approve = true, selectedDigit) ?: return
-        val sig = runCatching { DeviceSigningKey.initSignature() }.getOrElse {
-            Toast.makeText(this, "Unable to authorize this request. Use your fingerprint or re-pair KyAuth.", Toast.LENGTH_LONG).show()
             return
         }
-        val cryptoObject = BiometricPrompt.CryptoObject(sig)
-        val prompt = BiometricPrompt(this, executor, object : BiometricPrompt.AuthenticationCallback() {
-            override fun onAuthenticationSucceeded(result: BiometricPrompt.AuthenticationResult) {
-                val authedSig = result.cryptoObject?.signature ?: sig
+        val unauthorized = "Unable to authorize this request. Use your fingerprint or re-pair KyAuth."
+        val sig = runCatching { DeviceSigningKey.initSignature() }.getOrElse {
+            Toast.makeText(this, unauthorized, Toast.LENGTH_LONG).show()
+            return
+        }
+        VaultUnlockPrompt.showForSignature(
+            this,
+            if (approve) "Approve sign-in match $digits" else "Deny sign-in request",
+            sig,
+            onAuthenticated = { authedSig ->
                 val signature = runCatching { DeviceSigningKey.sign(payload, authedSig) }.getOrElse {
-                    Toast.makeText(this@MainActivity, "Unable to authorize this request. Use your fingerprint or re-pair KyAuth.", Toast.LENGTH_LONG).show()
-                    return
+                    Toast.makeText(this, unauthorized, Toast.LENGTH_LONG).show()
+                    return@showForSignature
                 }
                 Thread {
                     val result = MfaResponseClient().respond(
-                        serverUrl = challenge.serverUrl,
+                        serverUrl = account.serverUrl,
                         challengeId = challenge.challengeId,
                         deviceId = account.deviceId,
-                        selectedDigits = selectedDigit,
-                        approve = true,
+                        selectedDigits = digits,
+                        approve = approve,
                         signature = signature,
                     )
                     runOnUiThread {
+                        if (isDestroyed) return@runOnUiThread
                         when (result) {
                             is MfaResponseResult.Success -> {
                                 pendingChallenge = null
-                                MfaPushChallengeStore(this@MainActivity).clear()
+                                MfaPushChallengeStore(this).clear()
                                 val message = if (result.approved) "Sign-in Approved" else "Sign-in Denied"
-                                Toast.makeText(this@MainActivity, message, Toast.LENGTH_SHORT).show()
+                                Toast.makeText(this, message, Toast.LENGTH_SHORT).show()
                             }
-                            is MfaResponseResult.Error -> {
-                                Toast.makeText(this@MainActivity, result.message, Toast.LENGTH_LONG).show()
-                            }
+                            is MfaResponseResult.Error -> Toast.makeText(this, result.message, Toast.LENGTH_LONG).show()
                         }
                         renderContent()
                     }
                 }.start()
-            }
-            override fun onAuthenticationError(errorCode: Int, errString: CharSequence) {
-                Toast.makeText(this@MainActivity, "Unlock required: $errString", Toast.LENGTH_SHORT).show()
-            }
-        })
-        prompt.authenticate(
-            BiometricPrompt.PromptInfo.Builder()
-                .setTitle("KyAuth")
-                .setSubtitle("Approve sign-in match $selectedDigit")
-                .setAllowedAuthenticators(
-                    BiometricManager.Authenticators.BIOMETRIC_STRONG or BiometricManager.Authenticators.DEVICE_CREDENTIAL,
-                )
-                .build(),
-            cryptoObject,
-        )
-    }
-
-    private fun onDenyClicked(challenge: MfaChallenge, account: PairedAccount) {
-        val payload = pushPayload(challenge, account, approve = false, "") ?: return
-        val sig = runCatching { DeviceSigningKey.initSignature() }.getOrElse {
-            Toast.makeText(this, "Unable to authorize this request. Use your fingerprint or re-pair KyAuth.", Toast.LENGTH_LONG).show()
-            return
-        }
-        val cryptoObject = BiometricPrompt.CryptoObject(sig)
-        val prompt = BiometricPrompt(this, executor, object : BiometricPrompt.AuthenticationCallback() {
-            override fun onAuthenticationSucceeded(result: BiometricPrompt.AuthenticationResult) {
-                val authedSig = result.cryptoObject?.signature ?: sig
-                val signature = runCatching { DeviceSigningKey.sign(payload, authedSig) }.getOrElse {
-                    Toast.makeText(this@MainActivity, "Unable to authorize this request. Use your fingerprint or re-pair KyAuth.", Toast.LENGTH_LONG).show()
-                    return
-                }
-                Thread {
-                    val result = MfaResponseClient().respond(
-                        serverUrl = challenge.serverUrl,
-                        challengeId = challenge.challengeId,
-                        deviceId = account.deviceId,
-                        selectedDigits = "",
-                        approve = false,
-                        signature = signature,
-                    )
-                    runOnUiThread {
-                        when (result) {
-                            is MfaResponseResult.Success -> {
-                                pendingChallenge = null
-                                MfaPushChallengeStore(this@MainActivity).clear()
-                                Toast.makeText(this@MainActivity, "Sign-in Denied", Toast.LENGTH_SHORT).show()
-                            }
-                            is MfaResponseResult.Error -> {
-                                Toast.makeText(this@MainActivity, result.message, Toast.LENGTH_LONG).show()
-                            }
-                        }
-                        renderContent()
-                    }
-                }.start()
-            }
-            override fun onAuthenticationError(errorCode: Int, errString: CharSequence) {
-                Toast.makeText(this@MainActivity, "Unlock required: $errString", Toast.LENGTH_SHORT).show()
-            }
-        })
-        prompt.authenticate(
-            BiometricPrompt.PromptInfo.Builder()
-                .setTitle("KyAuth")
-                .setSubtitle("Deny sign-in request")
-                .setAllowedAuthenticators(
-                    BiometricManager.Authenticators.BIOMETRIC_STRONG or BiometricManager.Authenticators.DEVICE_CREDENTIAL,
-                )
-                .build(),
-            cryptoObject,
+            },
+            onFailed = { Toast.makeText(this, "Unlock required: $it", Toast.LENGTH_SHORT).show() },
         )
     }
 

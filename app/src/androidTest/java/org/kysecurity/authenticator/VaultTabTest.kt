@@ -80,6 +80,20 @@ class VaultTabTest {
         }
     }
 
+    @Test fun lockedRequestShowsOnLockScreenWithoutTheVault() {
+        InstrumentationRegistry.getInstrumentation().runOnMainSync { AppLockManager.lock() }
+        MfaPushChallengeStore(context).save(challenge(60_000))
+        ActivityScenario.launch(MainActivity::class.java).use { scenario ->
+            scenario.onActivity { activity ->
+                val shown = texts(activity.window.decorView)
+                assertTrue(shown.contains("Sign-in request"))
+                assertTrue(shown.contains("Approve request"))
+                assertFalse(shown.contains("No codes yet"))
+                assertFalse(shown.contains(activity.getString(R.string.unlock_your_vault)))
+            }
+        }
+    }
+
     @Test fun expiredRequestIsClearedAndNotShown() {
         MfaPushChallengeStore(context).save(challenge(-1_000))
         ActivityScenario.launch(MainActivity::class.java).use { scenario ->
