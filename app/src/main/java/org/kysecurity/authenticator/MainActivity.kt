@@ -94,6 +94,7 @@ class MainActivity : AppCompatActivity() {
 
     private var activeTab = Tab.VAULT
     private var pendingChallenge: MfaChallenge? = null
+    private var challengeObserver: android.content.SharedPreferences.OnSharedPreferenceChangeListener? = null
     private var pendingTotpEntry: TotpEntry? = null
     private var totpEntries = mutableListOf<TotpEntry>()
     private var copiedSensitiveLabel: String? = null
@@ -160,6 +161,11 @@ class MainActivity : AppCompatActivity() {
         addAccountResponse = PendingAddAccount.take(intent.getStringExtra(EXTRA_ADD_ACCOUNT))
         KyAuthMessagingService.ensureChannel(this)
         handler.post(ticker)
+        // A request answered by the activity this one replaced, or a new push, shows up without a resume.
+        challengeObserver = MfaPushChallengeStore(this).observe {
+            pendingChallenge = MfaPushChallengeStore(this).load()
+            if (!isDestroyed) renderContent()
+        }
     }
 
     override fun onResume() {
@@ -187,6 +193,7 @@ class MainActivity : AppCompatActivity() {
 
     override fun onDestroy() {
         super.onDestroy()
+        challengeObserver?.let { MfaPushChallengeStore(this).stopObserving(it) }
         if (!isChangingConfigurations) {
             addAccountResponse?.onError(android.accounts.AccountManager.ERROR_CODE_CANCELED, "Pairing cancelled")
             addAccountResponse = null

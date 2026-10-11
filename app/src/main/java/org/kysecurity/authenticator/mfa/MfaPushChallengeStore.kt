@@ -1,6 +1,7 @@
 package org.kysecurity.authenticator.mfa
 
 import android.content.Context
+import android.content.SharedPreferences
 import org.json.JSONArray
 import org.json.JSONObject
 import org.kysecurity.authenticator.pairing.PairedAccount
@@ -74,18 +75,20 @@ object MfaPushChallengeParser {
 class MfaPushChallengeStore(context: Context) {
     private val preferences = context.getSharedPreferences("mfa_push_challenge", Context.MODE_PRIVATE)
 
-    fun save(challenge: MfaChallenge) {
+    // Every read-modify-write holds LOCK, shared by all instances: a push saved while an answer
+    // completes must not be cleared by the answer's compare-then-clear.
+    fun save(challenge: MfaChallenge) = synchronized(LOCK) {
         preferences.edit().putString("challenge", encode(challenge)).apply()
     }
 
-    fun load(): MfaChallenge? {
+    fun load(): MfaChallenge? = synchronized(LOCK) {
         val value = preferences.getString("challenge", null) ?: return null
         val challenge = runCatching { decode(value) }.getOrNull() ?: return null
         if (isExpired(challenge)) {
             clear()
             return null
         }
-        return challenge
+        challenge
     }
 
     fun isExpired(challenge: MfaChallenge, nowMs: Long = System.currentTimeMillis()): Boolean =
@@ -94,13 +97,25 @@ class MfaPushChallengeStore(context: Context) {
     fun secondsRemaining(challenge: MfaChallenge, nowMs: Long = System.currentTimeMillis()): Long =
         maxOf(0, (challenge.expiresAtEpochMs - nowMs + 999) / 1_000)
 
-    fun clear() {
+    fun clear() = synchronized(LOCK) {
         preferences.edit().clear().apply()
     }
 
     /** Clears the stored request only if it is [challengeId]: a newer one must survive a late answer. */
-    fun clear(challengeId: String) {
+    fun clear(challengeId: String) = synchronized(LOCK) {
         if (load()?.challengeId == challengeId) clear()
+    }
+
+    /** Calls [onChange] on the main thread whenever the stored request changes. Keep the result: the framework holds it weakly. */
+    fun observe(onChange: () -> Unit): SharedPreferences.OnSharedPreferenceChangeListener =
+        SharedPreferences.OnSharedPreferenceChangeListener { _, _ -> onChange() }
+            .also { preferences.registerOnSharedPreferenceChangeListener(it) }
+
+    fun stopObserving(listener: SharedPreferences.OnSharedPreferenceChangeListener) =
+        preferences.unregisterOnSharedPreferenceChangeListener(listener)
+
+    private companion object {
+        val LOCK = Any()
     }
 
     private fun encode(challenge: MfaChallenge): String = JSONObject()

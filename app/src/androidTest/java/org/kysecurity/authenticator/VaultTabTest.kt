@@ -130,6 +130,17 @@ class VaultTabTest {
         }
     }
 
+    // The activity a rotation destroyed finishes the answer: this one drops the card with no resume.
+    @Test fun requestClearedElsewhereLeavesTheScreen() {
+        MfaPushChallengeStore(context).save(challenge(60_000))
+        ActivityScenario.launch(MainActivity::class.java).use { scenario ->
+            scenario.onActivity { assertTrue(texts(it.window.decorView).contains("Sign-in request")) }
+            Thread { MfaPushChallengeStore(context).clear("c1") }.apply { start(); join() }
+            InstrumentationRegistry.getInstrumentation().waitForIdleSync()
+            scenario.onActivity { assertFalse(texts(it.window.decorView).contains("Sign-in request")) }
+        }
+    }
+
     @Test fun expiredRequestIsClearedAndNotShown() {
         MfaPushChallengeStore(context).save(challenge(-1_000))
         ActivityScenario.launch(MainActivity::class.java).use { scenario ->
