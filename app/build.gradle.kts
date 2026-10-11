@@ -118,19 +118,19 @@ configurations.named("playImplementation") { extendsFrom(gmsImplementation) }
 configurations.named("githubImplementation") { extendsFrom(gmsImplementation) }
 
 dependencies {
-    implementation("androidx.core:core-ktx:1.18.0")
+    implementation("androidx.core:core-ktx:1.19.1")
     implementation("androidx.appcompat:appcompat:1.8.0")
     implementation("com.google.android.material:material:1.14.0")
     implementation("androidx.biometric:biometric:1.1.0")
     gmsImplementation("com.google.android.gms:play-services-code-scanner:16.1.0")
-    gmsImplementation("com.google.firebase:firebase-messaging:25.1.2")
+    gmsImplementation("com.google.firebase:firebase-messaging:26.0.0")
     "fdroidImplementation"("com.journeyapps:zxing-android-embedded:4.3.0")
-    implementation("org.unifiedpush.android:connector:3.3.3")
+    implementation("org.unifiedpush.android:connector:3.3.5")
     implementation("app.keemobile:kotpass:0.13.0")
-    implementation("com.google.guava:guava:33.7.1-android")
+    implementation("com.google.guava:guava:33.7.2-android")
 
     testImplementation("junit:junit:4.13.2")
-    testImplementation("org.json:json:20231013")
+    testImplementation("org.json:json:20260814")
     androidTestImplementation("androidx.test:core:1.7.0")
     androidTestImplementation("androidx.test.ext:junit:1.3.0")
     androidTestImplementation("androidx.test:runner:1.7.0")
