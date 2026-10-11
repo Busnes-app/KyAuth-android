@@ -52,8 +52,14 @@ class PushStore(context: Context) {
             edit.putCredential(latestKey(credential.transport), credential)
         }
         edit.commit()
+        // No usable credential for the selected transport (a switch awaiting its endpoint) stays pending too.
         val latest = if (transport == UNIFIED_PUSH) unifiedPushCredential() else preferences.credential(latestKey(FCM))
-        preferences.edit().putBoolean("refresh_pending", latest != null && latest != credential).commit()
+        preferences.edit().putBoolean("refresh_pending", latest != credential).commit()
+    }
+
+    /** The connector deleted this registration's keys: its endpoint must not be sent again. */
+    fun forgetUnifiedPush(): Unit = synchronized(LOCK) {
+        preferences.edit().putCredential(latestKey(UNIFIED_PUSH), null).commit()
     }
 
     fun forgetRegistration() = preferences.edit()

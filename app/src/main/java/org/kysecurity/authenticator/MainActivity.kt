@@ -1432,6 +1432,7 @@ class MainActivity : AppCompatActivity() {
         val push = PushStore(this)
         push.transport = PushCredential.FCM
         UnifiedPushRegistrar.unregister(this)
+        push.forgetUnifiedPush() // the connector reports no onUnregistered for an explicit unregister
         if (push.registered()?.transport != PushCredential.FCM) push.markRefreshPending()
         renderContent()
     }

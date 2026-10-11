@@ -45,4 +45,22 @@ class PushStoreTest {
         store.markRegistered(a)
         assertFalse(store.refreshPending())
     }
+
+    @Test fun switchAwaitingItsEndpointStaysPending() {
+        val store = PushStore(context)
+        store.markRegistered(PushCredential(PushCredential.FCM, "token-0"))
+        store.tokenChanged(paired = true, a) // FCM refresh for A starts
+        store.transport = PushCredential.UNIFIED_PUSH // switched; no endpoint yet
+        store.markRegistered(a)
+        assertTrue(store.refreshPending())
+    }
+
+    @Test fun forgottenUnifiedPushEndpointIsNotReused() {
+        val store = PushStore(context)
+        val up = PushCredential(PushCredential.UNIFIED_PUSH, "https://push.example.net/up", "p256dh", "auth")
+        store.tokenChanged(paired = false, up)
+        assertEquals(up, store.unifiedPushCredential())
+        store.forgetUnifiedPush()
+        assertEquals(null, store.unifiedPushCredential())
+    }
 }
