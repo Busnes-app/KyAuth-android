@@ -40,7 +40,7 @@ KyAuth pairs an Android device with KyIdentity. It stores TOTP entries in an enc
 - An MFA response must carry an explicit decision. A 2xx with no `approved`/`success` field is a protocol error, not an approval.
 - A passkey whose RP ID is the paired KyIdentity server's host is the exception: its private key is
   generated in AndroidKeyStore (StrongBox where available, TEE otherwise), is non-exportable, and
-  never enters the TOTP vault or any synced artifact. Only its metadata is stored, in
+  never enters a KDBX vault or any synced artifact. Only its metadata is stored, in
   `IdentityPasskeyStore`. The assertion path never touches the vault key, so KyIdentity
   MFA keeps working while KyAuth is locked. The Credential Provider offers it whether or not KyAuth
   is unlocked.

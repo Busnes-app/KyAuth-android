@@ -8,7 +8,7 @@ import android.content.Context
  * alias and which hardware backed it.
  *
  * Modelled on [org.kysecurity.authenticator.pairing.PairingStore]: plain app-private prefs, no
- * new crypto and deliberately not in the TOTP vault.
+ * new crypto and deliberately not a third KDBX vault.
  */
 class IdentityPasskeyStore(context: Context) {
 
