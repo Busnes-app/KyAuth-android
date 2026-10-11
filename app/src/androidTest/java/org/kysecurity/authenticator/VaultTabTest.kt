@@ -141,6 +141,23 @@ class VaultTabTest {
         }
     }
 
+    // B arrives while A's answer is in flight; A's completion must not hide B.
+    @Test fun answerCompletionKeepsANewerRequestOnScreen() {
+        MfaPushChallengeStore(context).save(challenge(60_000))
+        ActivityScenario.launch(MainActivity::class.java).use { scenario ->
+            MfaPushChallengeStore(context).save(challenge(60_000, "step_up").copy(challengeId = "c2"))
+            InstrumentationRegistry.getInstrumentation().waitForIdleSync()
+            scenario.onActivity { assertTrue(texts(it.window.decorView).contains("Confirm a sensitive action")) }
+            MfaPushChallengeStore(context).clear("c1") // what the response thread does for A
+            scenario.onActivity { activity ->
+                MainActivity::class.java.getDeclaredMethod("onAnswerAccepted", Boolean::class.javaPrimitiveType)
+                    .apply { isAccessible = true }.invoke(activity, true)
+                assertTrue(texts(activity.window.decorView).contains("Confirm a sensitive action"))
+            }
+        }
+        assertTrue(MfaPushChallengeStore(context).load()?.challengeId == "c2")
+    }
+
     @Test fun expiredRequestIsClearedAndNotShown() {
         MfaPushChallengeStore(context).save(challenge(-1_000))
         ActivityScenario.launch(MainActivity::class.java).use { scenario ->

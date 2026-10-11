@@ -1100,14 +1100,12 @@ class MainActivity : AppCompatActivity() {
                     runOnUiThread {
                         if (isDestroyed) return@runOnUiThread
                         when (result) {
-                            is MfaResponseResult.Success -> {
-                                pendingChallenge = null
-                                val message = if (result.approved) "Sign-in Approved" else "Sign-in Denied"
-                                Toast.makeText(this, message, Toast.LENGTH_SHORT).show()
+                            is MfaResponseResult.Success -> onAnswerAccepted(result.approved)
+                            is MfaResponseResult.Error -> {
+                                Toast.makeText(this, result.message, Toast.LENGTH_LONG).show()
+                                renderContent()
                             }
-                            is MfaResponseResult.Error -> Toast.makeText(this, result.message, Toast.LENGTH_LONG).show()
                         }
-                        renderContent()
                     }
                 }.start()
             },
@@ -1774,6 +1772,13 @@ class MainActivity : AppCompatActivity() {
         clearPendingChallenge()
         runCatching { KyIdentityAccount.remove(this) }
         lockSensitiveState()
+        renderContent()
+    }
+
+    /** The server took an answer, already cleared from storage. Reload rather than null: a newer request may have arrived meanwhile. */
+    private fun onAnswerAccepted(approved: Boolean) {
+        pendingChallenge = MfaPushChallengeStore(this).load()
+        Toast.makeText(this, if (approved) "Sign-in Approved" else "Sign-in Denied", Toast.LENGTH_SHORT).show()
         renderContent()
     }
 
