@@ -127,7 +127,6 @@ dependencies {
     "fdroidImplementation"("com.journeyapps:zxing-android-embedded:4.3.0")
     implementation("org.unifiedpush.android:connector:3.3.3")
     implementation("app.keemobile:kotpass:0.13.0")
-    implementation("com.google.guava:guava:33.7.1-android")
 
     testImplementation("junit:junit:4.13.2")
     testImplementation("org.json:json:20231013")
