@@ -16,7 +16,13 @@ object ChannelQrScanner {
         }
         return QrScanner { onResult ->
             pending = onResult
-            launcher.launch(ScanOptions().setDesiredBarcodeFormats(ScanOptions.QR_CODE).setBeepEnabled(false).setOrientationLocked(false))
+            launcher.launch(options())
         }
     }
+
+    internal fun options(): ScanOptions = ScanOptions()
+        .setDesiredBarcodeFormats(ScanOptions.QR_CODE)
+        .setBeepEnabled(false)
+        .setOrientationLocked(false)
+        .setCaptureActivity(SecureCaptureActivity::class.java)
 }
