@@ -1,6 +1,7 @@
 package org.kysecurity.authenticator.totp
 
 import java.io.File
+import java.io.IOException
 import java.security.GeneralSecurityException
 import java.security.SecureRandom
 import javax.crypto.Cipher
@@ -8,6 +9,7 @@ import javax.crypto.spec.GCMParameterSpec
 import javax.crypto.spec.SecretKeySpec
 import org.json.JSONArray
 import org.json.JSONObject
+import org.json.JSONTokener
 import org.kysecurity.authenticator.security.writeAtomically
 
 /** The vault file exists but cannot be read. Callers must not save over it. */
@@ -29,7 +31,11 @@ object TotpVault {
     fun load(file: File, key: ByteArray): List<TotpEntry> {
         deleteLegacyKdbx(file.parentFile)
         if (!file.exists()) return emptyList()
-        val bytes = file.readBytes()
+        val bytes = try {
+            file.readBytes()
+        } catch (e: IOException) {
+            throw TotpVaultException("TOTP vault could not be read", e)
+        }
         if (bytes.size < 1 + NONCE_BYTES + TAG_BITS / 8) throw TotpVaultException("TOTP vault is truncated")
         if (bytes[0] != VERSION) throw TotpVaultException("Unsupported TOTP vault version ${bytes[0]}")
         val plain = try {
@@ -39,8 +45,13 @@ object TotpVault {
             throw TotpVaultException("TOTP vault could not be decrypted", e)
         }
         try {
-            val array = JSONArray(String(plain, Charsets.UTF_8))
+            // JSONArray(String) stops after the array; the whole document must be one array.
+            val tokens = JSONTokener(String(plain, Charsets.UTF_8))
+            val array = tokens.nextValue() as JSONArray
+            if (tokens.nextClean() != 0.toChar()) throw TotpVaultException("TOTP vault has trailing content")
             return List(array.length()) { fromJson(array.getJSONObject(it)) }
+        } catch (e: TotpVaultException) {
+            throw e
         } catch (e: Exception) {
             throw TotpVaultException("TOTP vault content is invalid", e)
         } finally {

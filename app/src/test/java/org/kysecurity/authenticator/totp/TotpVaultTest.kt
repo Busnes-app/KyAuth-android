@@ -107,13 +107,32 @@ class TotpVaultTest {
         assertUnreadable()
     }
 
-    @Test fun `a valid tag over invalid JSON fails`() {
+    /** Writes [plain] as a correctly authenticated vault file. */
+    private fun writeAuthentic(plain: String) {
         val nonce = ByteArray(12) { 7 }
         val cipher = Cipher.getInstance("AES/GCM/NoPadding").apply {
             init(Cipher.ENCRYPT_MODE, SecretKeySpec(key, "AES"), GCMParameterSpec(128, nonce))
             updateAAD("kyauth-totp-v1".toByteArray() + 1.toByte())
         }
-        file.writeBytes(byteArrayOf(1) + nonce + cipher.doFinal("[{}]".toByteArray()))
+        file.writeBytes(byteArrayOf(1) + nonce + cipher.doFinal(plain.toByteArray()))
+    }
+
+    @Test fun `a valid tag over invalid JSON fails`() {
+        writeAuthentic("[{}]")
+        assertUnreadable()
+    }
+
+    @Test fun `a valid tag over trailing content fails and leaves the file`() {
+        writeAuthentic("[] trailing")
+        val before = file.readBytes()
+        assertUnreadable()
+        assertArrayEquals(before, file.readBytes())
+        writeAuthentic("[]  \n")
+        assertEquals(emptyList<TotpEntry>(), TotpVault.load(file, key))
+    }
+
+    @Test fun `an unreadable path is a vault error, not an IOException`() {
+        file.mkdirs()
         assertUnreadable()
     }
 
