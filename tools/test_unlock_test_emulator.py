@@ -88,11 +88,18 @@ class UnlockTest(unittest.TestCase):
         text = emu.calls.index(("shell", "input", "text", unlock.PIN))
         self.assertIn("KEYCODE_DEL", emu.calls[text - 1])
 
-    def test_always_locks_first_and_enters_the_pin(self):
+    def test_locked_device_is_slept_then_unlocked_with_the_pin(self):
         emu = FakeEmulator(["ok"])
         emu.run()
         self.assertIn(("shell", "input", "keyevent", "KEYCODE_SLEEP"), emu.calls)
         self.assertIn(("shell", "input", "text", unlock.PIN), emu.calls)
+
+    def test_already_unlocked_device_is_left_alone(self):
+        emu = FakeEmulator(["ok"])
+        emu.locked = False
+        self.assertEqual(emu.run(), 0)
+        self.assertNotIn(("shell", "input", "keyevent", "KEYCODE_SLEEP"), emu.calls)
+        self.assertFalse(any(c[:3] == ("shell", "input", "text") for c in emu.calls))
 
     def test_unlocked_matches_only_the_keyguard_line(self):
         with mock.patch.object(unlock, "adb", lambda *a: "  mFoo showing=false\n  showing=true\n"):

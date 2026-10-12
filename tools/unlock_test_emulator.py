@@ -70,11 +70,20 @@ def attempt():
     return wait_for(unlocked, 15)
 
 
+def diagnose():
+    policy = [l.strip() for l in adb("shell", "dumpsys", "window", "policy").splitlines() if "showing" in l.lower()]
+    focus = [l.strip() for l in adb("shell", "dumpsys", "window").splitlines() if "mCurrentFocus" in l]
+    log(f"  keyguard: {policy}  focus: {focus}")
+
+
 def main():
     assert adb("shell", "getprop", "ro.kernel.qemu").strip() == "1", "Emulator required"
-    # Always lock, then unlock with the PIN: CI has always run its tests after a real PIN
-    # unlock. Checking first is useless anyway: a PIN device locks only after its
-    # lock-after-timeout delay, so a check right after sleep sees no keyguard.
+    # Right after locksettings set-pin the device is unlocked with a secure lock screen set,
+    # which is all the tests need. Check before sleeping: after sleep a PIN device locks
+    # only once its delay passes, so a later check would see no keyguard yet.
+    if unlocked():
+        log("CI emulator already unlocked")
+        return 0
     adb("shell", "input", "keyevent", "KEYCODE_SLEEP")
     time.sleep(1)
     for n in range(1, ATTEMPTS + 1):
@@ -82,6 +91,7 @@ def main():
             log(f"CI emulator unlocked (attempt {n})")
             return n
         log(f"Unlock attempt {n} failed; retrying")
+        diagnose()
     raise RuntimeError(f"The emulator did not unlock after {ATTEMPTS} attempts")
 
 
