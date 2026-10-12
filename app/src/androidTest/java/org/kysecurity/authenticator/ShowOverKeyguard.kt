@@ -7,9 +7,9 @@ import androidx.test.platform.app.InstrumentationRegistry
 import org.junit.rules.ExternalResource
 
 /**
- * Test-only: shows [MainActivity] above the keyguard, so a CI emulator that relocks (it does,
- * at times, right after its PIN is set) cannot stop the activity and trip the lock-on-stop
- * behaviour these tests assert on. The app itself never shows over the lock screen.
+ * Test-only: shows [MainActivity] above the keyguard, so a keyguard on the test device cannot
+ * stop the activity and trip the lock-on-stop behaviour these tests assert on. The app itself
+ * never shows over the lock screen. CI also sets no PIN while these run (see [SecureLockScreen]).
  */
 class ShowOverKeyguard : ExternalResource() {
     private val app = InstrumentationRegistry.getInstrumentation().targetContext.applicationContext as Application
