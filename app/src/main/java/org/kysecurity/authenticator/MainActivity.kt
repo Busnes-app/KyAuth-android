@@ -85,6 +85,7 @@ import kotlin.math.max
 import kotlin.math.min
 
 private const val STATE_ACTIVE_TAB = "active_tab"
+private const val STATE_DEMO = "demo"
 private const val VAULT_UNREADABLE = "The TOTP vault could not be read. KyAuth stays locked and has not changed it."
 
 class MainActivity : AppCompatActivity() {
@@ -98,6 +99,9 @@ class MainActivity : AppCompatActivity() {
     private fun idleTimeoutMillis() = idleMinutes() * 60_000L
 
     private var activeTab = Tab.VAULT
+    // Never written to storage; the demo reads and writes no stored state.
+    private var demo = false
+    private var nextDemoPushAt = 0L
     private var pendingChallenge: MfaChallenge? = null
     private var challengeObserver: android.content.SharedPreferences.OnSharedPreferenceChangeListener? = null
     private var pendingTotpEntry: TotpEntry? = null
@@ -125,9 +129,10 @@ class MainActivity : AppCompatActivity() {
                 lockSensitiveState()
                 renderContent()
             }
-            if (!isVaultLoading && AppLockManager.isUnlocked() && activeTab == Tab.VAULT) {
+            if (!isVaultLoading && (AppLockManager.isUnlocked() || demo) && activeTab == Tab.VAULT) {
                 updateTotpViews()
             }
+            simulateDemoPush()
             handler.postDelayed(this, 1000)
         }
     }
@@ -163,6 +168,7 @@ class MainActivity : AppCompatActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         activeTab = Tab.restore(savedInstanceState?.getString(STATE_ACTIVE_TAB))
+        demo = savedInstanceState?.getBoolean(STATE_DEMO) ?: false
         WindowCompat.setDecorFitsSystemWindows(window, false)
         if (!BuildConfig.ALLOW_SCREENSHOTS) {
             window.setFlags(WindowManager.LayoutParams.FLAG_SECURE, WindowManager.LayoutParams.FLAG_SECURE)
@@ -183,6 +189,10 @@ class MainActivity : AppCompatActivity() {
     override fun onResume() {
         super.onResume()
         if (answerAddAccountIfPossible()) return
+        if (demo) {
+            renderContent()
+            return
+        }
         loadPendingPushChallenge()
         if (!AppLockManager.isUnlocked()) {
             // A push request is answered from the lock screen with one signing prompt; a vault
@@ -253,6 +263,7 @@ class MainActivity : AppCompatActivity() {
 
     override fun onSaveInstanceState(outState: Bundle) {
         outState.putString(STATE_ACTIVE_TAB, activeTab.name)
+        outState.putBoolean(STATE_DEMO, demo)
         super.onSaveInstanceState(outState)
     }
 
@@ -264,7 +275,12 @@ class MainActivity : AppCompatActivity() {
         applyRootPadding(root)
 
         val account = store.account()
+        demo = DemoMode.active(demo, account)
         when {
+            demo -> {
+                if (totpEntries.isEmpty()) totpEntries = DemoMode.entries().toMutableList()
+                renderDashboard(root, DemoMode.account)
+            }
             account == null -> renderEnrollmentView(root)
             !AppLockManager.isUnlocked() -> renderLockScreen(root, account)
             else -> renderDashboard(root, account)
@@ -305,8 +321,13 @@ class MainActivity : AppCompatActivity() {
             setOnClickListener { showManualPairingDialog(progress, error) }
         }
 
+        val btnDemo = ghostButton(getString(R.string.demo_try)).apply {
+            setOnClickListener { startDemo() }
+        }
+
         root.addView(btnScan, fullWidthParams())
         root.addView(btnManual, fullWidthParams(top = 10))
+        root.addView(btnDemo, fullWidthParams(top = 10))
         root.addView(progress)
         root.addView(error)
     }
@@ -583,7 +604,7 @@ class MainActivity : AppCompatActivity() {
         }
         headerRow.addView(headerTitle)
         headerRow.addView(addButton)
-        renderPushBanner(container, account)
+        if (!demo) renderPushBanner(container, account)
         container.addView(headerRow)
         renderPendingChallenge(container, account)
 
@@ -1011,6 +1032,7 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun loadTotpEntries() {
+        if (demo) return
         val vaultKey = AppLockManager.getVaultKey() ?: return
         totpEntries = TotpVault.load(vaultFile, vaultKey).toMutableList()
         vaultLoaded = true
@@ -1022,6 +1044,7 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun saveTotpEntries() {
+        if (demo) return
         val vaultKey = AppLockManager.getVaultKey()
         if (vaultKey == null || !vaultLoaded) {
             toast("TOTP vault is not open. The change was not saved.")
@@ -1037,7 +1060,7 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun queueTotpEntry(entry: TotpEntry) {
-        if (AppLockManager.isUnlocked()) {
+        if (AppLockManager.isUnlocked() || demo) {
             addTotpEntry(entry)
         } else {
             pendingTotpEntry = entry
@@ -1055,7 +1078,7 @@ class MainActivity : AppCompatActivity() {
         val challengeStore = MfaPushChallengeStore(this)
         if (challengeStore.isExpired(challenge)) {
             pendingChallenge = null
-            challengeStore.clear()
+            if (demo) nextDemoPushAt = android.os.SystemClock.elapsedRealtime() + DemoMode.PUSH_INTERVAL_MS else challengeStore.clear()
             return false
         }
 
@@ -1066,6 +1089,7 @@ class MainActivity : AppCompatActivity() {
         }
         card.addView(title(if (challenge.purpose == "step_up") "Confirm a sensitive action" else "Sign-in request"))
         card.addView(message("A request was received for:\n${challenge.serverUrl}\nUser: ${challenge.username ?: account.deviceName}\nExpires in ${challengeStore.secondsRemaining(challenge)} seconds.\n\nEnter the 2-digit number shown on your computer screen:"))
+        if (demo) card.addView(message(getString(R.string.demo_push_hint, challenge.matchDigits)))
         val digits = EditText(this).apply {
             hint = "00"
             inputType = InputType.TYPE_CLASS_NUMBER
@@ -1075,7 +1099,10 @@ class MainActivity : AppCompatActivity() {
             gravity = Gravity.CENTER
             textSize = 24f
         }
-        val approve = { respondToChallenge(challenge, account, approve = true, digits.text.toString().trim()) }
+        val approve = {
+            val selected = digits.text.toString().trim()
+            if (demo) answerDemoChallenge(challenge, approve = true, selected) else respondToChallenge(challenge, account, approve = true, selected)
+        }
         digits.setOnEditorActionListener { _, actionId, _ ->
             (actionId == EditorInfo.IME_ACTION_DONE).also { if (it) approve() }
         }
@@ -1088,7 +1115,7 @@ class MainActivity : AppCompatActivity() {
         val btnDeny = secondaryButton("Deny request").apply {
             layoutParams = fullWidthParams(bottom = 8)
             setTextColor(ThemeManager.color(context, R.color.ky_error))
-            setOnClickListener { respondToChallenge(challenge, account, approve = false, "") }
+            setOnClickListener { if (demo) answerDemoChallenge(challenge, approve = false, "") else respondToChallenge(challenge, account, approve = false, "") }
         }
         card.addView(btnDeny)
         container.addView(card, fullWidthParams(bottom = 16))
@@ -1096,6 +1123,45 @@ class MainActivity : AppCompatActivity() {
             digits.post { getSystemService(InputMethodManager::class.java).showSoftInput(digits, 0) }
         }
         return true
+    }
+
+    private fun startDemo() {
+        lockSensitiveState()
+        pendingChallenge = null
+        demo = true
+        activeTab = Tab.VAULT
+        nextDemoPushAt = android.os.SystemClock.elapsedRealtime() + 3_000
+        renderContent()
+    }
+
+    private fun exitDemo() {
+        demo = false
+        pendingChallenge = null
+        lockSensitiveState()
+        renderContent()
+        prepareUnifiedPushForPairing()
+    }
+
+    /** Raises a fake sign-in request while the demo is on screen. */
+    private fun simulateDemoPush() {
+        if (!demo || pendingChallenge != null || !lifecycle.currentState.isAtLeast(androidx.lifecycle.Lifecycle.State.RESUMED)) return
+        if (android.os.SystemClock.elapsedRealtime() < nextDemoPushAt) return
+        pendingChallenge = DemoMode.challenge(System.currentTimeMillis())
+        Toast.makeText(this, getString(R.string.demo_push_received), Toast.LENGTH_SHORT).show()
+        renderContent()
+    }
+
+    private fun answerDemoChallenge(challenge: MfaChallenge, approve: Boolean, selectedDigit: String) {
+        val result = when {
+            MfaPushChallengeStore(this).isExpired(challenge) -> "Sign-in request expired"
+            !approve -> "Sign-in Denied"
+            selectedDigit == challenge.matchDigits -> "Sign-in Approved"
+            else -> "Wrong number. Sign-in Denied"
+        }
+        pendingChallenge = null
+        nextDemoPushAt = android.os.SystemClock.elapsedRealtime() + DemoMode.PUSH_INTERVAL_MS
+        Toast.makeText(this, result, Toast.LENGTH_SHORT).show()
+        renderContent()
     }
 
     private fun renderPushBanner(container: LinearLayout, account: PairedAccount) {
@@ -1245,6 +1311,19 @@ class MainActivity : AppCompatActivity() {
         }, fullWidthParams())
         sections.add(appearanceSection)
 
+        if (demo) {
+            val demoSection = settingsCard()
+            demoSection.addView(title(getString(R.string.demo_title)))
+            demoSection.addView(message(getString(R.string.demo_settings_message)))
+            demoSection.addView(primaryButton(getString(R.string.demo_exit)).apply {
+                setOnClickListener { exitDemo() }
+            }, fullWidthParams())
+            sections.add(demoSection)
+            sections.add(aboutSection())
+            addAdaptiveCards(container, sections)
+            return
+        }
+
         val accountSection = settingsCard()
         accountSection.addView(title("Paired Account"))
         accountSection.addView(message("Server: ${account.serverUrl}\nDevice ID: ${account.deviceId}\nDevice Name: ${account.deviceName}\nUser ID: ${account.userId ?: "N/A"}"))
@@ -1317,15 +1396,17 @@ class MainActivity : AppCompatActivity() {
         securitySection.addView(message("Auto-wipe policy: After 5 consecutive failed PIN attempts, all vault keys, accounts, and pairing data will be automatically wiped."))
         sections.add(securitySection)
 
-        val aboutSection = settingsCard()
-        aboutSection.addView(title("About"))
-        aboutSection.addView(message("KyAuth v${BuildConfig.VERSION_NAME}"))
-        aboutSection.addView(secondaryButton("About KyAuth").apply {
-            setOnClickListener { showAboutDialog(this@MainActivity) }
-        }, fullWidthParams())
-        sections.add(aboutSection)
+        sections.add(aboutSection())
 
         addAdaptiveCards(container, sections)
+    }
+
+    private fun aboutSection() = settingsCard().apply {
+        addView(title("About"))
+        addView(message("KyAuth v${BuildConfig.VERSION_NAME}"))
+        addView(secondaryButton("About KyAuth").apply {
+            setOnClickListener { showAboutDialog(this@MainActivity) }
+        }, fullWidthParams())
     }
 
     private fun pushDeliverySection(): View {

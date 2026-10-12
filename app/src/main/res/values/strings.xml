@@ -50,4 +50,10 @@
     <string name="signon_approve">Approve sign-in</string>
     <string name="signon_deny">Deny</string>
     <string name="signon_biometric_subtitle">Sign in to %1$s</string>
+    <string name="demo_try">Try demo</string>
+    <string name="demo_title">Demo mode</string>
+    <string name="demo_settings_message">Codes and sign-in requests here are simulated. Nothing is saved and nothing leaves this phone. Exit the demo to pair with KyIdentity.</string>
+    <string name="demo_exit">Exit demo</string>
+    <string name="demo_push_received">Demo sign-in request received</string>
+    <string name="demo_push_hint">Demo: the sign-in screen shows %1$s.</string>
 </resources>

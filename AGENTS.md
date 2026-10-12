@@ -29,6 +29,11 @@ KyAuth pairs an Android device with KyIdentity. It stores TOTP entries in an enc
   forms and revealed secrets.
 - The PIN is an optional second local factor. Failed PIN attempts use delays of 0, 5, 30, and 300 seconds. The fifth failure wipes local data.
 - Release builds disable screenshots and Android backup.
+- Demo mode (`DemoMode`, for Play review) is offered only on the unpaired enrollment screen and ends
+  if a pairing exists. It shows fixed demo TOTP entries and, while the app is in the foreground,
+  raises a simulated push every 15 s that shows its own match number. It uses no network, vault,
+  Keystore, pairing store or push store. Edits stay in memory, Settings offers only theme, About
+  and Exit demo, and the server is `demo.kyidentity.invalid`.
 - A copied TOTP code is marked sensitive (`ClipDescription.EXTRA_IS_SENSITIVE`) and clears when its
   code period ends, or when KyAuth locks.
 - TOTP entries have no backup, export or sync, by decision: losing the phone loses its TOTP
