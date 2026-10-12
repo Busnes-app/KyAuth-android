@@ -25,6 +25,7 @@ object TotpVault {
     private const val TAG_BITS = 128
     private val AAD = "kyauth-totp-v1".toByteArray(Charsets.UTF_8) + VERSION
     private val random = SecureRandom()
+    private const val JSON_WHITESPACE = " \t\n\r"
 
     /** A missing file is an empty vault; anything else unreadable throws [TotpVaultException]. */
     @Synchronized
@@ -45,10 +46,13 @@ object TotpVault {
             throw TotpVaultException("TOTP vault could not be decrypted", e)
         }
         try {
-            // JSONArray(String) stops after the array; the whole document must be one array.
+            // JSONArray(String) stops after the array, and Android's nextClean() skips comments, so
+            // read the rest raw: the whole document must be one array plus JSON whitespace.
             val tokens = JSONTokener(String(plain, Charsets.UTF_8))
             val array = tokens.nextValue() as JSONArray
-            if (tokens.nextClean() != 0.toChar()) throw TotpVaultException("TOTP vault has trailing content")
+            while (tokens.more()) {
+                if (tokens.next() !in JSON_WHITESPACE) throw TotpVaultException("TOTP vault has trailing content")
+            }
             return List(array.length()) { fromJson(array.getJSONObject(it)) }
         } catch (e: TotpVaultException) {
             throw e

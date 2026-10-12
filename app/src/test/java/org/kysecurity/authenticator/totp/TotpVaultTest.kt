@@ -127,7 +127,12 @@ class TotpVaultTest {
         val before = file.readBytes()
         assertUnreadable()
         assertArrayEquals(before, file.readBytes())
-        writeAuthentic("[]  \n")
+        // Android's JSONTokener.nextClean() skips comments; none may pass as trailing whitespace.
+        for (trailing in listOf("[] /* trailing */", "[] // trailing", "[] # trailing")) {
+            writeAuthentic(trailing)
+            assertUnreadable()
+        }
+        writeAuthentic("[] \t\r\n")
         assertEquals(emptyList<TotpEntry>(), TotpVault.load(file, key))
     }
 
