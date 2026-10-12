@@ -57,15 +57,20 @@ def attempt():
     return wait_for(unlocked, 15)
 
 
-assert adb("shell", "getprop", "ro.kernel.qemu").strip() == "1", "Emulator required"
-adb("shell", "input", "keyevent", "KEYCODE_SLEEP")
-time.sleep(1)
-# No "already unlocked" shortcut: after KEYCODE_SLEEP a PIN device locks only once its
-# lock-after-timeout delay passes, so an early check sees no keyguard and skips the PIN.
-for n in range(1, ATTEMPTS + 1):
-    if attempt():
-        print(f"CI emulator unlocked (attempt {n})")
-        break
-    print(f"Unlock attempt {n} failed; retrying")
-else:
+def main():
+    assert adb("shell", "getprop", "ro.kernel.qemu").strip() == "1", "Emulator required"
+    # Always lock, then unlock with the PIN: CI has always run its tests after a real PIN
+    # unlock. Checking first is useless anyway: a PIN device locks only after its
+    # lock-after-timeout delay, so a check right after sleep sees no keyguard.
+    adb("shell", "input", "keyevent", "KEYCODE_SLEEP")
+    time.sleep(1)
+    for n in range(1, ATTEMPTS + 1):
+        if attempt():
+            print(f"CI emulator unlocked (attempt {n})")
+            return n
+        print(f"Unlock attempt {n} failed; retrying")
     raise RuntimeError(f"The emulator did not unlock after {ATTEMPTS} attempts")
+
+
+if __name__ == "__main__":
+    main()
