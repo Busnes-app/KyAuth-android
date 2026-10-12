@@ -16,7 +16,9 @@ def adb(*args):
 
 
 def unlocked():
-    return "showing=false" in adb("shell", "dumpsys", "window", "policy")
+    # KeyguardServiceDelegate's own line; nothing else in the dump counts.
+    lines = [line.strip() for line in adb("shell", "dumpsys", "window", "policy").splitlines()]
+    return "showing=false" in lines and "showing=true" not in lines
 
 
 def pin_entry_focused():
@@ -58,8 +60,10 @@ def attempt():
 assert adb("shell", "getprop", "ro.kernel.qemu").strip() == "1", "Emulator required"
 adb("shell", "input", "keyevent", "KEYCODE_SLEEP")
 time.sleep(1)
+# No "already unlocked" shortcut: after KEYCODE_SLEEP a PIN device locks only once its
+# lock-after-timeout delay passes, so an early check sees no keyguard and skips the PIN.
 for n in range(1, ATTEMPTS + 1):
-    if unlocked() or attempt():
+    if attempt():
         print(f"CI emulator unlocked (attempt {n})")
         break
     print(f"Unlock attempt {n} failed; retrying")
