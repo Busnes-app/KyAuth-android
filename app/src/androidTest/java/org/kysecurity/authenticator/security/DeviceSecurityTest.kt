@@ -12,6 +12,8 @@ import org.junit.runner.RunWith
 
 @RunWith(AndroidJUnit4::class)
 class DeviceSecurityTest {
+    @get:org.junit.Rule val secureLockScreen = org.kysecurity.authenticator.SecureLockScreen()
+
     @Test
     fun vaultKekRequiresASecureDeviceAndCreatesRsaOaepCipher() {
         val context = ApplicationProvider.getApplicationContext<Context>()

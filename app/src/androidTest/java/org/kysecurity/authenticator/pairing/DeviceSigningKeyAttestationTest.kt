@@ -20,6 +20,8 @@ import java.util.Base64
 
 @RunWith(AndroidJUnit4::class)
 class DeviceSigningKeyAttestationTest {
+    @get:org.junit.Rule val secureLockScreen = org.kysecurity.authenticator.SecureLockScreen()
+
     private val keyAttestationOid = "1.3.6.1.4.1.11129.2.1.17"
 
     @Before
