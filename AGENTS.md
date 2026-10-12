@@ -11,7 +11,7 @@ KyAuth pairs an Android device with KyIdentity. It stores TOTP entries in an enc
 - Pairing accepts a short-lived KyIdentity QR payload or manual server details.
 - Release builds require HTTPS. Debug builds permit loopback HTTP only.
 - The optional registration URL must use the same origin as the pairing server.
-- Each pairing generates a fresh P-256 device signing key (alias unchanged) with an attestation challenge derived from the pairing credential (`AttestationChallenge`), StrongBox first, TEE fallback, plain key when the device cannot attest. The registration request carries the attestation chain (`attestation`, base64 DER, leaf first); KyIdentity grades it `none`/`tee`/`strongbox` and returns `device.attestedLevel` and `device.bootState`, which `PairedAccount` stores and Settings shows, with an `attestationReason` (`AttestationReason`: server silent, keystore software-only, or chain not accepted) that lets the `none` hint say whether pairing again can help. Re-pairing rotates the key: the old key is deleted before registration, so a failed re-pair clears the local pairing and system account, because the phone has already deleted the key; the user pairs again. Unlike Unpair, it keeps the KyIdentity passkey. Settings shows the boot state on its own line. Only an attested device earns MFA-grade sign-on; see the attestation spec.
+- Each pairing generates a fresh P-256 device signing key (alias unchanged) with an attestation challenge derived from the pairing credential (`AttestationChallenge`), StrongBox first, TEE fallback, plain key when the device cannot attest. The registration request carries the attestation chain (`attestation`, base64 DER, leaf first); KyIdentity grades it `none`/`tee`/`strongbox` and returns `device.attestedLevel` and `device.bootState`, which `PairedAccount` stores and Settings shows, with an `attestationReason` (`AttestationReason`: server silent, keystore software-only, or chain not accepted) that lets the `none` hint say whether pairing again can help. Re-pairing rotates the key: the old key is deleted before registration, so a failed re-pair clears the local pairing and system account, because the phone has already deleted the key; the user pairs again. Settings shows the boot state on its own line. Only an attested device earns MFA-grade sign-on; see the attestation spec.
 - Frozen identifier, kept through the KyIdentity rename: the Keystore alias `kysignon-device-signing-v1` (renaming it orphans every paired device's key). Rename nothing the Keystore already holds.
 - TOTP entries live in `totp_vault.bin` (`TotpVault`): version byte `0x01` || 12-byte random nonce
   (fresh per save) || AES-256-GCM ciphertext and 16-byte tag over a JSON array of every
@@ -38,26 +38,14 @@ KyAuth pairs an Android device with KyIdentity. It stores TOTP entries in an enc
 - A new FCM token or UnifiedPush endpoint that differs from the registered one, or a transport change while paired, marks refresh pending and posts "Reconnect sign-in requests". UnifiedPush unregistration or registration failure is recorded as broken, never silently replaced by another transport. Either shows "Sign-in requests paused" with Reconnect at the top of Vault: one `VaultUnlockPrompt.showForSignature` on `DeviceSigningKey` signs `kyidentity-push-token-v2|{origin}|{deviceId}|{issuedAtMs}|{transport}|{sha256hex(pushToken)}|{p256dh}|{auth}` (empty keys for FCM; a field containing `|` is refused) and `PushRefreshClient` PUTs `{pushToken, pushTransport, pushP256dh, pushAuth, issuedAt, signature}` to `/api/notifications/native/devices/{deviceId}/push-token` (keys omitted for FCM). The prefix is a wire contract with KyIdentity; golden vectors are in `PushRefreshClientTest`.
 - Push MFA receives KyIdentity data-message challenges over FCM, or over UnifiedPush as an RFC 8291-decrypted flat JSON object of strings with the FCM data keys (an undecrypted or non-string message is dropped). Both services hand data only to `IncomingPush`, which parses, saves and notifies (`PushServiceSourceRuleTest` keeps parsing out of services). The notification opens KyAuth on the request card: at the top of Vault when unlocked, alone on the lock screen when locked. Answering takes exactly one prompt, the per-use `DeviceSigningKey` signature; a pending request suppresses the automatic vault-unlock prompt and never needs the vault key. Approve refuses anything but two digits before prompting, since a wrong number is a denial at the server. A response is only ever sent to the current pairing's server; a `serverUrl` in the push payload is ignored, a pairing change (pair, re-pair, unpair) clears the stored request, and a request no longer stored (answered by another activity instance) is dropped without a prompt. A successful answer clears the stored request before touching the UI, and only if it is still the same request. A push must name this device and account and carry `purpose` (`login`|`step_up`) and `expiresAtEpochMs` (in the future, at most 10 minutes ahead), else it is refused, never clamped; the card shows the purpose. The signed message prefix `kyidentity-push-v2` is a wire contract that must equal what `kyidentity-server` `internal/mfa` `PushResponseMessage` builds; it binds origin, user, device, challenge, purpose and expiry; deny signs empty digits. Digits must be two-digit and decoys are capped at 3.
 - An MFA response must carry an explicit decision. A 2xx with no `approved`/`success` field is a protocol error, not an approval.
-- A passkey whose RP ID is the paired KyIdentity server's host is the exception: its private key is
-  generated in AndroidKeyStore (StrongBox where available, TEE otherwise), is non-exportable, and
-  never enters a KDBX vault or any synced artifact. Only its metadata is stored, in
-  `IdentityPasskeyStore`. The assertion path never touches the vault key, so KyIdentity
-  MFA keeps working while KyAuth is locked. The Credential Provider offers it whether or not KyAuth
-  is unlocked.
-  Losing the device means falling back to KyIdentity recovery codes or an admin MFA reset.
-- Passkeys use native ES256 / P-256 WebAuthn cryptography with COSE public key encoding and ECDSA assertion signing.
-- KyAuth is an Android 14+ (API 34+) system Credential Provider for one credential: the KyIdentity
-  login passkey (`KyAuthCredentialProviderService`, `CredentialAuthActivity`). It mints a passkey only
-  for the exact paired KyIdentity host (`identityCreateTarget`), checked before any network work.
-- Passkey RP IDs are validated by `RpId`: syntactically valid, not a public suffix, and for browser
-  callers equal to or a registrable parent of the caller's web origin. Native-app callers are bound
-  to the RP by `DigitalAssetLinks`, which fetches `https://<rpId>/.well-known/assetlinks.json` and
-  matches the caller's signing certificate. It fails closed: no statement, or an offline device with
-  a cold cache, means no passkeys are offered to a native caller.
-- A caller-supplied `clientDataHash` is honoured only from a caller that set a privileged web origin
-  (`ClientData.privilegedClientDataHash`). Only a holder of `CREDENTIAL_MANAGER_SET_ORIGIN` can set
-  that origin, so an ordinary app cannot choose the bytes KyAuth signs. For every other caller the
-  `CollectedClientData` is built here, with the `android:apk-key-hash:` origin.
+- KyAuth offers no passkey, for KyIdentity or any other site, and is not a Credential Provider.
+  KyIdentity's factors here are Push MFA and TOTP. This matches KyAuth-iOS and removes the API 34+
+  Credential Provider surface; passwords and passkeys belong to Bitwarden against Vaultwarden
+  (`docs/superpowers/specs/2026-10-06-vaultwarden-replaces-kypasswords.md`). Trade-off: KyIdentity
+  loses KyAuth's hardware-bound, phishing-resistant factor; users wanting one can register a
+  passkey in another provider. Earlier builds held one: `RemovedPasskey.delete` runs on every
+  `MainActivity` start and deletes its Keystore aliases and prefs files; `SecurityWipe` covers
+  the same names.
 - Foreground idle locking defaults to five minutes, configurable to 1/5/15/30/60 minutes in
   Settings. It uses elapsed realtime, includes dialog activity, and checks expiry before accepting
   new input. Background locking remains immediate. Lock generations reject stale asynchronous
@@ -107,8 +95,6 @@ KyAuth pairs an Android device with KyIdentity. It stores TOTP entries in an enc
 
 - Use the `KyAuth` name in user-visible text.
 - Use the KyPost mail stamp with the KyAuth wordmark in the header and lock screen; keep the KyAuth launcher icon.
-- Settings sends the user to the credential-provider screen to turn KyAuth on as an additional
-  service; Bitwarden stays the preferred service.
 - Use the three-part bottom pill: Vault, lock shield, Settings.
 - The Vault screen shows a pending Push MFA request at its top (the lock screen shows it alone while locked), then the TOTP list with a + icon to scan QR or add accounts manually with optional Website and Notes fields.
 - Use the 17 suite themes from `ThemeManager`. The default is Busnes Light; preserve valid saved choices.
@@ -120,14 +106,11 @@ KyAuth pairs an Android device with KyIdentity. It stores TOTP entries in an enc
 - `pairing/`: QR parsing, endpoint validation, pairing network client, device key, `AttestationChallenge`, the pairing store (plain app-private prefs), `PushCredential`, `PushStore`, `PushRefreshClient`, and `UnifiedPushRegistrar`.
 - Per-flavor seams with one implementation in `src/gms` and one in `src/fdroid`: `ChannelPush` (FCM credential; fdroid fails) and `ChannelQrScanner` (ML Kit or zxing, created in `onCreate`). A scan carries a `ScanPurpose` (pairing or TOTP); zxing keeps it in saved state so a result returning to a recreated activity still routes. `MainActivity.onQrScanned` only stashes a result until the activity is resumed: a TOTP entry goes to `pendingTotpEntry` for `loadTotpEntries`, never into the unloaded list, which a save would write over the vault.
 - `mfa/`: push challenge model, `IncomingPush` (the one receive path and its notifications), the UnifiedPush service, signed payload, and response client. The FCM service is in `src/gms`.
-- `security/`: lock state, PIN policy, `VaultKek` authentication-bound key wrapping, `VaultUnlockPrompt`, atomic file writes, and local wipe (clears pairing, passkey record, legacy encrypted files and the androidx master key; `clearPush`, also run by Unpair, unregisters UnifiedPush through the connector, which deletes the instance's registration and WebPush keys and its distributor, then deletes the `push` and `mfa_push_challenge` prefs and cancels notifications. Never delete the `unifiedpush-connector` database by file: the connector keeps it open as a process-wide singleton, so later registrations would write to the unlinked file and lose their keys at the next start).
+- `security/`: lock state, PIN policy, `VaultKek` authentication-bound key wrapping, `VaultUnlockPrompt`, atomic file writes, `RemovedPasskey` (deletes the removed passkey's keys and prefs), and local wipe (clears pairing, legacy prefs files including the removed passkey's, and the androidx master key; `clearPush`, also run by Unpair, unregisters UnifiedPush through the connector, which deletes the instance's registration and WebPush keys and its distributor, then deletes the `push` and `mfa_push_challenge` prefs and cancels notifications. Never delete the `unifiedpush-connector` database by file: the connector keeps it open as a process-wide singleton, so later registrations would write to the unlinked file and lose their keys at the next start).
 - `totp/`: TOTP parsing, generation, and `TotpVault` persistence.
 - `signon/`: `DeviceAssertion` (assertion builder), `TrustedConsumers` (caller pins),
   `KyIdentityAccount` (system account lifecycle), `KyIdentityAuthenticator` + service,
   `PendingSignOn`/`PendingAddAccount` (nonce handoffs), `SignOnActivity`, `TokenClient`.
-- `passkeys/`: FIDO2 WebAuthn crypto engine, `ClientData` (CollectedClientData), `RpId` validation,
-  `IdentityPasskey` routing plus its hardware key and metadata store, CredentialProviderService, entry
-  builder, slice builder, auth activity, and `PublicSuffix`.
 - `ThemeManager.kt`: the shared 17-theme palette and local theme preference.
 - `UiComponents.kt`: reusable programmatic view styling and controls.
 - `AboutDialog.kt`: MIT About dialog.
@@ -157,21 +140,10 @@ Release APKs are unsigned unless the `KYAUTH_*` signing material is set. Device 
 
 Recorded so it is not mistaken for done:
 
-- **Device key attestation positive path unverified.** Emulators ship software KeyMint, so `DeviceSigningKeyAttestationTest` only proves a chain exists and attests the pairing challenge; the server grades it `none`. No real-hardware pairing has been observed. A physical phone paired against a KyIdentity with the attestation verifier is what proves `tee`/`strongbox`. The test uses the production Keystore alias and deletes it: run it only on an unpaired device, or re-pair afterwards. The KyIdentity passkey (`IdentityPasskeyKey`) still has no attestation; the same challenge mechanism could extend to it.
-- **KyIdentity passkey hardware backing is unverified.** `IdentityPasskeyKey.generate` accepts a key
-  only when `KeyInfo.securityLevel` is `TRUSTED_ENVIRONMENT`, `STRONGBOX` or `UNKNOWN_SECURE`, so
-  both `SOFTWARE` and `UNKNOWN` ("the platform could not tell") are refused; the fail-closed path
-  is covered by a passing instrumented test. The positive path is not: every available Android
-  emulator ships the software KeyMint reference implementation, so `generate` returning a
-  hardware-backed key has never been observed succeeding. Four instrumented tests in
-  `IdentityPasskeyKeyTest` are gated behind a JUnit assumption and SKIP rather than pass. Running
-  them on a physical device is what closes this; until then, do not claim the key is
-  hardware-resident.
+- **Device key attestation positive path unverified.** Emulators ship software KeyMint, so `DeviceSigningKeyAttestationTest` only proves a chain exists and attests the pairing challenge; the server grades it `none`. No real-hardware pairing has been observed. A physical phone paired against a KyIdentity with the attestation verifier is what proves `tee`/`strongbox`. The test uses the production Keystore alias and deletes it: run it only on an unpaired device, or re-pair afterwards.
 - **Device verification.** Emulator tests cover secure-lock-backed `VaultKek` creation and backup
-  flags. Full biometric prompts and the per-use
-  `BiometricPrompt` for the KyIdentity passkey (enrolment and assertion, via
-  `VaultUnlockPrompt.showForSignature`) still require manual device verification; none of these are
-  currently automated here.
+  flags. Full biometric prompts, including the per-use `VaultUnlockPrompt.showForSignature`, still
+  require manual device verification; none of these are currently automated here.
 - **Consumer pins.** `TrustedConsumers.PINS` holds only `org.kysecurity.mail` (Play App Signing
   certificate). The GitHub flavor `org.kysecurity.mail.github` is unpinned until its upload-key digest
   is supplied, and `org.kysecurity.mail.fdroid` is unpinned because F-Droid signs with its own key and
@@ -187,8 +159,6 @@ Recorded so it is not mistaken for done:
   process; rotating the device mid-prompt keeps the prompt; a launch after the 120 s nonce expiry
   returns CANCELED to the caller; rotating the device during pairing keeps the addAccount request alive. Do not claim these until observed.
 - **UnifiedPush and flavors unverified on a device.** Nothing here has run on a phone: distributor selection, endpoint delivery, decryption, the Reconnect banner and refresh PUT against KyIdentity, the zxing scanner and CAMERA prompt on fdroid, and unregister-before-delete on unpair/wipe. The refresh path is unit-tested only against golden vectors, not a live server. A distributor's late `onUnregistered` after unpair can record a broken reason in the fresh `push` prefs; the next pairing then re-registers.
-- **Deprecated platform APIs.** `Slice` is deprecated.
-  Moving to `androidx.credentials` would remove most of the Slice usage.
 
 ## Child DOX Index
 

@@ -1,83 +1,25 @@
-package org.kysecurity.authenticator.passkeys
+package org.kysecurity.authenticator.security
 
 import android.content.Context
 import android.security.keystore.KeyGenParameterSpec
 import android.security.keystore.KeyProperties
 import androidx.test.core.app.ApplicationProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
-import org.junit.After
-import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
-import org.junit.Assert.assertNull
-import org.junit.Before
 import org.junit.Test
 import org.junit.runner.RunWith
-import org.kysecurity.authenticator.security.SecurityWipe
 import java.security.KeyStore
 import javax.crypto.KeyGenerator
 
 @RunWith(AndroidJUnit4::class)
-class IdentityPasskeyStoreTest {
-
-    private val store = IdentityPasskeyStore(ApplicationProvider.getApplicationContext())
-
-    private fun record() = IdentityPasskeyRecord(
-        rpId = "identity.example.com",
-        username = "yoshi",
-        userHandle = byteArrayOf(1, 2, 3),
-        credentialId = byteArrayOf(9, 8, 7, 6),
-        signCount = 0,
-        alias = "kyauth_identity_passkey_a",
-        strongBoxBacked = false,
-    )
-
-    @Before fun setUp() = store.clear()
-
-    @After fun tearDown() = store.clear()
-
-    @Test
-    fun startsEmpty() {
-        assertNull(store.record())
-    }
-
-    @Test
-    fun savesAndReadsBack() {
-        store.save(record())
-        assertEquals(record(), store.record())
-    }
-
-    @Test
-    fun saveReplacesRatherThanAccumulates() {
-        store.save(record())
-        store.save(record().copy(signCount = 7))
-        assertEquals(7, store.record()?.signCount)
-    }
-
-    @Test
-    fun clearRemovesTheRecord() {
-        store.save(record())
-        store.clear()
-        assertNull(store.record())
-    }
-
-    @Test
-    fun securityWipeClearsTheRecord() {
-        // shared_prefs is a sibling of filesDir, so deleting filesDir does not reach this store.
-        // SecurityWipe must clear it explicitly or a wipe leaves metadata pointing at a key that
-        // step 5 of the same wipe has already deleted.
-        store.save(record())
-        SecurityWipe.wipe(
-            ApplicationProvider.getApplicationContext(),
-        )
-        assertNull(store.record())
-    }
+class SecurityWipeTest {
 
     @Test
     fun securityWipeClearsEveryPrefsFileAndTheMasterKey() {
         val context = ApplicationProvider.getApplicationContext<Context>()
         val names = listOf(
-            "mfa_push_challenge", "push", "pairing", "identity_passkey",
+            "mfa_push_challenge", "push", "pairing", "identity_passkey", "identity_passkey_store",
             "pairing_store", "kypasswords_pairing",
         )
         names.forEach { context.getSharedPreferences(it, Context.MODE_PRIVATE).edit().putString("k", "v").commit() }

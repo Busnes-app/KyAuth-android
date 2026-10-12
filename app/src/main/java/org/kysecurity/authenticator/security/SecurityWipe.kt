@@ -10,11 +10,10 @@ import java.security.KeyStore
 object SecurityWipe {
     fun wipe(context: Context) {
         clearPush(context)
-        // 1. Wipe PairingStore and the KyIdentity passkey record
+        // 1. Wipe PairingStore
         runCatching { org.kysecurity.authenticator.signon.KyIdentityAccount.remove(context) }
         runCatching { PairingStore(context).clear() }
-        runCatching { org.kysecurity.authenticator.passkeys.IdentityPasskeyStore(context).clear() }
-        // Prefs files: current, then legacy encrypted ones and the KyPasswords session file.
+        // Prefs files: current, then legacy ones (removed passkey, encrypted, KyPasswords session).
         PREFS_FILES.forEach { runCatching { context.deleteSharedPreferences(it) } }
 
         // 2. Wipe AppLock SharedPreferences
@@ -59,7 +58,7 @@ object SecurityWipe {
 
     private const val ANDROIDX_MASTER_KEY = "_androidx_security_master_key_"
 
-    private val PREFS_FILES = listOf(
+    internal val PREFS_FILES = listOf(
         "pairing_store", "identity_passkey_store", "pairing", "identity_passkey",
         "kypasswords_pairing",
     )

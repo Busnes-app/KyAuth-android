@@ -16,7 +16,6 @@ import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
 import android.os.PersistableBundle
-import android.provider.Settings
 import android.text.InputFilter
 import android.text.InputType
 import android.view.Gravity
@@ -66,9 +65,8 @@ import org.kysecurity.authenticator.pairing.PushCredential
 import org.kysecurity.authenticator.pairing.PushRefreshClient
 import org.kysecurity.authenticator.pairing.PushStore
 import org.kysecurity.authenticator.pairing.UnifiedPushRegistrar
+import org.kysecurity.authenticator.security.RemovedPasskey
 import org.kysecurity.authenticator.security.SecurityWipe
-import org.kysecurity.authenticator.passkeys.IdentityPasskeyKey
-import org.kysecurity.authenticator.passkeys.IdentityPasskeyStore
 import org.kysecurity.authenticator.security.IdleLock
 import org.kysecurity.authenticator.security.AppLockManager
 import org.kysecurity.authenticator.security.VaultUnlockPrompt
@@ -169,6 +167,7 @@ class MainActivity : AppCompatActivity() {
         if (!BuildConfig.ALLOW_SCREENSHOTS) {
             window.setFlags(WindowManager.LayoutParams.FLAG_SECURE, WindowManager.LayoutParams.FLAG_SECURE)
         }
+        RemovedPasskey.delete(this)
         store = PairingStore(this)
         qrScanner = ChannelQrScanner.create(this, ::onQrScanned)
         addAccountResponse = PendingAddAccount.take(intent.getStringExtra(EXTRA_ADD_ACCOUNT))
@@ -353,14 +352,6 @@ class MainActivity : AppCompatActivity() {
                                 progress.visibility = ProgressBar.GONE
                                 triggerBtn?.isEnabled = true
                                 result.onSuccess { account ->
-                                    // Pairing to a different server strands the old KyIdentity
-                                    // passkey: its key and record belong to a server this device
-                                    // no longer talks to. Clear the same pair the Unpair path does.
-                                    val previous = runCatching { store.account()?.serverUrl }.getOrNull()
-                                    if (previous != null && previous != account.serverUrl) {
-                                        IdentityPasskeyKey.deleteAll()
-                                        runCatching { IdentityPasskeyStore(this@MainActivity).clear() }
-                                    }
                                     clearPendingChallenge()
                                     store.save(account)
                                     push?.let { pushStore.markRegistered(it) }
@@ -373,7 +364,6 @@ class MainActivity : AppCompatActivity() {
                                         return@onFailure
                                     }
                                     // The old key is gone, so the saved pairing cannot sign anything.
-                                    // The KyIdentity passkey is a separate key and stays.
                                     clearPairing()
                                     AlertDialog.Builder(this@MainActivity)
                                         .setTitle(getString(R.string.pairing_title))
@@ -1255,51 +1245,6 @@ class MainActivity : AppCompatActivity() {
         }, fullWidthParams())
         sections.add(appearanceSection)
 
-        val providerSection = settingsCard()
-        providerSection.addView(title("KyIdentity passkey"))
-        providerSection.addView(message("Turn KyAuth on under Additional services so KyIdentity sign-in can use this phone's passkey. Keep Bitwarden as your preferred service."))
-        providerSection.addView(primaryButton("Open passkey settings").apply {
-            setOnClickListener { openCredentialProviderSettings() }
-        }, fullWidthParams())
-        sections.add(providerSection)
-
-        val signOnPasskeySection = settingsCard()
-        signOnPasskeySection.addView(title(getString(R.string.identity_passkey_title)))
-        val signOnRecord = IdentityPasskeyStore(this).record()
-        if (signOnRecord == null) {
-            signOnPasskeySection.addView(message(getString(R.string.identity_passkey_none)))
-        } else {
-            val backing = if (signOnRecord.strongBoxBacked) {
-                R.string.identity_passkey_strongbox
-            } else {
-                R.string.identity_passkey_tee
-            }
-            signOnPasskeySection.addView(
-                message("${signOnRecord.username.ifBlank { signOnRecord.rpId }}\n${getString(backing)}"),
-            )
-            val btnRemove = secondaryButton(getString(R.string.identity_passkey_remove)).apply {
-                setTextColor(ThemeManager.color(context, R.color.ky_error))
-                setOnClickListener {
-                    AlertDialog.Builder(this@MainActivity)
-                        .setTitle(getString(R.string.identity_passkey_remove))
-                        .setMessage(
-                            "This passkey only exists on this device and cannot be recovered. " +
-                                "You will need your KyIdentity recovery codes or an admin reset to " +
-                                "sign in without it.",
-                        )
-                        .setNegativeButton("Cancel", null)
-                        .setPositiveButton("Remove") { _, _ ->
-                            IdentityPasskeyKey.deleteAll()
-                            IdentityPasskeyStore(this@MainActivity).clear()
-                            renderContent()
-                        }
-                        .showKyDialog()
-                }
-            }
-            signOnPasskeySection.addView(btnRemove, fullWidthParams())
-        }
-        sections.add(signOnPasskeySection)
-
         val accountSection = settingsCard()
         accountSection.addView(title("Paired Account"))
         accountSection.addView(message("Server: ${account.serverUrl}\nDevice ID: ${account.deviceId}\nDevice Name: ${account.deviceName}\nUser ID: ${account.userId ?: "N/A"}"))
@@ -1327,10 +1272,7 @@ class MainActivity : AppCompatActivity() {
             setOnClickListener {
                 AlertDialog.Builder(this@MainActivity)
                     .setTitle("Unpair Device")
-                    .setMessage(
-                        "Are you sure you want to unpair this device from KyIdentity? " +
-                            "This also deletes the KyIdentity passkey held on this device.",
-                    )
+                    .setMessage("Are you sure you want to unpair this device from KyIdentity?")
                     .setNegativeButton("Cancel", null)
                     .setPositiveButton("Unpair") { _, _ -> unpairIdentity() }
                     .showKyDialog()
@@ -1526,18 +1468,6 @@ class MainActivity : AppCompatActivity() {
         dialog = AlertDialog.Builder(this)
             .setView(container)
             .showKyDialog()
-    }
-
-    private fun openCredentialProviderSettings() {
-        runCatching {
-            startActivity(Intent("android.settings.CREDENTIAL_PROVIDER"))
-            return
-        }
-        runCatching {
-            startActivity(Intent(Settings.ACTION_SETTINGS))
-        }.onFailure {
-            Toast.makeText(this, "Could not open system credential settings", Toast.LENGTH_SHORT).show()
-        }
     }
 
     // ==========================================
@@ -1937,10 +1867,6 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun unpairIdentity() {
-        // A passkey for a server we are no longer paired to is dead weight, and
-        // its key must not outlive the pairing.
-        IdentityPasskeyKey.deleteAll()
-        IdentityPasskeyStore(this).clear()
         SecurityWipe.clearPush(this)
         clearPairing()
     }
