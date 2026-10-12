@@ -1,5 +1,6 @@
 package org.kysecurity.authenticator.security
 
+import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -18,8 +19,7 @@ class SecurityWipeAliasTest {
             "kyauth_pin_pepper",
             "kyidentity-device-signing-v1",
             "kysignon-device-signing-v1",
-            // Both halves of the alternating KyIdentity passkey pair; a key left behind here is a
-            // live authentication factor surviving a wipe.
+            // The removed KyIdentity passkey: a key left behind is a live factor surviving a wipe.
             "kyauth_identity_passkey_a",
             "kyauth_identity_passkey_b",
             "kyauth_signon_passkey_a",
@@ -28,6 +28,16 @@ class SecurityWipeAliasTest {
         for (alias in aliases) {
             assertTrue("wipe would leave $alias behind", SecurityWipe.isAppAlias(alias))
         }
+    }
+
+    @Test
+    fun `wipe also covers everything the removed-passkey cleanup deletes`() {
+        assertEquals(
+            listOf("kyauth_identity_passkey_a", "kyauth_identity_passkey_b", "kyauth_signon_passkey_a", "kyauth_signon_passkey_b"),
+            RemovedPasskey.ALIASES,
+        )
+        assertEquals(listOf("identity_passkey_store", "identity_passkey"), RemovedPasskey.PREFS)
+        assertTrue(SecurityWipe.PREFS_FILES.containsAll(RemovedPasskey.PREFS))
     }
 
     @Test

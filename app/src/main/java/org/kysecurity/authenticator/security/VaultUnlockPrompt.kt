@@ -59,7 +59,7 @@ object VaultUnlockPrompt {
 
     /**
      * Authenticates a Keystore [Signature] for one use. Unlike [show] this touches no vault key at
-     * all: the KySignOn passkey path must never reach [VaultKek].
+     * all: the push MFA and sign-on signatures must never reach [VaultKek].
      */
     fun showForSignature(
         activity: FragmentActivity,
