@@ -25,29 +25,12 @@
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
         </activity>
-        <activity
-            android:name=".passkeys.CredentialAuthActivity"
-            android:exported="false"
-            tools:targetApi="34"
-            android:theme="@style/Theme.KyAuth" />
         <service
             android:name=".mfa.KyAuthUnifiedPushService"
             android:exported="false">
             <intent-filter>
                 <action android:name="org.unifiedpush.android.connector.PUSH_EVENT" />
             </intent-filter>
-        </service>
-        <service
-            android:name=".passkeys.KyAuthCredentialProviderService"
-            android:permission="android.permission.BIND_CREDENTIAL_PROVIDER_SERVICE"
-            android:exported="true"
-            tools:targetApi="34">
-            <intent-filter>
-                <action android:name="android.service.credentials.CredentialProviderService" />
-            </intent-filter>
-            <meta-data
-                android:name="android.credentials.provider"
-                android:resource="@xml/credential_provider" />
         </service>
         <!-- AccountManager binds this service; the system, not a permission, gates it. -->
         <service
