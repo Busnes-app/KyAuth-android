@@ -1,0 +1,18 @@
+version: 2
+updates:
+  # Gradle covers the app and the build classpath (AGP and what it pulls in).
+  - package-ecosystem: gradle
+    directory: /
+    schedule:
+      interval: weekly
+    groups:
+      gradle:
+        patterns: ["*"]
+  # Workflow actions are pinned by commit SHA; Dependabot moves the SHA and its version comment.
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+    groups:
+      actions:
+        patterns: ["*"]

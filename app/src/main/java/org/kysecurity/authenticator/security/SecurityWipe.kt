@@ -1,18 +1,20 @@
 package org.kysecurity.authenticator.security
 
+import android.app.NotificationManager
 import android.content.Context
 import org.kysecurity.authenticator.pairing.DeviceSigningKey
 import org.kysecurity.authenticator.pairing.PairingStore
+import org.kysecurity.authenticator.pairing.UnifiedPushRegistrar
 import java.security.KeyStore
 
 object SecurityWipe {
     fun wipe(context: Context) {
-        // 1. Wipe PairingStore and the KyIdentity passkey record
+        clearPush(context)
+        // 1. Wipe PairingStore
         runCatching { org.kysecurity.authenticator.signon.KyIdentityAccount.remove(context) }
         runCatching { PairingStore(context).clear() }
-        runCatching { org.kysecurity.authenticator.passkeys.IdentityPasskeyStore(context).clear() }
-        // Session token file left by older builds that paired with KyPasswords.
-        runCatching { context.deleteSharedPreferences("kypasswords_pairing") }
+        // Prefs files: current, then legacy ones (removed passkey, encrypted, KyPasswords session).
+        PREFS_FILES.forEach { runCatching { context.deleteSharedPreferences(it) } }
 
         // 2. Wipe AppLock SharedPreferences
         runCatching {
@@ -22,7 +24,7 @@ object SecurityWipe {
                 .commit()
         }
 
-        // 3. Wipe all app files (including KDBX vaults)
+        // 3. Wipe all app files (including the TOTP vault)
         runCatching {
             context.filesDir.listFiles()?.forEach { file ->
                 file.deleteRecursively()
@@ -40,6 +42,7 @@ object SecurityWipe {
         runCatching { DeviceSigningKey.deleteKey() }
         runCatching {
             val keyStore = KeyStore.getInstance("AndroidKeyStore").apply { load(null) }
+            keyStore.deleteEntry(ANDROIDX_MASTER_KEY)
             val aliases = keyStore.aliases()
             while (aliases.hasMoreElements()) {
                 val alias = aliases.nextElement()
@@ -53,11 +56,30 @@ object SecurityWipe {
         AppLockManager.onWipe()
     }
 
+    private const val ANDROIDX_MASTER_KEY = "_androidx_security_master_key_"
+
+    internal val PREFS_FILES = listOf(
+        "pairing_store", "identity_passkey_store", "pairing", "identity_passkey",
+        "kypasswords_pairing",
+    )
+
+    /**
+     * Push delivery state, for wipe and unpair. The connector's unregister deletes the instance's
+     * registration and WebPush keys, and its distributor once no instance is left. Its database
+     * is not deleted by file: the connector holds it open as a process-wide singleton, and later
+     * registrations would write to the unlinked file and lose their keys at the next start.
+     */
+    fun clearPush(context: Context) {
+        runCatching { UnifiedPushRegistrar.unregister(context) }
+        listOf("push", "mfa_push_challenge").forEach { runCatching { context.deleteSharedPreferences(it) } }
+        runCatching { context.getSystemService(NotificationManager::class.java).cancelAll() }
+    }
+
     /**
      * KyAuth's own AndroidKeyStore entries, matched without pinning a separator: the aliases in use
      * are a mix of `kyauth_`, `kysignon-`, and `kyidentity-`, and requiring one spelling silently left
-     * [DeviceSigningKey]'s key behind. Deliberately does not match androidx's master key —
-     * `EncryptedSharedPreferences` cannot re-open its files once that is gone.
+     * [DeviceSigningKey]'s key behind. androidx's master key is deleted by name in step 5;
+     * older builds used it for encrypted prefs.
      */
     internal fun isAppAlias(alias: String): Boolean =
         alias.startsWith("kyauth") || alias.startsWith("kysignon") || alias.startsWith("kyidentity")

@@ -4,120 +4,110 @@ import org.junit.Assert.assertEquals
 import org.junit.Assert.assertThrows
 import org.junit.Assert.assertTrue
 import org.junit.Test
+import org.kysecurity.authenticator.pairing.PairedAccount
 
 class MfaPushChallengeParserTest {
-    private val paired = "https://signin.example.com"
+    private val paired = "https://id.example.com"
+    private val account = PairedAccount(paired, "d-456", "Pixel", "alice", "u-123", canSignOn = false)
+    private val now = 1_000_000L
+
+    private fun data(vararg extra: Pair<String, String>, drop: String? = null): Map<String, String> =
+        (mapOf(
+            "challengeId" to "ch-1",
+            "matchDigits" to "42",
+            "deviceId" to "d-456",
+            "deviceUserId" to "u-123",
+            "purpose" to "login",
+            "expiresAtEpochMs" to (now + 60_000).toString(),
+        ) + extra).filterKeys { it != drop }
+
+    private fun parse(d: Map<String, String>, p: PairedAccount? = account) =
+        MfaPushChallengeParser.parse(d, p, now)
+
+    private fun refused(d: Map<String, String>, p: PairedAccount? = account) {
+        assertThrows(IllegalArgumentException::class.java) { parse(d, p) }
+    }
 
     @Test
     fun parsesKyIdentityPushChallengeDataPayload() {
-        val now = 1_000_000L
-        val challenge = MfaPushChallengeParser.parse(
-            mapOf(
-                "challengeId" to "ch-123",
-                "matchDigits" to "42",
-                "decoyDigits" to """["12","55","88"]""",
-                "username" to "alice",
-            ),
-            pairedServerUrl = paired,
-            nowMs = now,
-        )
+        val challenge = parse(data("decoyDigits" to """["12","55","88"]""", "username" to "alice"))
 
-        assertEquals("ch-123", challenge.challengeId)
+        assertEquals("ch-1", challenge.challengeId)
         assertEquals("42", challenge.matchDigits)
         assertEquals(listOf("12", "55", "88"), challenge.decoyDigits)
         assertEquals(paired, challenge.serverUrl)
         assertEquals("alice", challenge.username)
-        assertEquals(now + MfaPushChallengeParser.DEFAULT_EXPIRES_AFTER_MS, challenge.expiresAtEpochMs)
+        assertEquals("login", challenge.purpose)
+        assertEquals(now + 60_000, challenge.expiresAtEpochMs)
     }
 
     @Test
-    fun acceptsRelayAliases() {
-        val challenge = MfaPushChallengeParser.parse(
-            mapOf("id" to "ch-456", "match" to "19", "decoys" to "22,33,44"),
-            pairedServerUrl = paired,
+    fun acceptsStepUpAndRelayAliases() {
+        val challenge = parse(
+            mapOf(
+                "id" to "ch-456", "match" to "19", "decoys" to "22,33,44",
+                "deviceId" to "d-456", "deviceUserId" to "u-123", "purpose" to "step_up",
+                "expiresAtEpochMs" to (now + 1_000).toString(),
+            ),
         )
 
         assertEquals("ch-456", challenge.challengeId)
         assertEquals("19", challenge.matchDigits)
         assertEquals(listOf("22", "33", "44"), challenge.decoyDigits)
+        assertEquals("step_up", challenge.purpose)
     }
 
     @Test
     fun ignoresAServerUrlSuppliedByThePushPayload() {
-        val challenge = MfaPushChallengeParser.parse(
-            mapOf(
-                "challengeId" to "ch-1",
-                "matchDigits" to "42",
-                "serverUrl" to "https://attacker.example",
-                "server_url" to "https://attacker.example",
-            ),
-            pairedServerUrl = paired,
-        )
-
+        val challenge = parse(data("serverUrl" to "https://attacker.example", "server_url" to "https://attacker.example"))
         assertEquals(paired, challenge.serverUrl)
     }
 
-    @Test
-    fun refusesToBuildAChallengeWithoutAPairedServer() {
-        assertThrows(IllegalArgumentException::class.java) {
-            MfaPushChallengeParser.parse(mapOf("challengeId" to "ch-1"), pairedServerUrl = null)
-        }
+    @Test fun refusesWithoutAPairing() = refused(data(), null)
+
+    @Test fun refusesAPairingWithoutUserId() = refused(data(), account.copy(userId = null))
+
+    @Test fun refusesAPushForAnotherDevice() = refused(data("deviceId" to "d-999"))
+
+    @Test fun refusesAPushForAnotherAccount() = refused(data("deviceUserId" to "u-999"))
+
+    @Test fun refusesMissingBinding() {
+        refused(data(drop = "deviceId"))
+        refused(data(drop = "deviceUserId"))
     }
 
-    @Test
-    fun parsesExplicitExpirySeconds() {
-        val challenge = MfaPushChallengeParser.parse(
-            mapOf("challengeId" to "ch-789", "matchDigits" to "77", "expiresAt" to "2000"),
-            pairedServerUrl = paired,
-            nowMs = 1_500_000L,
-        )
-
-        assertEquals(2_000_000L, challenge.expiresAtEpochMs)
+    @Test fun refusesMissingOrUnknownPurpose() {
+        refused(data(drop = "purpose"))
+        refused(data("purpose" to "session"))
     }
 
-    @Test
-    fun clampsAnOverlongExpiry() {
-        val now = 1_000_000L
-        val challenge = MfaPushChallengeParser.parse(
-            mapOf("challengeId" to "ch-1", "matchDigits" to "42", "expiresAtEpochMs" to "999999999999"),
-            pairedServerUrl = paired,
-            nowMs = now,
-        )
+    @Test fun refusesMissingExpiry() = refused(data(drop = "expiresAtEpochMs"))
 
-        assertEquals(now + MfaPushChallengeParser.MAX_EXPIRES_AFTER_MS, challenge.expiresAtEpochMs)
-    }
+    @Test fun refusesExpiryElevenMinutesOutInsteadOfClamping() =
+        refused(data("expiresAtEpochMs" to (now + 11 * 60_000).toString()))
 
     @Test
-    fun rejectsAnAlreadyExpiredChallenge() {
-        assertThrows(IllegalArgumentException::class.java) {
-            MfaPushChallengeParser.parse(
-                mapOf("challengeId" to "ch-1", "matchDigits" to "42", "expiresAtEpochMs" to "500"),
-                pairedServerUrl = paired,
-                nowMs = 1_000_000L,
-            )
-        }
+    fun acceptsExpiryAtTheTenMinuteLimit() {
+        val at = now + MfaPushChallengeParser.MAX_EXPIRES_AFTER_MS
+        assertEquals(at, parse(data("expiresAtEpochMs" to at.toString())).expiresAtEpochMs)
     }
+
+    @Test fun refusesExpiryInThePast() = refused(data("expiresAtEpochMs" to "500"))
+
+    @Test
+    fun noLongerAcceptsTheSecondsExpiryAlias() =
+        refused(data("expiresAt" to ((now + 60_000) / 1_000).toString(), drop = "expiresAtEpochMs"))
 
     @Test
     fun rejectsMalformedMatchDigits() {
         assertThrows(IllegalArgumentException::class.java) {
-            MfaPushChallengeParser.parse(
-                mapOf("challengeId" to "ch-1", "matchDigits" to "42x"),
-                pairedServerUrl = paired,
-            )
+            parse(data("matchDigits" to "42x"))
         }
     }
 
     @Test
     fun dropsMalformedDuplicateAndExcessDecoys() {
-        val challenge = MfaPushChallengeParser.parse(
-            mapOf(
-                "challengeId" to "ch-1",
-                "matchDigits" to "42",
-                "decoyDigits" to "11,11,notdigits,42,22,33,44,55",
-            ),
-            pairedServerUrl = paired,
-        )
+        val challenge = parse(data("decoyDigits" to "11,11,notdigits,42,22,33,44,55"))
 
         assertEquals(listOf("11", "22", "33"), challenge.decoyDigits)
         assertTrue(challenge.decoyDigits.size <= MfaPushChallengeParser.MAX_DECOYS)

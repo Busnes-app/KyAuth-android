@@ -16,12 +16,14 @@ import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
 import android.os.PersistableBundle
-import android.provider.Settings
+import android.text.InputFilter
 import android.text.InputType
 import android.view.Gravity
 import android.view.View
 import android.view.ViewGroup
 import android.view.WindowManager
+import android.view.inputmethod.EditorInfo
+import android.view.inputmethod.InputMethodManager
 import android.widget.Button
 import android.widget.EditText
 import android.widget.FrameLayout
@@ -42,8 +44,7 @@ import androidx.core.content.ContextCompat
 import androidx.core.view.ViewCompat
 import androidx.core.view.WindowCompat
 import androidx.core.view.WindowInsetsCompat
-import org.kysecurity.authenticator.mfa.KyAuthMessagingService
-import com.google.mlkit.vision.codescanner.GmsBarcodeScanning
+import org.kysecurity.authenticator.mfa.IncomingPush
 import org.kysecurity.authenticator.mfa.MfaChallenge
 import org.kysecurity.authenticator.mfa.MfaMessage
 import org.kysecurity.authenticator.mfa.MfaPushChallengeStore
@@ -59,15 +60,20 @@ import org.kysecurity.authenticator.pairing.QrPairing
 import org.kysecurity.authenticator.pairing.QrPairingParser
 import org.kysecurity.authenticator.signon.KyIdentityAccount
 import org.kysecurity.authenticator.signon.PendingAddAccount
-import org.kysecurity.authenticator.pairing.PushTokenProvider
-import org.kysecurity.authenticator.passkeys.IdentityPasskeyKey
-import org.kysecurity.authenticator.passkeys.IdentityPasskeyStore
+import org.kysecurity.authenticator.pairing.ChannelPush
+import org.kysecurity.authenticator.pairing.PushCredential
+import org.kysecurity.authenticator.pairing.PushRefreshClient
+import org.kysecurity.authenticator.pairing.PushStore
+import org.kysecurity.authenticator.pairing.UnifiedPushRegistrar
+import org.kysecurity.authenticator.security.RemovedPasskey
+import org.kysecurity.authenticator.security.SecurityWipe
 import org.kysecurity.authenticator.security.IdleLock
 import org.kysecurity.authenticator.security.AppLockManager
 import org.kysecurity.authenticator.security.VaultUnlockPrompt
 import org.kysecurity.authenticator.security.PinFailurePolicy
 import org.kysecurity.authenticator.security.PinPolicy
-import org.kysecurity.authenticator.totp.KdbxTotpVault
+import org.kysecurity.authenticator.totp.TotpVault
+import org.kysecurity.authenticator.totp.TotpVaultException
 import org.kysecurity.authenticator.totp.TotpEntry
 import org.kysecurity.authenticator.totp.TotpDisplay
 import org.kysecurity.authenticator.totp.TotpUriParser
@@ -80,9 +86,11 @@ import kotlin.math.min
 
 private const val STATE_ACTIVE_TAB = "active_tab"
 private const val STATE_DEMO = "demo"
+private const val VAULT_UNREADABLE = "The TOTP vault could not be read. KyAuth stays locked and has not changed it."
 
 class MainActivity : AppCompatActivity() {
     private lateinit var store: PairingStore
+    private lateinit var qrScanner: QrScanner
     private val executor: Executor by lazy { ContextCompat.getMainExecutor(this) }
     private val handler = Handler(Looper.getMainLooper())
     private val openDialogs = mutableSetOf<AlertDialog>()
@@ -95,11 +103,17 @@ class MainActivity : AppCompatActivity() {
     private var demo = false
     private var nextDemoPushAt = 0L
     private var pendingChallenge: MfaChallenge? = null
+    private var challengeObserver: android.content.SharedPreferences.OnSharedPreferenceChangeListener? = null
     private var pendingTotpEntry: TotpEntry? = null
+    /** A pairing scan result for the enrollment screen to act on: text, or failure. */
+    private var scannedPairing: Result<String>? = null
+    private var askedForDistributor = false
     private var totpEntries = mutableListOf<TotpEntry>()
     private var copiedSensitiveLabel: String? = null
     private var isVaultLoading = false
     private var vaultLoadGeneration: Long? = null
+    /** [totpEntries] came from a successful load; only then may it be saved. */
+    private var vaultLoaded = false
     private data class TotpViews(
         val entry: TotpEntry,
         val code: TextView,
@@ -107,7 +121,7 @@ class MainActivity : AppCompatActivity() {
         val progress: ProgressBar,
     )
     private val totpViews = mutableListOf<TotpViews>()
-    private val vaultFile: File by lazy { File(filesDir, "totp_vault.kdbx") }
+    private val vaultFile: File by lazy { File(filesDir, "totp_vault.bin") }
 
     private val ticker = object : Runnable {
         override fun run() {
@@ -133,6 +147,7 @@ class MainActivity : AppCompatActivity() {
 
     companion object {
         const val EXTRA_ADD_ACCOUNT = "add_account"
+        private val TWO_DIGITS = Regex("\\d{2}")
     }
 
     private var addAccountResponse: android.accounts.AccountAuthenticatorResponse? = null
@@ -158,10 +173,17 @@ class MainActivity : AppCompatActivity() {
         if (!BuildConfig.ALLOW_SCREENSHOTS) {
             window.setFlags(WindowManager.LayoutParams.FLAG_SECURE, WindowManager.LayoutParams.FLAG_SECURE)
         }
+        RemovedPasskey.delete(this)
         store = PairingStore(this)
+        qrScanner = ChannelQrScanner.create(this, ::onQrScanned)
         addAccountResponse = PendingAddAccount.take(intent.getStringExtra(EXTRA_ADD_ACCOUNT))
-        KyAuthMessagingService.ensureChannel(this)
+        IncomingPush.ensureChannel(this)
         handler.post(ticker)
+        // A request answered by the activity this one replaced, or a new push, shows up without a resume.
+        challengeObserver = MfaPushChallengeStore(this).observe {
+            pendingChallenge = MfaPushChallengeStore(this).load()
+            if (!isDestroyed) renderContent()
+        }
     }
 
     override fun onResume() {
@@ -173,12 +195,30 @@ class MainActivity : AppCompatActivity() {
         }
         loadPendingPushChallenge()
         if (!AppLockManager.isUnlocked()) {
-            unlockWithPrompt(silent = true)
+            // A push request is answered from the lock screen with one signing prompt; a vault
+            // unlock prompt first would only add a second one.
+            if (pendingChallenge == null) unlockWithPrompt(silent = true)
         } else {
-            runCatching { loadTotpEntries() }
+            runCatching { loadTotpEntries() }.onFailure {
+                lockSensitiveState()
+                toast(VAULT_UNREADABLE)
+            }
         }
         renderContent()
         requestNotificationPermissionIfNeeded()
+        prepareUnifiedPushForPairing()
+    }
+
+    /**
+     * An unpaired UnifiedPush device asks for a distributor now, not at the Pair tap: the endpoint
+     * arrives asynchronously, and a KyIdentity pairing QR expires in 90 seconds.
+     */
+    private fun prepareUnifiedPushForPairing() {
+        val push = PushStore(this)
+        if (askedForDistributor || store.account() != null) return
+        if (push.transport != PushCredential.UNIFIED_PUSH || push.unifiedPushCredential() != null) return
+        askedForDistributor = true
+        registerUnifiedPush { it?.let(::toast) }
     }
 
     override fun onStop() {
@@ -191,6 +231,7 @@ class MainActivity : AppCompatActivity() {
 
     override fun onDestroy() {
         super.onDestroy()
+        challengeObserver?.let { MfaPushChallengeStore(this).stopObserving(it) }
         if (!isChangingConfigurations) {
             addAccountResponse?.onError(android.accounts.AccountManager.ERROR_CODE_CANCELED, "Pairing cancelled")
             addAccountResponse = null
@@ -265,14 +306,15 @@ class MainActivity : AppCompatActivity() {
         val btnScan = primaryButton(getString(R.string.scan_qr)).apply {
             setOnClickListener {
                 error.text = ""
-                GmsBarcodeScanning.getClient(this@MainActivity).startScan()
-                    .addOnSuccessListener { result ->
-                        val pairing = runCatching { QrPairingParser.parse(result.rawValue.orEmpty()) }
-                        pairing.onSuccess { showPairingConfirmation(it, this, progress, error) }
-                            .onFailure { error.text = it.message ?: "Invalid KyIdentity QR code" }
-                    }
-                    .addOnFailureListener { error.text = getString(R.string.scan_failed) }
+                qrScanner.scan(ScanPurpose.PAIRING)
             }
+        }
+        scannedPairing?.let { scanned ->
+            scannedPairing = null
+            scanned.onFailure { error.text = getString(R.string.scan_failed) }
+                .mapCatching { QrPairingParser.parse(it) }
+                .onSuccess { showPairingConfirmation(it, btnScan, progress, error) }
+                .onFailure { if (scanned.isSuccess) error.text = it.message ?: "Invalid KyIdentity QR code" }
         }
 
         val btnManual = secondaryButton("Enter code manually").apply {
@@ -297,6 +339,14 @@ class MainActivity : AppCompatActivity() {
             .setMessage("QR code read. Pair this device with $host?")
             .setNegativeButton("Cancel", null)
             .setPositiveButton("Pair") { _, _ ->
+                // Resolved before the device key is replaced, so a missing endpoint never costs the pairing.
+                val pushStore = PushStore(this)
+                val transport = pushStore.transport
+                val unifiedPush = pushStore.unifiedPushCredential()
+                if (transport == PushCredential.UNIFIED_PUSH && unifiedPush == null) {
+                    registerUnifiedPush { error.text = it ?: getString(R.string.push_waiting_for_distributor) }
+                    return@setPositiveButton
+                }
                 authenticateWithBiometrics(
                     reason = "Pair with $host",
                     onSuccess = {
@@ -304,8 +354,9 @@ class MainActivity : AppCompatActivity() {
                         progress.visibility = ProgressBar.VISIBLE
                         Thread {
                             var keyReplaced = false
+                            var push: PushCredential? = null
                             val result = runCatching {
-                                val pushToken = PushTokenProvider.currentToken().getOrThrow()
+                                push = if (transport == PushCredential.UNIFIED_PUSH) unifiedPush else ChannelPush.fcmCredential().getOrThrow()
                                 val hadAccount = runCatching { store.account() != null }.getOrDefault(false)
                                 keyReplaced = hadAccount
                                 val key = DeviceSigningKey.regenerate(AttestationChallenge.forPairing(pairing))
@@ -313,7 +364,7 @@ class MainActivity : AppCompatActivity() {
                                     pairing = pairing,
                                     deviceName = android.os.Build.MODEL,
                                     deviceIdentifier = store.deviceIdentifier(),
-                                    pushToken = pushToken,
+                                    push = push,
                                     publicKeyBase64 = key.publicKeyBase64,
                                     attestationChain = key.attestationChain,
                                 )
@@ -322,15 +373,9 @@ class MainActivity : AppCompatActivity() {
                                 progress.visibility = ProgressBar.GONE
                                 triggerBtn?.isEnabled = true
                                 result.onSuccess { account ->
-                                    // Pairing to a different server strands the old KyIdentity
-                                    // passkey: its key and record belong to a server this device
-                                    // no longer talks to. Clear the same pair the Unpair path does.
-                                    val previous = runCatching { store.account()?.serverUrl }.getOrNull()
-                                    if (previous != null && previous != account.serverUrl) {
-                                        IdentityPasskeyKey.deleteAll()
-                                        runCatching { IdentityPasskeyStore(this@MainActivity).clear() }
-                                    }
+                                    clearPendingChallenge()
                                     store.save(account)
+                                    push?.let { pushStore.markRegistered(it) }
                                     runCatching { KyIdentityAccount.sync(this@MainActivity, account) }
                                     if (answerAddAccountIfPossible()) return@onSuccess
                                     unlockWithPrompt()
@@ -340,7 +385,6 @@ class MainActivity : AppCompatActivity() {
                                         return@onFailure
                                     }
                                     // The old key is gone, so the saved pairing cannot sign anything.
-                                    // The KyIdentity passkey is a separate key and stays.
                                     clearPairing()
                                     AlertDialog.Builder(this@MainActivity)
                                         .setTitle(getString(R.string.pairing_title))
@@ -401,6 +445,13 @@ class MainActivity : AppCompatActivity() {
         root.gravity = Gravity.CENTER
 
         root.addView(kyAuthWordmark(textSize = 34f, iconSizeDp = 64, centered = true))
+        // The request is signed by the device key, never the vault key, so it needs no unlock.
+        if (renderPendingChallenge(root, account)) {
+            root.addView(secondaryButton(getString(R.string.unlock_biometrics)).apply {
+                setOnClickListener { unlockWithPrompt() }
+            }, fullWidthParams(top = 8))
+            return
+        }
         root.addView(TextView(this).apply {
             text = getString(R.string.vault_locked)
             textSize = 12f
@@ -553,6 +604,7 @@ class MainActivity : AppCompatActivity() {
         }
         headerRow.addView(headerTitle)
         headerRow.addView(addButton)
+        if (!demo) renderPushBanner(container, account)
         container.addView(headerRow)
         renderPendingChallenge(container, account)
 
@@ -700,13 +752,29 @@ class MainActivity : AppCompatActivity() {
             .showKyDialog()
     }
 
-    private fun scanTotpQr() {
-        GmsBarcodeScanning.getClient(this).startScan()
-            .addOnSuccessListener { result ->
-                runCatching { TotpUriParser.parse(result.rawValue.orEmpty()) }
-                    .onSuccess { queueTotpEntry(it) }
-                    .onFailure { Toast.makeText(this, "Invalid OTP QR code", Toast.LENGTH_SHORT).show() }
+    private fun scanTotpQr() = qrScanner.scan(ScanPurpose.TOTP)
+
+    /**
+     * A scan result can arrive in an activity recreated while the scanner was open, before
+     * onResume has loaded the vault or rendered a screen. Until then it is only stashed: adding a
+     * TOTP entry to the not-yet-loaded list and saving would overwrite the vault.
+     */
+    private fun onQrScanned(purpose: ScanPurpose, text: String?) {
+        val resumed = lifecycle.currentState.isAtLeast(androidx.lifecycle.Lifecycle.State.RESUMED)
+        when (purpose) {
+            ScanPurpose.PAIRING -> {
+                scannedPairing = text?.let { Result.success(it) } ?: Result.failure(IllegalStateException())
+                if (resumed) renderContent() // else onResume renders and the enrollment screen consumes it
             }
+            ScanPurpose.TOTP -> {
+                if (text == null) return
+                val entry = runCatching { TotpUriParser.parse(text) }.getOrElse {
+                    Toast.makeText(this, "Invalid OTP QR code", Toast.LENGTH_SHORT).show()
+                    return
+                }
+                if (resumed) queueTotpEntry(entry) else pendingTotpEntry = entry // loadTotpEntries adds it
+            }
+        }
     }
 
     private fun showAddTotpDialog() {
@@ -966,7 +1034,8 @@ class MainActivity : AppCompatActivity() {
     private fun loadTotpEntries() {
         if (demo) return
         val vaultKey = AppLockManager.getVaultKey() ?: return
-        totpEntries = KdbxTotpVault.loadEntries(vaultFile, vaultKey).toMutableList()
+        totpEntries = TotpVault.load(vaultFile, vaultKey).toMutableList()
+        vaultLoaded = true
         pendingTotpEntry?.let {
             pendingTotpEntry = null
             totpEntries.add(it)
@@ -976,8 +1045,12 @@ class MainActivity : AppCompatActivity() {
 
     private fun saveTotpEntries() {
         if (demo) return
-        val vaultKey = AppLockManager.getVaultKey() ?: return
-        KdbxTotpVault.saveEntries(vaultFile, vaultKey, totpEntries)
+        val vaultKey = AppLockManager.getVaultKey()
+        if (vaultKey == null || !vaultLoaded) {
+            toast("TOTP vault is not open. The change was not saved.")
+            return
+        }
+        TotpVault.save(vaultFile, vaultKey, totpEntries)
     }
 
     private fun addTotpEntry(entry: TotpEntry) {
@@ -996,14 +1069,17 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
-    /** The pending Push MFA request, at the top of Vault. Adds nothing when none is live. */
-    private fun renderPendingChallenge(container: LinearLayout, account: PairedAccount) {
-        val challenge = pendingChallenge ?: return
+    /**
+     * The pending Push MFA request: at the top of Vault, or alone on the lock screen. Adds nothing
+     * and returns false when none is live.
+     */
+    private fun renderPendingChallenge(container: LinearLayout, account: PairedAccount): Boolean {
+        val challenge = pendingChallenge ?: return false
         val challengeStore = MfaPushChallengeStore(this)
         if (challengeStore.isExpired(challenge)) {
             pendingChallenge = null
             if (demo) nextDemoPushAt = android.os.SystemClock.elapsedRealtime() + DemoMode.PUSH_INTERVAL_MS else challengeStore.clear()
-            return
+            return false
         }
 
         val card = LinearLayout(this).apply {
@@ -1011,32 +1087,42 @@ class MainActivity : AppCompatActivity() {
             background = cardBackground()
             setPadding(dp(20), dp(20), dp(20), dp(20))
         }
-        card.addView(title("Sign-in Request"))
-        card.addView(message("A sign-in request was received for:\n${challenge.serverUrl}\nUser: ${challenge.username ?: account.deviceName}\nExpires in ${challengeStore.secondsRemaining(challenge)} seconds.\n\nEnter the 2-digit number shown on your computer screen:"))
+        card.addView(title(if (challenge.purpose == "step_up") "Confirm a sensitive action" else "Sign-in request"))
+        card.addView(message("A request was received for:\n${challenge.serverUrl}\nUser: ${challenge.username ?: account.deviceName}\nExpires in ${challengeStore.secondsRemaining(challenge)} seconds.\n\nEnter the 2-digit number shown on your computer screen:"))
         if (demo) card.addView(message(getString(R.string.demo_push_hint, challenge.matchDigits)))
         val digits = EditText(this).apply {
             hint = "00"
             inputType = InputType.TYPE_CLASS_NUMBER
+            filters = arrayOf(InputFilter.LengthFilter(2))
+            imeOptions = EditorInfo.IME_ACTION_DONE or EditorInfo.IME_FLAG_NO_PERSONALIZED_LEARNING
             setSingleLine(true)
             gravity = Gravity.CENTER
             textSize = 24f
         }
+        val approve = {
+            val selected = digits.text.toString().trim()
+            if (demo) answerDemoChallenge(challenge, approve = true, selected) else respondToChallenge(challenge, account, approve = true, selected)
+        }
+        digits.setOnEditorActionListener { _, actionId, _ ->
+            (actionId == EditorInfo.IME_ACTION_DONE).also { if (it) approve() }
+        }
         card.addView(digits)
         card.addView(primaryButton("Approve request").apply {
             layoutParams = fullWidthParams(bottom = 8)
-            setOnClickListener {
-                val selected = digits.text.toString().trim()
-                if (demo) answerDemoChallenge(challenge, approve = true, selected) else onNumberSelected(challenge, selected, account)
-            }
+            setOnClickListener { approve() }
         })
 
         val btnDeny = secondaryButton("Deny request").apply {
             layoutParams = fullWidthParams(bottom = 8)
             setTextColor(ThemeManager.color(context, R.color.ky_error))
-            setOnClickListener { if (demo) answerDemoChallenge(challenge, approve = false, "") else onDenyClicked(challenge, account) }
+            setOnClickListener { if (demo) answerDemoChallenge(challenge, approve = false, "") else respondToChallenge(challenge, account, approve = false, "") }
         }
         card.addView(btnDeny)
         container.addView(card, fullWidthParams(bottom = 16))
+        if (digits.requestFocus()) {
+            digits.post { getSystemService(InputMethodManager::class.java).showSoftInput(digits, 0) }
+        }
+        return true
     }
 
     private fun startDemo() {
@@ -1053,6 +1139,7 @@ class MainActivity : AppCompatActivity() {
         pendingChallenge = null
         lockSensitiveState()
         renderContent()
+        prepareUnifiedPushForPairing()
     }
 
     /** Raises a fake sign-in request while the demo is on screen. */
@@ -1077,110 +1164,135 @@ class MainActivity : AppCompatActivity() {
         renderContent()
     }
 
-    private fun onNumberSelected(challenge: MfaChallenge, selectedDigit: String, account: PairedAccount) {
-        val sig = runCatching { DeviceSigningKey.initSignature() }.getOrElse {
-            Toast.makeText(this, "Unable to authorize this request. Use your fingerprint or re-pair KyAuth.", Toast.LENGTH_LONG).show()
-            return
+    private fun renderPushBanner(container: LinearLayout, account: PairedAccount) {
+        val push = PushStore(this)
+        val broken = push.broken()
+        if (!push.refreshPending() && broken == null) return
+        val banner = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            background = cardBackground()
+            setPadding(dp(20), dp(16), dp(20), dp(16))
         }
-        val cryptoObject = BiometricPrompt.CryptoObject(sig)
-        val prompt = BiometricPrompt(this, executor, object : BiometricPrompt.AuthenticationCallback() {
-            override fun onAuthenticationSucceeded(result: BiometricPrompt.AuthenticationResult) {
-                val authedSig = result.cryptoObject?.signature ?: sig
-                val payload = MfaMessage.formatPayload(challenge.challengeId, approve = true, selectedDigit)
-                val signature = runCatching { DeviceSigningKey.sign(payload, authedSig) }.getOrElse {
-                    Toast.makeText(this@MainActivity, "Unable to authorize this request. Use your fingerprint or re-pair KyAuth.", Toast.LENGTH_LONG).show()
-                    return
-                }
-                Thread {
-                    val result = MfaResponseClient().respond(
-                        serverUrl = challenge.serverUrl,
-                        challengeId = challenge.challengeId,
-                        selectedDigits = selectedDigit,
-                        approve = true,
-                        signature = signature,
-                    )
-                    runOnUiThread {
-                        when (result) {
-                            is MfaResponseResult.Success -> {
-                                pendingChallenge = null
-                                MfaPushChallengeStore(this@MainActivity).clear()
-                                val message = if (result.approved) "Sign-in Approved" else "Sign-in Denied"
-                                Toast.makeText(this@MainActivity, message, Toast.LENGTH_SHORT).show()
-                            }
-                            is MfaResponseResult.Error -> {
-                                Toast.makeText(this@MainActivity, result.message, Toast.LENGTH_LONG).show()
-                            }
-                        }
-                        renderContent()
-                    }
-                }.start()
-            }
-            override fun onAuthenticationError(errorCode: Int, errString: CharSequence) {
-                Toast.makeText(this@MainActivity, "Unlock required: $errString", Toast.LENGTH_SHORT).show()
-            }
-        })
-        prompt.authenticate(
-            BiometricPrompt.PromptInfo.Builder()
-                .setTitle("KyAuth")
-                .setSubtitle("Approve sign-in match $selectedDigit")
-                .setAllowedAuthenticators(
-                    BiometricManager.Authenticators.BIOMETRIC_STRONG or BiometricManager.Authenticators.DEVICE_CREDENTIAL,
-                )
-                .build(),
-            cryptoObject,
-        )
+        banner.addView(message(listOfNotNull("Sign-in requests paused", broken).joinToString("\n")))
+        banner.addView(primaryButton("Reconnect").apply {
+            setOnClickListener { reconnectPush(account) }
+        }, fullWidthParams())
+        container.addView(banner, fullWidthParams(bottom = 16))
     }
 
-    private fun onDenyClicked(challenge: MfaChallenge, account: PairedAccount) {
-        val sig = runCatching { DeviceSigningKey.initSignature() }.getOrElse {
-            Toast.makeText(this, "Unable to authorize this request. Use your fingerprint or re-pair KyAuth.", Toast.LENGTH_LONG).show()
+    private fun reconnectPush(account: PairedAccount) {
+        val push = PushStore(this)
+        if (push.transport == PushCredential.UNIFIED_PUSH) {
+            val credential = push.unifiedPushCredential()
+            if (credential != null) {
+                refreshPush(account, credential)
+            } else {
+                registerUnifiedPush { toast(it ?: getString(R.string.push_waiting_for_distributor)) }
+            }
             return
         }
-        val cryptoObject = BiometricPrompt.CryptoObject(sig)
-        val prompt = BiometricPrompt(this, executor, object : BiometricPrompt.AuthenticationCallback() {
-            override fun onAuthenticationSucceeded(result: BiometricPrompt.AuthenticationResult) {
-                val authedSig = result.cryptoObject?.signature ?: sig
-                val payload = MfaMessage.formatPayload(challenge.challengeId, approve = false, challenge.matchDigits)
+        Thread {
+            val credential = ChannelPush.fcmCredential()
+            runOnUiThread {
+                credential.onSuccess { refreshPush(account, it) }
+                    .onFailure { toast(it.message ?: "Firebase is unavailable") }
+            }
+        }.start()
+    }
+
+    /** One prompt signs the refresh; the registered credential changes only after KyIdentity's 2xx. */
+    private fun refreshPush(account: PairedAccount, credential: PushCredential) {
+        val issuedAt = System.currentTimeMillis()
+        val message = runCatching { PushRefreshClient.message(account.serverUrl, account.deviceId, issuedAt, credential) }
+            .getOrElse { return toast("This pairing cannot reconnect. Pair KyAuth again.") }
+        val signature = runCatching { DeviceSigningKey.initSignature() }
+            .getOrElse { return toast("Unable to use the device key. Pair KyAuth again.") }
+        VaultUnlockPrompt.showForSignature(this, "Reconnect sign-in requests", signature, onAuthenticated = { authenticated ->
+            val signed = runCatching { DeviceSigningKey.sign(message, authenticated) }
+                .getOrElse { return@showForSignature toast("Unable to use the device key. Pair KyAuth again.") }
+            Thread {
+                val result = PushRefreshClient().refresh(account.serverUrl, account.deviceId, credential, issuedAt, signed)
+                runOnUiThread {
+                    result.onSuccess {
+                        val push = PushStore(this)
+                        push.markRegistered(credential)
+                        toast("Sign-in requests reconnected")
+                    }.onFailure { toast(it.message ?: "Reconnecting failed") }
+                    renderContent()
+                }
+            }.start()
+        }, onFailed = { toast("Unlock required: $it") })
+    }
+
+    private fun registerUnifiedPush(onResult: (String?) -> Unit) =
+        UnifiedPushRegistrar.register(this, { it.showKyDialog() }, onResult)
+
+    private fun toast(text: String) = Toast.makeText(this, text, Toast.LENGTH_LONG).show()
+
+    /** Signs and sends one answer. The device key's own prompt is the only authentication. */
+    private fun respondToChallenge(challenge: MfaChallenge, account: PairedAccount, approve: Boolean, digits: String) {
+        // A mistyped number would be a denial at the server, so it never reaches the prompt.
+        if (approve && !TWO_DIGITS.matches(digits)) {
+            Toast.makeText(this, "Enter the 2-digit number shown on your computer screen.", Toast.LENGTH_SHORT).show()
+            return
+        }
+        // Answers go to the current pairing only, and only while the request is still stored:
+        // one answered from another activity instance, or left from an earlier pairing, is dropped.
+        val challengeStore = MfaPushChallengeStore(this)
+        if (challenge.serverUrl.trim() != account.serverUrl.trim()) challengeStore.clear(challenge.challengeId)
+        val stored = challengeStore.load()
+        if (stored?.challengeId != challenge.challengeId) {
+            pendingChallenge = stored // whatever is still open, possibly a newer request
+            renderContent()
+            return
+        }
+        val payload = runCatching {
+            MfaMessage.formatPayload(
+                MfaMessage.origin(account.serverUrl), requireNotNull(account.userId), account.deviceId,
+                challenge.challengeId, challenge.purpose, challenge.expiresAtEpochMs, approve, digits,
+            )
+        }.getOrElse {
+            Toast.makeText(this, "This pairing cannot answer the request. Pair KyAuth again.", Toast.LENGTH_LONG).show()
+            return
+        }
+        val unauthorized = "Unable to authorize this request. Use your fingerprint or re-pair KyAuth."
+        val sig = runCatching { DeviceSigningKey.initSignature() }.getOrElse {
+            Toast.makeText(this, unauthorized, Toast.LENGTH_LONG).show()
+            return
+        }
+        VaultUnlockPrompt.showForSignature(
+            this,
+            if (approve) "Approve sign-in match $digits" else "Deny sign-in request",
+            sig,
+            onAuthenticated = { authedSig ->
                 val signature = runCatching { DeviceSigningKey.sign(payload, authedSig) }.getOrElse {
-                    Toast.makeText(this@MainActivity, "Unable to authorize this request. Use your fingerprint or re-pair KyAuth.", Toast.LENGTH_LONG).show()
-                    return
+                    Toast.makeText(this, unauthorized, Toast.LENGTH_LONG).show()
+                    return@showForSignature
                 }
                 Thread {
                     val result = MfaResponseClient().respond(
-                        serverUrl = challenge.serverUrl,
+                        serverUrl = account.serverUrl,
                         challengeId = challenge.challengeId,
-                        selectedDigits = challenge.matchDigits,
-                        approve = false,
+                        deviceId = account.deviceId,
+                        selectedDigits = digits,
+                        approve = approve,
                         signature = signature,
                     )
+                    // Before the UI hop: an activity recreated mid-request must not see the request as open.
+                    if (result is MfaResponseResult.Success) MfaPushChallengeStore(applicationContext).clear(challenge.challengeId)
                     runOnUiThread {
+                        if (isDestroyed) return@runOnUiThread
                         when (result) {
-                            is MfaResponseResult.Success -> {
-                                pendingChallenge = null
-                                MfaPushChallengeStore(this@MainActivity).clear()
-                                Toast.makeText(this@MainActivity, "Sign-in Denied", Toast.LENGTH_SHORT).show()
-                            }
+                            is MfaResponseResult.Success -> onAnswerAccepted(result.approved)
                             is MfaResponseResult.Error -> {
-                                Toast.makeText(this@MainActivity, result.message, Toast.LENGTH_LONG).show()
+                                Toast.makeText(this, result.message, Toast.LENGTH_LONG).show()
+                                renderContent()
                             }
                         }
-                        renderContent()
                     }
                 }.start()
-            }
-            override fun onAuthenticationError(errorCode: Int, errString: CharSequence) {
-                Toast.makeText(this@MainActivity, "Unlock required: $errString", Toast.LENGTH_SHORT).show()
-            }
-        })
-        prompt.authenticate(
-            BiometricPrompt.PromptInfo.Builder()
-                .setTitle("KyAuth")
-                .setSubtitle("Deny sign-in request")
-                .setAllowedAuthenticators(
-                    BiometricManager.Authenticators.BIOMETRIC_STRONG or BiometricManager.Authenticators.DEVICE_CREDENTIAL,
-                )
-                .build(),
-            cryptoObject,
+            },
+            onFailed = { Toast.makeText(this, "Unlock required: $it", Toast.LENGTH_SHORT).show() },
         )
     }
 
@@ -1212,53 +1324,6 @@ class MainActivity : AppCompatActivity() {
             return
         }
 
-        val providerSection = settingsCard()
-        providerSection.addView(title("KyIdentity passkey"))
-        providerSection.addView(message("Turn KyAuth on under Additional services so KyIdentity sign-in can use this phone's passkey. Keep Bitwarden as your preferred service."))
-        providerSection.addView(primaryButton("Open passkey settings").apply {
-            setOnClickListener { openCredentialProviderSettings() }
-        }, fullWidthParams())
-        sections.add(providerSection)
-
-        val signOnPasskeySection = settingsCard()
-        signOnPasskeySection.addView(title(getString(R.string.identity_passkey_title)))
-        // EncryptedSharedPreferences can throw after a device restore or keyset invalidation;
-        // Settings must still render, showing "none" rather than crashing the app.
-        val signOnRecord = runCatching { IdentityPasskeyStore(this).record() }.getOrNull()
-        if (signOnRecord == null) {
-            signOnPasskeySection.addView(message(getString(R.string.identity_passkey_none)))
-        } else {
-            val backing = if (signOnRecord.strongBoxBacked) {
-                R.string.identity_passkey_strongbox
-            } else {
-                R.string.identity_passkey_tee
-            }
-            signOnPasskeySection.addView(
-                message("${signOnRecord.username.ifBlank { signOnRecord.rpId }}\n${getString(backing)}"),
-            )
-            val btnRemove = secondaryButton(getString(R.string.identity_passkey_remove)).apply {
-                setTextColor(ThemeManager.color(context, R.color.ky_error))
-                setOnClickListener {
-                    AlertDialog.Builder(this@MainActivity)
-                        .setTitle(getString(R.string.identity_passkey_remove))
-                        .setMessage(
-                            "This passkey only exists on this device and cannot be recovered. " +
-                                "You will need your KyIdentity recovery codes or an admin reset to " +
-                                "sign in without it.",
-                        )
-                        .setNegativeButton("Cancel", null)
-                        .setPositiveButton("Remove") { _, _ ->
-                            IdentityPasskeyKey.deleteAll()
-                            IdentityPasskeyStore(this@MainActivity).clear()
-                            renderContent()
-                        }
-                        .showKyDialog()
-                }
-            }
-            signOnPasskeySection.addView(btnRemove, fullWidthParams())
-        }
-        sections.add(signOnPasskeySection)
-
         val accountSection = settingsCard()
         accountSection.addView(title("Paired Account"))
         accountSection.addView(message("Server: ${account.serverUrl}\nDevice ID: ${account.deviceId}\nDevice Name: ${account.deviceName}\nUser ID: ${account.userId ?: "N/A"}"))
@@ -1286,10 +1351,7 @@ class MainActivity : AppCompatActivity() {
             setOnClickListener {
                 AlertDialog.Builder(this@MainActivity)
                     .setTitle("Unpair Device")
-                    .setMessage(
-                        "Are you sure you want to unpair this device from KyIdentity? " +
-                            "This also deletes the KyIdentity passkey held on this device.",
-                    )
+                    .setMessage("Are you sure you want to unpair this device from KyIdentity?")
                     .setNegativeButton("Cancel", null)
                     .setPositiveButton("Unpair") { _, _ -> unpairIdentity() }
                     .showKyDialog()
@@ -1297,6 +1359,8 @@ class MainActivity : AppCompatActivity() {
         }
         accountSection.addView(btnUnpair, fullWidthParams())
         sections.add(accountSection)
+
+        sections.add(pushDeliverySection())
 
         val securitySection = settingsCard()
         securitySection.addView(title("Security & App Lock"))
@@ -1343,6 +1407,48 @@ class MainActivity : AppCompatActivity() {
         addView(secondaryButton("About KyAuth").apply {
             setOnClickListener { showAboutDialog(this@MainActivity) }
         }, fullWidthParams())
+    }
+
+    private fun pushDeliverySection(): View {
+        val push = PushStore(this)
+        val section = settingsCard()
+        section.addView(title("Sign-in request delivery"))
+        val unifiedPush = push.transport == PushCredential.UNIFIED_PUSH
+        val status = when {
+            !unifiedPush -> "Firebase"
+            push.broken() != null -> "UnifiedPush: ${push.broken()}"
+            push.unifiedPushCredential() == null -> "UnifiedPush: waiting for a distributor"
+            else -> "UnifiedPush via ${UnifiedPushRegistrar.distributor(this) ?: "unknown distributor"}"
+        }
+        section.addView(message(if (push.refreshPending()) "$status\nPaused until you reconnect on the Vault tab." else status))
+        if (unifiedPush) {
+            section.addView(secondaryButton("Choose distributor").apply {
+                setOnClickListener { UnifiedPushRegistrar.pick(this@MainActivity) { it?.let(::toast); renderContent() } }
+            }, fullWidthParams(bottom = 8))
+        }
+        if (BuildConfig.HAS_FCM) {
+            section.addView(secondaryButton(if (unifiedPush) "Use Firebase" else "Use UnifiedPush").apply {
+                setOnClickListener { if (unifiedPush) selectFirebase() else selectUnifiedPush() }
+            }, fullWidthParams())
+        }
+        return section
+    }
+
+    private fun selectUnifiedPush() = registerUnifiedPush { failure ->
+        if (failure != null) return@registerUnifiedPush toast(failure)
+        val push = PushStore(this)
+        push.transport = PushCredential.UNIFIED_PUSH
+        if (push.registered()?.transport != PushCredential.UNIFIED_PUSH) push.markRefreshPending()
+        renderContent()
+    }
+
+    private fun selectFirebase() {
+        val push = PushStore(this)
+        push.transport = PushCredential.FCM
+        UnifiedPushRegistrar.unregister(this)
+        push.forgetUnifiedPush() // the connector reports no onUnregistered for an explicit unregister
+        if (push.registered()?.transport != PushCredential.FCM) push.markRefreshPending()
+        renderContent()
     }
 
     private fun showSetPinDialog() {
@@ -1445,18 +1551,6 @@ class MainActivity : AppCompatActivity() {
             .showKyDialog()
     }
 
-    private fun openCredentialProviderSettings() {
-        runCatching {
-            startActivity(Intent("android.settings.CREDENTIAL_PROVIDER"))
-            return
-        }
-        runCatching {
-            startActivity(Intent(Settings.ACTION_SETTINGS))
-        }.onFailure {
-            Toast.makeText(this, "Could not open system credential settings", Toast.LENGTH_SHORT).show()
-        }
-    }
-
     // ==========================================
     // Biometric Authentication Helper
     // ==========================================
@@ -1474,7 +1568,7 @@ class MainActivity : AppCompatActivity() {
                     check(unlock())
                 }
                 val totpKey = checkNotNull(AppLockManager.getVaultKey())
-                KdbxTotpVault.loadEntries(vaultFile, totpKey)
+                TotpVault.load(vaultFile, totpKey)
             }
             runOnUiThread {
                 if (vaultLoadGeneration != generation) return@runOnUiThread
@@ -1490,6 +1584,7 @@ class MainActivity : AppCompatActivity() {
                 }
                 result.onSuccess { totp ->
                     totpEntries = totp.toMutableList()
+                    vaultLoaded = true
                     pendingTotpEntry?.let { entry ->
                         pendingTotpEntry = null
                         runCatching { addTotpEntry(entry) }.onFailure {
@@ -1499,7 +1594,12 @@ class MainActivity : AppCompatActivity() {
                     renderContent()
                 }.onFailure {
                     lockSensitiveState()
-                    onError()
+                    if (it is TotpVaultException) {
+                        renderContent()
+                        toast(VAULT_UNREADABLE)
+                    } else {
+                        onError()
+                    }
                 }
             }
         }.start()
@@ -1848,24 +1948,37 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun unpairIdentity() {
-        // A passkey for a server we are no longer paired to is dead weight, and
-        // its key must not outlive the pairing.
-        IdentityPasskeyKey.deleteAll()
-        IdentityPasskeyStore(this).clear()
+        SecurityWipe.clearPush(this)
         clearPairing()
     }
 
     private fun clearPairing() {
         store.clear()
+        PushStore(this).forgetRegistration()
+        clearPendingChallenge()
         runCatching { KyIdentityAccount.remove(this) }
         lockSensitiveState()
         renderContent()
+    }
+
+    /** The server took an answer, already cleared from storage. Reload rather than null: a newer request may have arrived meanwhile. */
+    private fun onAnswerAccepted(approved: Boolean) {
+        pendingChallenge = MfaPushChallengeStore(this).load()
+        Toast.makeText(this, if (approved) "Sign-in Approved" else "Sign-in Denied", Toast.LENGTH_SHORT).show()
+        renderContent()
+    }
+
+    /** A pairing change invalidates any stored request: it named the old device and account. */
+    private fun clearPendingChallenge() {
+        pendingChallenge = null
+        MfaPushChallengeStore(this).clear()
     }
 
     private fun lockSensitiveState() {
         AppLockManager.lock()
         isVaultLoading = false
         vaultLoadGeneration = null
+        vaultLoaded = false
         pendingTotpEntry = null
         dismissSensitiveDialogs()
         totpEntries.clear()

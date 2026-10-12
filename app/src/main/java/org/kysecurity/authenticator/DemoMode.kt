@@ -38,6 +38,7 @@ object DemoMode {
             decoyDigits = numbers.drop(1),
             serverUrl = account.serverUrl,
             username = account.username,
+            purpose = "login",
             expiresAtEpochMs = nowMs + PUSH_LIFETIME_MS,
         )
     }

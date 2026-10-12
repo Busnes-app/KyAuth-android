@@ -1,5 +1,6 @@
 package org.kysecurity.authenticator.security
 
+import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -18,8 +19,7 @@ class SecurityWipeAliasTest {
             "kyauth_pin_pepper",
             "kyidentity-device-signing-v1",
             "kysignon-device-signing-v1",
-            // Both halves of the alternating KyIdentity passkey pair; a key left behind here is a
-            // live authentication factor surviving a wipe.
+            // The removed KyIdentity passkey: a key left behind is a live factor surviving a wipe.
             "kyauth_identity_passkey_a",
             "kyauth_identity_passkey_b",
             "kyauth_signon_passkey_a",
@@ -31,9 +31,18 @@ class SecurityWipeAliasTest {
     }
 
     @Test
-    fun `leaves the androidx master key alone`() {
-        // EncryptedSharedPreferences cannot re-open its files once this key is gone, so deleting it
-        // turns a wipe into a crash on next launch. The prefs are cleared by content instead.
+    fun `wipe also covers everything the removed-passkey cleanup deletes`() {
+        assertEquals(
+            listOf("kyauth_identity_passkey_a", "kyauth_identity_passkey_b", "kyauth_signon_passkey_a", "kyauth_signon_passkey_b"),
+            RemovedPasskey.ALIASES,
+        )
+        assertEquals(listOf("identity_passkey_store", "identity_passkey"), RemovedPasskey.PREFS)
+        assertTrue(SecurityWipe.PREFS_FILES.containsAll(RemovedPasskey.PREFS))
+    }
+
+    @Test
+    fun `prefix sweep does not match the androidx master key`() {
+        // The prefix sweep does not match it; SecurityWipe deletes it by name.
         assertFalse(SecurityWipe.isAppAlias("_androidx_security_master_key_"))
     }
 

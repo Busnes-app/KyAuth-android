@@ -34,6 +34,7 @@
     <string name="boot_locked_custom_os">Bootloader locked (custom OS).</string>
     <string name="boot_unlocked">Bootloader unlocked.</string>
     <string name="scan_failed">Unable to scan QR code</string>
+    <string name="push_waiting_for_distributor">Waiting for your UnifiedPush distributor to connect. Try again in a moment.</string>
     <string name="manual_pairing_required">Server URL and Pairing Token/PIN are required</string>
     <string name="vault_locked">VAULT LOCKED</string>
     <string name="unlock_your_vault">Unlock your vault</string>
@@ -45,11 +46,6 @@
     <string name="add_totp_description">Add a TOTP authentication code to your encrypted vault.</string>
     <string name="edit_account">Edit Account</string>
     <string name="select_theme">Select Theme</string>
-    <string name="identity_passkey_title">KyIdentity Passkey</string>
-    <string name="identity_passkey_strongbox">Stored in this device\'s secure element (StrongBox). It does not sync and does not leave this device.</string>
-    <string name="identity_passkey_tee">Stored in this device\'s secure hardware. It does not sync and does not leave this device.</string>
-    <string name="identity_passkey_none">No KyIdentity passkey on this device. Enrol one from KyIdentity to use it as a second factor.</string>
-    <string name="identity_passkey_remove">Remove KyIdentity Passkey</string>
     <string name="signon_prompt">%1$s at %2$s wants to sign in as %3$s at %4$s.</string>
     <string name="signon_approve">Approve sign-in</string>
     <string name="signon_deny">Deny</string>

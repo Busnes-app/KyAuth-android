@@ -24,6 +24,8 @@ import org.kysecurity.authenticator.security.AppLockManager
 /** Fake unlocked state; does not simulate biometric authentication. */
 @RunWith(AndroidJUnit4::class)
 class VaultTabTest {
+    @get:org.junit.Rule val showOverKeyguard = ShowOverKeyguard()
+
     private val context = ApplicationProvider.getApplicationContext<Context>()
 
     @Before fun setup() {
@@ -50,20 +52,29 @@ class VaultTabTest {
         if (view is ViewGroup) for (i in 0 until view.childCount) addAll(texts(view.getChildAt(i)))
     }
 
-    private fun challenge(expiresInMs: Long) = MfaChallenge(
+    private fun challenge(expiresInMs: Long, purpose: String = "login") = MfaChallenge(
         challengeId = "c1", matchDigits = "42", decoyDigits = listOf("17"),
-        serverUrl = "https://example.test", username = "fixture-user",
+        serverUrl = "https://example.test", username = "fixture-user", purpose = purpose,
         expiresAtEpochMs = System.currentTimeMillis() + expiresInMs,
     )
+
+    @Test fun stepUpRequestShowsSensitiveActionTitle() {
+        MfaPushChallengeStore(context).save(challenge(60_000, "step_up"))
+        ActivityScenario.launch(MainActivity::class.java).use { scenario ->
+            scenario.onActivity { activity ->
+                assertTrue(texts(activity.window.decorView).contains("Confirm a sensitive action"))
+            }
+        }
+    }
 
     @Test fun pendingRequestShowsWithNoTotpEntries() {
         MfaPushChallengeStore(context).save(challenge(60_000))
         ActivityScenario.launch(MainActivity::class.java).use { scenario ->
             scenario.onActivity { activity ->
                 val shown = texts(activity.window.decorView)
-                assertTrue(shown.contains("Sign-in Request"))
+                assertTrue(shown.contains("Sign-in request"))
                 assertTrue(shown.contains("No codes yet"))
-                assertTrue(shown.indexOf("Sign-in Request") < shown.indexOf("No codes yet"))
+                assertTrue(shown.indexOf("Sign-in request") < shown.indexOf("No codes yet"))
                 assertTrue(shown.contains("Vault"))
                 assertFalse(shown.contains("Push MFA"))
                 assertFalse(shown.contains("Passwords"))
@@ -71,11 +82,89 @@ class VaultTabTest {
         }
     }
 
+    @Test fun lockedRequestShowsOnLockScreenWithoutTheVault() {
+        InstrumentationRegistry.getInstrumentation().runOnMainSync { AppLockManager.lock() }
+        MfaPushChallengeStore(context).save(challenge(60_000))
+        ActivityScenario.launch(MainActivity::class.java).use { scenario ->
+            scenario.onActivity { activity ->
+                val shown = texts(activity.window.decorView)
+                assertTrue(shown.contains("Sign-in request"))
+                assertTrue(shown.contains("Approve request"))
+                assertFalse(shown.contains("No codes yet"))
+                assertFalse(shown.contains(activity.getString(R.string.unlock_your_vault)))
+            }
+        }
+    }
+
+    @Test fun lateClearSparesANewerRequest() {
+        val store = MfaPushChallengeStore(context)
+        store.save(challenge(60_000).copy(challengeId = "newer"))
+        store.clear("c1")
+        assertTrue(store.load()?.challengeId == "newer")
+        store.clear("newer")
+        assertNull(store.load())
+    }
+
+    @Test fun pairingChangeClearsTheStoredRequest() {
+        MfaPushChallengeStore(context).save(challenge(60_000))
+        ActivityScenario.launch(MainActivity::class.java).use { scenario ->
+            scenario.onActivity { activity ->
+                MainActivity::class.java.getDeclaredMethod("clearPairing").apply { isAccessible = true }.invoke(activity)
+            }
+        }
+        assertNull(MfaPushChallengeStore(context).load())
+    }
+
+    // Answered elsewhere (e.g. by the activity this one replaced): no second prompt, card dropped.
+    @Test fun requestNoLongerStoredIsDroppedWithoutAPrompt() {
+        val shown = challenge(60_000)
+        MfaPushChallengeStore(context).save(shown)
+        ActivityScenario.launch(MainActivity::class.java).use { scenario ->
+            scenario.onActivity { activity ->
+                MfaPushChallengeStore(context).clear()
+                MainActivity::class.java.getDeclaredMethod(
+                    "respondToChallenge", MfaChallenge::class.java, PairedAccount::class.java,
+                    Boolean::class.javaPrimitiveType, String::class.java,
+                ).apply { isAccessible = true }.invoke(activity, shown, PairingStore(context).account(), false, "")
+                assertFalse(texts(activity.window.decorView).contains("Sign-in request"))
+                assertTrue(activity.supportFragmentManager.fragments.none { it.javaClass.name.contains("Biometric") })
+            }
+        }
+    }
+
+    // The activity a rotation destroyed finishes the answer: this one drops the card with no resume.
+    @Test fun requestClearedElsewhereLeavesTheScreen() {
+        MfaPushChallengeStore(context).save(challenge(60_000))
+        ActivityScenario.launch(MainActivity::class.java).use { scenario ->
+            scenario.onActivity { assertTrue(texts(it.window.decorView).contains("Sign-in request")) }
+            Thread { MfaPushChallengeStore(context).clear("c1") }.apply { start(); join() }
+            InstrumentationRegistry.getInstrumentation().waitForIdleSync()
+            scenario.onActivity { assertFalse(texts(it.window.decorView).contains("Sign-in request")) }
+        }
+    }
+
+    // B arrives while A's answer is in flight; A's completion must not hide B.
+    @Test fun answerCompletionKeepsANewerRequestOnScreen() {
+        MfaPushChallengeStore(context).save(challenge(60_000))
+        ActivityScenario.launch(MainActivity::class.java).use { scenario ->
+            MfaPushChallengeStore(context).save(challenge(60_000, "step_up").copy(challengeId = "c2"))
+            InstrumentationRegistry.getInstrumentation().waitForIdleSync()
+            scenario.onActivity { assertTrue(texts(it.window.decorView).contains("Confirm a sensitive action")) }
+            MfaPushChallengeStore(context).clear("c1") // what the response thread does for A
+            scenario.onActivity { activity ->
+                MainActivity::class.java.getDeclaredMethod("onAnswerAccepted", Boolean::class.javaPrimitiveType)
+                    .apply { isAccessible = true }.invoke(activity, true)
+                assertTrue(texts(activity.window.decorView).contains("Confirm a sensitive action"))
+            }
+        }
+        assertTrue(MfaPushChallengeStore(context).load()?.challengeId == "c2")
+    }
+
     @Test fun expiredRequestIsClearedAndNotShown() {
         MfaPushChallengeStore(context).save(challenge(-1_000))
         ActivityScenario.launch(MainActivity::class.java).use { scenario ->
             scenario.onActivity { activity ->
-                assertFalse(texts(activity.window.decorView).contains("Sign-in Request"))
+                assertFalse(texts(activity.window.decorView).contains("Sign-in request"))
             }
         }
         assertNull(MfaPushChallengeStore(context).load())
@@ -90,7 +179,7 @@ class VaultTabTest {
                 // save, not load: load() would drop the expired challenge itself.
                 MfaPushChallengeStore(context).save(expired)
                 MainActivity::class.java.getDeclaredMethod("renderContent").apply { isAccessible = true }.invoke(activity)
-                assertFalse(texts(activity.window.decorView).contains("Sign-in Request"))
+                assertFalse(texts(activity.window.decorView).contains("Sign-in request"))
                 assertNull(field.get(activity))
                 val raw = context.getSharedPreferences("mfa_push_challenge", Context.MODE_PRIVATE).getString("challenge", null)
                 assertNull(raw)
