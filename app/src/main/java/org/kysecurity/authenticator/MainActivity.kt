@@ -79,6 +79,7 @@ import kotlin.math.max
 import kotlin.math.min
 
 private const val STATE_ACTIVE_TAB = "active_tab"
+private const val STATE_DEMO = "demo"
 
 class MainActivity : AppCompatActivity() {
     private lateinit var store: PairingStore
@@ -90,6 +91,9 @@ class MainActivity : AppCompatActivity() {
     private fun idleTimeoutMillis() = idleMinutes() * 60_000L
 
     private var activeTab = Tab.VAULT
+    // Never written to storage; the demo reads and writes no stored state.
+    private var demo = false
+    private var nextDemoPushAt = 0L
     private var pendingChallenge: MfaChallenge? = null
     private var pendingTotpEntry: TotpEntry? = null
     private var totpEntries = mutableListOf<TotpEntry>()
@@ -111,9 +115,10 @@ class MainActivity : AppCompatActivity() {
                 lockSensitiveState()
                 renderContent()
             }
-            if (!isVaultLoading && AppLockManager.isUnlocked() && activeTab == Tab.VAULT) {
+            if (!isVaultLoading && (AppLockManager.isUnlocked() || demo) && activeTab == Tab.VAULT) {
                 updateTotpViews()
             }
+            simulateDemoPush()
             handler.postDelayed(this, 1000)
         }
     }
@@ -148,6 +153,7 @@ class MainActivity : AppCompatActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         activeTab = Tab.restore(savedInstanceState?.getString(STATE_ACTIVE_TAB))
+        demo = savedInstanceState?.getBoolean(STATE_DEMO) ?: false
         WindowCompat.setDecorFitsSystemWindows(window, false)
         if (!BuildConfig.ALLOW_SCREENSHOTS) {
             window.setFlags(WindowManager.LayoutParams.FLAG_SECURE, WindowManager.LayoutParams.FLAG_SECURE)
@@ -161,6 +167,10 @@ class MainActivity : AppCompatActivity() {
     override fun onResume() {
         super.onResume()
         if (answerAddAccountIfPossible()) return
+        if (demo) {
+            renderContent()
+            return
+        }
         loadPendingPushChallenge()
         if (!AppLockManager.isUnlocked()) {
             unlockWithPrompt(silent = true)
@@ -212,6 +222,7 @@ class MainActivity : AppCompatActivity() {
 
     override fun onSaveInstanceState(outState: Bundle) {
         outState.putString(STATE_ACTIVE_TAB, activeTab.name)
+        outState.putBoolean(STATE_DEMO, demo)
         super.onSaveInstanceState(outState)
     }
 
@@ -223,7 +234,12 @@ class MainActivity : AppCompatActivity() {
         applyRootPadding(root)
 
         val account = store.account()
+        demo = DemoMode.active(demo, account)
         when {
+            demo -> {
+                if (totpEntries.isEmpty()) totpEntries = DemoMode.entries().toMutableList()
+                renderDashboard(root, DemoMode.account)
+            }
             account == null -> renderEnrollmentView(root)
             !AppLockManager.isUnlocked() -> renderLockScreen(root, account)
             else -> renderDashboard(root, account)
@@ -263,8 +279,13 @@ class MainActivity : AppCompatActivity() {
             setOnClickListener { showManualPairingDialog(progress, error) }
         }
 
+        val btnDemo = ghostButton(getString(R.string.demo_try)).apply {
+            setOnClickListener { startDemo() }
+        }
+
         root.addView(btnScan, fullWidthParams())
         root.addView(btnManual, fullWidthParams(top = 10))
+        root.addView(btnDemo, fullWidthParams(top = 10))
         root.addView(progress)
         root.addView(error)
     }
@@ -943,6 +964,7 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun loadTotpEntries() {
+        if (demo) return
         val vaultKey = AppLockManager.getVaultKey() ?: return
         totpEntries = KdbxTotpVault.loadEntries(vaultFile, vaultKey).toMutableList()
         pendingTotpEntry?.let {
@@ -953,6 +975,7 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun saveTotpEntries() {
+        if (demo) return
         val vaultKey = AppLockManager.getVaultKey() ?: return
         KdbxTotpVault.saveEntries(vaultFile, vaultKey, totpEntries)
     }
@@ -964,7 +987,7 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun queueTotpEntry(entry: TotpEntry) {
-        if (AppLockManager.isUnlocked()) {
+        if (AppLockManager.isUnlocked() || demo) {
             addTotpEntry(entry)
         } else {
             pendingTotpEntry = entry
@@ -979,7 +1002,7 @@ class MainActivity : AppCompatActivity() {
         val challengeStore = MfaPushChallengeStore(this)
         if (challengeStore.isExpired(challenge)) {
             pendingChallenge = null
-            challengeStore.clear()
+            if (demo) nextDemoPushAt = android.os.SystemClock.elapsedRealtime() + DemoMode.PUSH_INTERVAL_MS else challengeStore.clear()
             return
         }
 
@@ -990,6 +1013,7 @@ class MainActivity : AppCompatActivity() {
         }
         card.addView(title("Sign-in Request"))
         card.addView(message("A sign-in request was received for:\n${challenge.serverUrl}\nUser: ${challenge.username ?: account.deviceName}\nExpires in ${challengeStore.secondsRemaining(challenge)} seconds.\n\nEnter the 2-digit number shown on your computer screen:"))
+        if (demo) card.addView(message(getString(R.string.demo_push_hint, challenge.matchDigits)))
         val digits = EditText(this).apply {
             hint = "00"
             inputType = InputType.TYPE_CLASS_NUMBER
@@ -1000,16 +1024,57 @@ class MainActivity : AppCompatActivity() {
         card.addView(digits)
         card.addView(primaryButton("Approve request").apply {
             layoutParams = fullWidthParams(bottom = 8)
-            setOnClickListener { onNumberSelected(challenge, digits.text.toString().trim(), account) }
+            setOnClickListener {
+                val selected = digits.text.toString().trim()
+                if (demo) answerDemoChallenge(challenge, approve = true, selected) else onNumberSelected(challenge, selected, account)
+            }
         })
 
         val btnDeny = secondaryButton("Deny request").apply {
             layoutParams = fullWidthParams(bottom = 8)
             setTextColor(ThemeManager.color(context, R.color.ky_error))
-            setOnClickListener { onDenyClicked(challenge, account) }
+            setOnClickListener { if (demo) answerDemoChallenge(challenge, approve = false, "") else onDenyClicked(challenge, account) }
         }
         card.addView(btnDeny)
         container.addView(card, fullWidthParams(bottom = 16))
+    }
+
+    private fun startDemo() {
+        lockSensitiveState()
+        pendingChallenge = null
+        demo = true
+        activeTab = Tab.VAULT
+        nextDemoPushAt = android.os.SystemClock.elapsedRealtime() + 3_000
+        renderContent()
+    }
+
+    private fun exitDemo() {
+        demo = false
+        pendingChallenge = null
+        lockSensitiveState()
+        renderContent()
+    }
+
+    /** Raises a fake sign-in request while the demo is on screen. */
+    private fun simulateDemoPush() {
+        if (!demo || pendingChallenge != null || !lifecycle.currentState.isAtLeast(androidx.lifecycle.Lifecycle.State.RESUMED)) return
+        if (android.os.SystemClock.elapsedRealtime() < nextDemoPushAt) return
+        pendingChallenge = DemoMode.challenge(System.currentTimeMillis())
+        Toast.makeText(this, getString(R.string.demo_push_received), Toast.LENGTH_SHORT).show()
+        renderContent()
+    }
+
+    private fun answerDemoChallenge(challenge: MfaChallenge, approve: Boolean, selectedDigit: String) {
+        val result = when {
+            MfaPushChallengeStore(this).isExpired(challenge) -> "Sign-in request expired"
+            !approve -> "Sign-in Denied"
+            selectedDigit == challenge.matchDigits -> "Sign-in Approved"
+            else -> "Wrong number. Sign-in Denied"
+        }
+        pendingChallenge = null
+        nextDemoPushAt = android.os.SystemClock.elapsedRealtime() + DemoMode.PUSH_INTERVAL_MS
+        Toast.makeText(this, result, Toast.LENGTH_SHORT).show()
+        renderContent()
     }
 
     private fun onNumberSelected(challenge: MfaChallenge, selectedDigit: String, account: PairedAccount) {
@@ -1134,6 +1199,19 @@ class MainActivity : AppCompatActivity() {
         }, fullWidthParams())
         sections.add(appearanceSection)
 
+        if (demo) {
+            val demoSection = settingsCard()
+            demoSection.addView(title(getString(R.string.demo_title)))
+            demoSection.addView(message(getString(R.string.demo_settings_message)))
+            demoSection.addView(primaryButton(getString(R.string.demo_exit)).apply {
+                setOnClickListener { exitDemo() }
+            }, fullWidthParams())
+            sections.add(demoSection)
+            sections.add(aboutSection())
+            addAdaptiveCards(container, sections)
+            return
+        }
+
         val providerSection = settingsCard()
         providerSection.addView(title("KyIdentity passkey"))
         providerSection.addView(message("Turn KyAuth on under Additional services so KyIdentity sign-in can use this phone's passkey. Keep Bitwarden as your preferred service."))
@@ -1254,15 +1332,17 @@ class MainActivity : AppCompatActivity() {
         securitySection.addView(message("Auto-wipe policy: After 5 consecutive failed PIN attempts, all vault keys, accounts, and pairing data will be automatically wiped."))
         sections.add(securitySection)
 
-        val aboutSection = settingsCard()
-        aboutSection.addView(title("About"))
-        aboutSection.addView(message("KyAuth v${BuildConfig.VERSION_NAME}"))
-        aboutSection.addView(secondaryButton("About KyAuth").apply {
-            setOnClickListener { showAboutDialog(this@MainActivity) }
-        }, fullWidthParams())
-        sections.add(aboutSection)
+        sections.add(aboutSection())
 
         addAdaptiveCards(container, sections)
+    }
+
+    private fun aboutSection() = settingsCard().apply {
+        addView(title("About"))
+        addView(message("KyAuth v${BuildConfig.VERSION_NAME}"))
+        addView(secondaryButton("About KyAuth").apply {
+            setOnClickListener { showAboutDialog(this@MainActivity) }
+        }, fullWidthParams())
     }
 
     private fun showSetPinDialog() {
