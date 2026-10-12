@@ -57,8 +57,8 @@ jobs:
             adb shell svc power stayon true
             adb shell input keyevent KEYCODE_WAKEUP
             adb shell wm dismiss-keyguard
-            adb shell locksettings set-pin 246810
-            python3 tools/unlock_test_emulator.py
+            # No PIN here: SecureLockScreen sets one only around the Keystore tests, so no PIN
+            # keyguard can interrupt the UI tests.
             ./gradlew connectedPlayDebugAndroidTest
       # The console no longer names failing instrumented tests; keep the report.
       - if: failure()

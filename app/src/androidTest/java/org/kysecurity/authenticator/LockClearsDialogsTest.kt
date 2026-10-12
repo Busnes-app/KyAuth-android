@@ -25,6 +25,8 @@ import org.kysecurity.authenticator.security.AppLockManager
 /** Fake unlocked state; does not simulate biometric authentication. */
 @RunWith(AndroidJUnit4::class)
 class LockClearsDialogsTest {
+    @get:org.junit.Rule val showOverKeyguard = ShowOverKeyguard()
+
     private val context = ApplicationProvider.getApplicationContext<Context>()
 
     @Before fun setup() {

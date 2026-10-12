@@ -11,6 +11,8 @@ import org.kysecurity.authenticator.MainActivity
 // Debug builds allow capture, so the policy is passed in rather than read from BuildConfig.
 @RunWith(AndroidJUnit4::class)
 class SecureWindowTest {
+    @get:org.junit.Rule val showOverKeyguard = org.kysecurity.authenticator.ShowOverKeyguard()
+
     private fun secureAfter(allowScreenshots: Boolean): Boolean {
         var secure = false
         ActivityScenario.launch(MainActivity::class.java).use { scenario ->
