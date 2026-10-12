@@ -24,7 +24,7 @@ object SecurityWipe {
                 .commit()
         }
 
-        // 3. Wipe all app files (including KDBX vaults)
+        // 3. Wipe all app files (including the TOTP vault)
         runCatching {
             context.filesDir.listFiles()?.forEach { file ->
                 file.deleteRecursively()
