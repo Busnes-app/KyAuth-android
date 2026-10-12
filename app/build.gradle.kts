@@ -31,7 +31,7 @@ val signingMaterial: Map<String, String>? = run {
 
 android {
     namespace = "org.kysecurity.authenticator"
-    compileSdk = 36
+    compileSdk = 37
 
     defaultConfig {
         applicationId = "org.kysecurity.authenticator"
