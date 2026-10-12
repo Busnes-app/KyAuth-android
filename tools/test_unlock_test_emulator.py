@@ -10,7 +10,8 @@ NO_PIN_XML = '<hierarchy><node resource-id="other"/></hierarchy>'
 
 
 class FakeEmulator:
-    """outcomes[i] is attempt i+1: 'no_pin' (field never appears), 'stuck' (PIN ignored) or 'ok'."""
+    """outcomes[i] is attempt i+1: 'no_pin' (no PIN pad, typing goes nowhere), 'stuck' (PIN
+    ignored), 'ok', or 'hidden_ok' (the dump never shows the field, but the PIN works)."""
 
     def __init__(self, outcomes):
         self.outcomes = outcomes
@@ -26,8 +27,8 @@ class FakeEmulator:
         if args == ("shell", "input", "keyevent", "KEYCODE_WAKEUP"):
             self.attempt += 1
         if args[:2] == ("exec-out", "cat"):
-            return PIN_XML if self.outcome() != "no_pin" else NO_PIN_XML
-        if args == ("shell", "input", "keyevent", "KEYCODE_ENTER") and self.outcome() == "ok":
+            return PIN_XML if self.outcome() in ("ok", "stuck") else NO_PIN_XML
+        if args == ("shell", "input", "keyevent", "KEYCODE_ENTER") and self.outcome() in ("ok", "hidden_ok"):
             self.locked = False
         if args[:3] == ("shell", "dumpsys", "window"):
             return "  KeyguardServiceDelegate\n    showing=%s\n" % ("true" if self.locked else "false")
@@ -70,6 +71,16 @@ class UnlockTest(unittest.TestCase):
         waits = [c for c in emu.calls if c == ("shell", "input", "keyevent", "KEYCODE_WAKEUP")]
         self.assertEqual(len(waits), 3)
         self.assertGreaterEqual(emu.now, 1 + 30 + 15)  # sleep, a full PIN wait, a full unlock wait
+
+    def test_types_the_pin_when_the_field_is_never_detected(self):
+        emu = FakeEmulator(["hidden_ok"])
+        self.assertEqual(emu.run(), 1)
+        self.assertIn(("shell", "input", "text", unlock.PIN), emu.calls)
+
+    def test_opens_the_pin_pad_with_dismiss_keyguard(self):
+        emu = FakeEmulator(["ok"])
+        emu.run()
+        self.assertIn(("shell", "wm", "dismiss-keyguard"), emu.calls)
 
     def test_field_is_cleared_before_the_pin(self):
         emu = FakeEmulator(["ok"])
