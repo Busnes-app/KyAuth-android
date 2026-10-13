@@ -1,0 +1,5 @@
+First public release.
+• Approve KyIdentity sign-ins with a two-digit number and your fingerprint or screen lock.
+• One-time codes in an encrypted vault that opens only with your biometrics or screen lock.
+• Sign-in requests over UnifiedPush, end-to-end encrypted.
+• Try demo on the first screen shows the app without a server.

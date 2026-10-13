@@ -77,6 +77,15 @@ Release builds are signed only when signing material is present, either as `KYAU
 a git-ignored `keystore.properties` (`storeFile`, `storePassword`, `keyAlias`, `keyPassword`).
 Without them, `assemble*Release` produces an unsigned APK.
 
+## Releasing
+
+Bump `versionCode` and `versionName`, add `fastlane/metadata/android/en-US/changelogs/<versionCode>.txt`,
+then push a `v<versionName>` tag. The Release workflow signs the GitHub and F-Droid APKs and
+publishes them with SHA-256 sums, build provenance and the signing certificate digest. It reads
+the `release` environment's secrets: `KYAUTH_KEYSTORE_BASE64` (`base64 -w0` of the keystore),
+`KYAUTH_STORE_PASSWORD`, `KYAUTH_KEY_ALIAS` and `KYAUTH_KEY_PASSWORD`. F-Droid notes are in
+[docs/f-droid.md](docs/f-droid.md).
+
 ## Contributing and security
 
 - [CONTRIBUTING.md](CONTRIBUTING.md) covers setup and the rules a change must keep.

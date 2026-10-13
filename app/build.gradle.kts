@@ -37,8 +37,8 @@ android {
         applicationId = "org.kysecurity.authenticator"
         minSdk = 31
         targetSdk = 36
-        versionCode = 3
-        versionName = "0.2.0"
+        versionCode = 4
+        versionName = "0.4.0"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         buildConfigField("boolean", "ALLOW_SCREENSHOTS", "false")
     }
@@ -55,6 +55,9 @@ android {
     }
 
     buildFeatures { buildConfig = true }
+
+    // F-Droid rejects the Google-encrypted dependency block in an APK; Play reads it from the bundle.
+    dependenciesInfo { includeInApk = false }
 
     // One applicationId for every channel: KyIdentity pins attestation to it, and the
     // org.kysecurity.identity account type can have only one owner on a device.

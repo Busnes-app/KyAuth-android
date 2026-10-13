@@ -118,7 +118,7 @@ KyAuth pairs an Android device with KyIdentity. It stores TOTP entries in an enc
   `PendingSignOn`/`PendingAddAccount` (nonce handoffs), `SignOnActivity`, `TokenClient`.
 - `ThemeManager.kt`: the shared 17-theme palette and local theme preference.
 - `UiComponents.kt`: reusable programmatic view styling and controls.
-- `AboutDialog.kt`: MIT About dialog.
+- `AboutDialog.kt`: MIT About dialog with the privacy policy link.
 
 ## Work guidance
 
