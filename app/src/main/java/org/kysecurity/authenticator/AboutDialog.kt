@@ -1,6 +1,9 @@
 package org.kysecurity.authenticator
 
 import android.app.Activity
+import android.content.ActivityNotFoundException
+import android.content.Intent
+import android.graphics.Paint
 import android.graphics.Typeface
 import android.graphics.drawable.GradientDrawable
 import android.view.Gravity
@@ -10,7 +13,9 @@ import android.widget.Button
 import android.widget.LinearLayout
 import android.widget.ScrollView
 import android.widget.TextView
+import android.widget.Toast
 import androidx.appcompat.app.AlertDialog
+import androidx.core.net.toUri
 import java.util.Calendar
 
 fun showAboutDialog(activity: Activity) {
@@ -54,6 +59,22 @@ fun showAboutDialog(activity: Activity) {
         setTextColor(mutedColor)
         setLineSpacing(dp(4).toFloat(), 1f)
         setPadding(0, dp(10), 0, 0)
+    })
+    container.addView(TextView(activity).apply {
+        text = activity.getString(R.string.about_privacy)
+        textSize = 14f
+        typeface = Typeface.DEFAULT_BOLD
+        paintFlags = paintFlags or Paint.UNDERLINE_TEXT_FLAG
+        setTextColor(accentColor)
+        setPadding(0, dp(12), 0, dp(4))
+        setOnClickListener {
+            val uri = activity.getString(R.string.about_privacy_url).toUri()
+            try {
+                activity.startActivity(Intent(Intent.ACTION_VIEW, uri))
+            } catch (_: ActivityNotFoundException) {
+                Toast.makeText(activity, R.string.about_no_browser, Toast.LENGTH_SHORT).show()
+            }
+        }
     })
     container.addView(View(activity).apply {
         setBackgroundColor(accentColor)
