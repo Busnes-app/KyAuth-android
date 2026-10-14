@@ -63,10 +63,12 @@ import org.kysecurity.authenticator.signon.PendingAddAccount
 import org.kysecurity.authenticator.pairing.ChannelPush
 import org.kysecurity.authenticator.pairing.PushCredential
 import org.kysecurity.authenticator.pairing.PushRefreshClient
+import org.kysecurity.authenticator.pairing.DeviceRevokeClient
 import org.kysecurity.authenticator.pairing.PushStore
 import org.kysecurity.authenticator.pairing.UnifiedPushRegistrar
 import org.kysecurity.authenticator.security.RemovedPasskey
 import org.kysecurity.authenticator.security.SecurityWipe
+import org.kysecurity.authenticator.security.secureWindow
 import org.kysecurity.authenticator.security.IdleLock
 import org.kysecurity.authenticator.security.AppLockManager
 import org.kysecurity.authenticator.security.VaultUnlockPrompt
@@ -175,6 +177,7 @@ class MainActivity : AppCompatActivity() {
         }
         RemovedPasskey.delete(this)
         store = PairingStore(this)
+        if (store.account() != null && PushStore(this).transport == PushCredential.FCM) ChannelPush.resume()
         qrScanner = ChannelQrScanner.create(this, ::onQrScanned)
         addAccountResponse = PendingAddAccount.take(intent.getStringExtra(EXTRA_ADD_ACCOUNT))
         IncomingPush.ensureChannel(this)
@@ -528,6 +531,25 @@ class MainActivity : AppCompatActivity() {
         root.addView(secondaryButton("About KyAuth").apply {
             setOnClickListener { showAboutDialog(this@MainActivity) }
         }, lockActionParams(top = 8))
+        root.addView(ghostButton(getString(R.string.reset_kyauth)).apply {
+            setTextColor(ThemeManager.color(context, R.color.ky_error))
+            setOnClickListener { confirmReset() }
+        }, lockActionParams(top = 8))
+    }
+
+    /** The way out of a vault that can no longer open. Five wrong PINs already allow the same wipe. */
+    private fun confirmReset() {
+        AlertDialog.Builder(this)
+            .setTitle(getString(R.string.reset_kyauth))
+            .setMessage(getString(R.string.reset_kyauth_message))
+            .setNegativeButton("Cancel", null)
+            .setPositiveButton(getString(R.string.reset_kyauth_confirm)) { _, _ ->
+                SecurityWipe.wipe(this)
+                clearPendingChallenge()
+                lockSensitiveState()
+                renderContent()
+            }
+            .showKyDialog()
     }
 
     // ==========================================
@@ -1216,6 +1238,11 @@ class MainActivity : AppCompatActivity() {
                     result.onSuccess {
                         val push = PushStore(this)
                         push.markRegistered(credential)
+                        // KyIdentity now pushes over UnifiedPush, so the FCM token has no use left.
+                        if (credential.transport == PushCredential.UNIFIED_PUSH) {
+                            ChannelPush.forget()
+                            push.forgetFcm()
+                        }
                         toast("Sign-in requests reconnected")
                     }.onFailure { toast(it.message ?: "Reconnecting failed") }
                     renderContent()
@@ -1353,7 +1380,7 @@ class MainActivity : AppCompatActivity() {
                     .setTitle("Unpair Device")
                     .setMessage("Are you sure you want to unpair this device from KyIdentity?")
                     .setNegativeButton("Cancel", null)
-                    .setPositiveButton("Unpair") { _, _ -> unpairIdentity() }
+                    .setPositiveButton("Unpair") { _, _ -> unpairIdentity(account) }
                     .showKyDialog()
             }
         }
@@ -1457,7 +1484,7 @@ class MainActivity : AppCompatActivity() {
             setPadding(48, 24, 48, 24)
         }
         val pinInput = EditText(this).apply {
-            hint = "New PIN (4-12 digits)"
+            hint = "New PIN (${PinPolicy.MIN_LENGTH}-${PinPolicy.MAX_LENGTH} digits)"
             inputType = InputType.TYPE_CLASS_NUMBER or InputType.TYPE_NUMBER_VARIATION_PASSWORD
             styleInput(this)
         }
@@ -1471,8 +1498,9 @@ class MainActivity : AppCompatActivity() {
                 val pin = pinInput.text.toString().trim()
                 val validation = PinPolicy.validate(pin)
                 if (validation is PinPolicy.ValidationResult.Valid) {
-                    AppLockManager.setupPin(this, pin)
-                    Toast.makeText(this, "PIN saved successfully", Toast.LENGTH_SHORT).show()
+                    runCatching { AppLockManager.setupPin(this, pin) }
+                        .onSuccess { Toast.makeText(this, "PIN saved successfully", Toast.LENGTH_SHORT).show() }
+                        .onFailure { Toast.makeText(this, "PIN not saved: ${it.message}", Toast.LENGTH_LONG).show() }
                     renderContent()
                 } else {
                     Toast.makeText(this, (validation as PinPolicy.ValidationResult.Error).message, Toast.LENGTH_LONG).show()
@@ -1637,10 +1665,10 @@ class MainActivity : AppCompatActivity() {
             onAuthenticated = { cipher ->
                 if (isDestroyed || generation != AppLockManager.lockGeneration) return@show
                 unlockVault(
-                    unlock = { AppLockManager.unlockWithBiometrics(this, cipher) },
+                    unlock = { AppLockManager.unlockWithBiometrics(this, cipher, vaultFile.exists()) },
                     onError = {
                         renderContent()
-                        Toast.makeText(this, "Unlock failed. Use your PIN to recover the vault.", Toast.LENGTH_LONG).show()
+                        Toast.makeText(this, "Unlock failed. Use your PIN, or reset KyAuth.", Toast.LENGTH_LONG).show()
                     },
                 )
             },
@@ -1839,6 +1867,7 @@ class MainActivity : AppCompatActivity() {
                 cornerRadius = dp(24).toFloat()
             }
             window?.apply {
+                secureWindow(this)
                 setBackgroundDrawable(background)
                 setDimAmount(0.45f)
             }
@@ -1947,9 +1976,38 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
-    private fun unpairIdentity() {
-        SecurityWipe.clearPush(this)
-        clearPairing()
+    /** One prompt signs the revoke. Only KyIdentity refusing to drop a required factor keeps the pairing. */
+    private fun unpairIdentity(account: PairedAccount) {
+        val issuedAt = System.currentTimeMillis()
+        val message = runCatching { DeviceRevokeClient.message(account.serverUrl, account.deviceId, issuedAt) }.getOrNull()
+        val signature = message?.let { runCatching { DeviceSigningKey.initSignature() }.getOrNull() }
+        if (message == null || signature == null) return finishUnpair(DeviceRevokeClient.Outcome.FAILED)
+        VaultUnlockPrompt.showForSignature(this, "Unpair from KyIdentity", signature, onAuthenticated = { authenticated ->
+            val signed = runCatching { DeviceSigningKey.sign(message, authenticated) }.getOrNull()
+                ?: return@showForSignature finishUnpair(DeviceRevokeClient.Outcome.FAILED)
+            Thread {
+                val outcome = DeviceRevokeClient.revoke(account.serverUrl, account.deviceId, issuedAt, signed)
+                runOnUiThread { finishUnpair(outcome) }
+            }.start()
+        }, onFailed = { toast("Unlock required: $it") })
+    }
+
+    private fun finishUnpair(outcome: DeviceRevokeClient.Outcome) {
+        if (outcome != DeviceRevokeClient.Outcome.REQUIRED_FACTOR) {
+            SecurityWipe.clearPush(this)
+            DeviceSigningKey.deleteKey()
+            clearPairing()
+        }
+        when (outcome) {
+            DeviceRevokeClient.Outcome.REVOKED -> toast("Removed from KyIdentity")
+            DeviceRevokeClient.Outcome.REQUIRED_FACTOR -> notice("Still paired", R.string.unpair_required_factor)
+            DeviceRevokeClient.Outcome.FAILED -> notice("Unpaired on this phone", R.string.unpair_not_revoked)
+        }
+    }
+
+    private fun notice(title: String, message: Int) {
+        if (isFinishing || isDestroyed) return
+        AlertDialog.Builder(this).setTitle(title).setMessage(getString(message)).setPositiveButton("OK", null).showKyDialog()
     }
 
     private fun clearPairing() {
@@ -1983,11 +2041,7 @@ class MainActivity : AppCompatActivity() {
         dismissSensitiveDialogs()
         totpEntries.clear()
         totpViews.clear()
-        copiedSensitiveLabel?.let { label ->
-            val clipboard = getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
-            if (clipboard.primaryClipDescription?.label == label) clipboard.clearPrimaryClip()
-        }
-        copiedSensitiveLabel = null
+        // The clipboard is left to copySensitiveText's timer: leaving the app to paste a code locks it.
     }
 
     private fun copyTotpCode(clipboard: ClipboardManager, code: String, remainingSeconds: Long) {
