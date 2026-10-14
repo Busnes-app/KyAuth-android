@@ -4,4 +4,8 @@ package org.kysecurity.authenticator.pairing
 object ChannelPush {
     fun fcmCredential(): Result<PushCredential> =
         Result.failure(IllegalStateException("This build has no Firebase; use UnifiedPush"))
+
+    fun resume() = Unit
+
+    fun forget() = Unit
 }

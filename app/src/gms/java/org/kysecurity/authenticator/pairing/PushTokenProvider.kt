@@ -11,6 +11,8 @@ object PushTokenProvider {
         var failure: Exception? = null
 
         return runCatching {
+            // Off in the manifest until the user picks Firebase; on from here so token rotation works.
+            FirebaseMessaging.getInstance().isAutoInitEnabled = true
             FirebaseMessaging.getInstance().token
                 .addOnSuccessListener {
                     token = it
