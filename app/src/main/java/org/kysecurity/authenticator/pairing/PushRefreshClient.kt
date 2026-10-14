@@ -2,43 +2,14 @@ package org.kysecurity.authenticator.pairing
 
 import org.json.JSONObject
 import org.kysecurity.authenticator.mfa.MfaMessage
-import java.net.HttpURLConnection
-import java.net.URI
-import java.net.URLEncoder
 import java.security.MessageDigest
 
 /** Tells KyIdentity where to push this device now, signed by the device key. */
 class PushRefreshClient {
     fun refresh(serverUrl: String, deviceId: String, push: PushCredential, issuedAtMs: Long, signature: String): Result<Unit> = runCatching {
-        val register = PairingEndpoint.registrationUrl(serverUrl)
-        val base = register.path.removeSuffix("/api/notifications/native/register")
-        val path = "$base/api/notifications/native/devices/${URLEncoder.encode(deviceId, "UTF-8").replace("+", "%20")}/push-token"
-        val endpoint = URI("${register.scheme}://${register.rawAuthority}$path")
-
-        val connection = (endpoint.toURL().openConnection() as HttpURLConnection).apply {
-            requestMethod = "PUT"
-            connectTimeout = 10_000
-            readTimeout = 10_000
-            doOutput = true
-            instanceFollowRedirects = false
-            setRequestProperty("Content-Type", "application/json")
-            setRequestProperty("Accept", "application/json")
-        }
-        try {
-            connection.outputStream.bufferedWriter(Charsets.UTF_8).use { it.write(requestJson(push, issuedAtMs, signature)) }
-            val code = connection.responseCode
-            if (code !in 200..299) {
-                val body = connection.errorStream?.bufferedReader(Charsets.UTF_8)?.use { it.readText() }.orEmpty()
-                val error = runCatching { JSONObject(body) }.getOrNull()
-                throw IllegalStateException(
-                    error?.optString("error_description")?.takeIf { it.isNotBlank() }
-                        ?: error?.optString("error")?.takeIf { it.isNotBlank() }
-                        ?: "Reconnecting sign-in requests failed ($code)",
-                )
-            }
-        } finally {
-            connection.disconnect()
-        }
+        val endpoint = PairingEndpoint.deviceUrl(serverUrl, deviceId, "push-token")
+        val response = ServerHttp.send(endpoint, "PUT", "application/json", requestJson(push, issuedAtMs, signature))
+        check(response.ok) { response.error("Reconnecting sign-in requests failed") }
     }
 
     companion object {

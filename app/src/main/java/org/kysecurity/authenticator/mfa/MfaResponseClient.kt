@@ -2,7 +2,8 @@ package org.kysecurity.authenticator.mfa
 
 import org.json.JSONObject
 import org.kysecurity.authenticator.pairing.PairingEndpoint
-import java.net.HttpURLConnection
+import org.kysecurity.authenticator.pairing.ServerHttp
+import java.net.URI
 
 sealed class MfaResponseResult {
     data class Success(val approved: Boolean, val deviceId: String) : MfaResponseResult()
@@ -17,7 +18,7 @@ class MfaResponseClient {
         selectedDigits: String,
         approve: Boolean,
         signature: String,
-    ): MfaResponseResult {
+    ): MfaResponseResult = try {
         require(challengeId.isNotBlank()) { "Challenge ID is required" }
         require(signature.isNotBlank()) { "Device signature is required" }
 
@@ -33,28 +34,10 @@ class MfaResponseClient {
             .put("signature", signature.trim())
             .toString()
 
-        val connection = (java.net.URI(respondUrl).toURL().openConnection() as HttpURLConnection).apply {
-            requestMethod = "POST"
-            connectTimeout = 10_000
-            readTimeout = 10_000
-            doOutput = true
-            instanceFollowRedirects = false
-            setRequestProperty("Content-Type", "application/json")
-            setRequestProperty("Accept", "application/json")
-        }
-
-        return try {
-            connection.outputStream.bufferedWriter(Charsets.UTF_8).use { it.write(request) }
-            val body = (if (connection.responseCode in 200..299) connection.inputStream else connection.errorStream)
-                ?.bufferedReader(Charsets.UTF_8)?.use { it.readText() }.orEmpty()
-            val response = JSONObject(body.ifBlank { "{}" })
-
-            parseResponse(connection.responseCode, response, challengeId.trim())
-        } catch (e: Exception) {
-            MfaResponseResult.Error(e.message ?: "Network error during MFA response")
-        } finally {
-            connection.disconnect()
-        }
+        val response = ServerHttp.send(URI(respondUrl), "POST", "application/json", request)
+        parseResponse(response.status, JSONObject(response.body.ifBlank { "{}" }), challengeId.trim())
+    } catch (e: Exception) {
+        MfaResponseResult.Error(e.message ?: "Network error during MFA response")
     }
 
     /**
