@@ -4,7 +4,6 @@ import org.junit.Assert.assertArrayEquals
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertThrows
-import org.junit.Assert.assertTrue
 import org.junit.Rule
 import org.junit.Test
 import org.junit.rules.TemporaryFolder
@@ -146,15 +145,5 @@ class TotpVaultTest {
         val before = file.readBytes()
         assertThrows(TotpVaultException::class.java) { TotpVault.load(file, ByteArray(32)) }
         assertArrayEquals(before, file.readBytes())
-    }
-
-    @Test fun `deletes the legacy KDBX vault and its temp files`() {
-        val legacy = listOf("totp_vault.kdbx", ".totp_vault.kdbx.tmp", ".totp_vault.kdbx123.tmp")
-            .map { File(tempFolder.root, it).apply { writeText("x") } }
-        val unrelated = File(tempFolder.root, "other.kdbx").apply { writeText("x") }
-        TotpVault.load(file, key)
-        TotpVault.load(file, key)
-        assertTrue(legacy.none { it.exists() })
-        assertTrue(unrelated.exists())
     }
 }

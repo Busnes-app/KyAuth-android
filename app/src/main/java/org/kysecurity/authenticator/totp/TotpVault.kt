@@ -30,7 +30,6 @@ object TotpVault {
     /** A missing file is an empty vault; anything else unreadable throws [TotpVaultException]. */
     @Synchronized
     fun load(file: File, key: ByteArray): List<TotpEntry> {
-        deleteLegacyKdbx(file.parentFile)
         if (!file.exists()) return emptyList()
         val bytes = try {
             file.readBytes()
@@ -106,10 +105,4 @@ object TotpVault {
     )
 
     private fun JSONObject.stringOrNull(name: String) = if (has(name)) getString(name) else null
-
-    /** Clean cut from the old KDBX vault, no migration: its file and any write temp it left. */
-    private fun deleteLegacyKdbx(dir: File?) {
-        dir?.listFiles { _, name -> name.startsWith("totp_vault.kdbx") || name.startsWith(".totp_vault.kdbx") }
-            ?.forEach { it.delete() }
-    }
 }
