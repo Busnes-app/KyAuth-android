@@ -7,7 +7,7 @@ import org.junit.Test
 class PinPolicyTest {
     @Test
     fun rejectsShortPin() {
-        val result = PinPolicy.validate("123")
+        val result = PinPolicy.validate("12345")
         assertTrue(result is PinPolicy.ValidationResult.Error)
     }
 
@@ -19,13 +19,13 @@ class PinPolicyTest {
 
     @Test
     fun rejectsNonNumericPin() {
-        val result = PinPolicy.validate("1234ab")
+        val result = PinPolicy.validate("123456ab")
         assertTrue(result is PinPolicy.ValidationResult.Error)
     }
 
     @Test
     fun rejectsCommonPin() {
-        val result = PinPolicy.validate("1234")
+        val result = PinPolicy.validate("654321")
         assertTrue(result is PinPolicy.ValidationResult.Error)
         val result2 = PinPolicy.validate("111111")
         assertTrue(result2 is PinPolicy.ValidationResult.Error)
