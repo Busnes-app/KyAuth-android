@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Themed-icon layer: the shield with its keyhole cut out, traced from app_icon.png. -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+    <path
+        android:fillColor="#FF000000"
+        android:fillType="evenOdd"
+        android:pathData="M54,30 C45.18,34.13 37.23,36.68 32.94,37.95 L32.94,50.03 C33.42,64.65 45.97,72.91 54,78.16 C62.03,72.91 74.58,64.65 75.06,50.03 L75.06,37.95 C70.77,36.68 62.82,34.13 54,30Z M50.9,52.97 A6.44,6.44 0 1,1 57.1,52.97 L60.12,65.6 L47.88,65.6Z" />
+</vector>

@@ -21,7 +21,8 @@ object ThemeManager {
     private const val PREFS = "appearance"
     private const val KEY_THEME = "theme"
 
-    private const val DEFAULT_THEME = "Busnes Light"
+    // No saved theme: Busnes Light or Dark, following the phone's dark mode.
+    const val FOLLOW_PHONE = "Follow phone"
 
     private val themes = listOf(
         AppTheme("Busnes Light", "#f8f6f0", "#ffffff", "#566461", "#66736f", "#bf3f18", "#fbf0ec", "#38182326", "#ffffff", "#182326"),
@@ -43,12 +44,14 @@ object ThemeManager {
         AppTheme("Polished Ky", "#eef2f6", "#ffffff", "#0f172a", "#475569", "#0891b2", "#cffafe", "#cbd5e1", "#042f2e"),
     )
 
-    fun names(): Array<String> = themes.map(AppTheme::name).toTypedArray()
+    fun names(): Array<String> = arrayOf(FOLLOW_PHONE) + themes.map(AppTheme::name)
 
-    fun currentName(context: Context): String = current(context).name
+    fun currentName(context: Context): String = saved(context)?.name ?: FOLLOW_PHONE
 
     fun set(context: Context, name: String) {
-        context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit().putString(KEY_THEME, name).apply()
+        val prefs = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit()
+        if (name == FOLLOW_PHONE) prefs.remove(KEY_THEME) else prefs.putString(KEY_THEME, name)
+        prefs.apply()
     }
 
     fun color(context: Context, colorRes: Int): Int {
@@ -69,8 +72,11 @@ object ThemeManager {
 
     fun buttonText(context: Context): Int = Color.parseColor(current(context).buttonText)
 
-    private fun current(context: Context): AppTheme {
-        val saved = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).getString(KEY_THEME, DEFAULT_THEME)
-        return themes.firstOrNull { it.name == saved } ?: themes.first { it.name == DEFAULT_THEME }
+    private fun saved(context: Context): AppTheme? {
+        val name = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).getString(KEY_THEME, null)
+        return themes.firstOrNull { it.name == name }
     }
+
+    private fun current(context: Context): AppTheme = saved(context)
+        ?: themes.first { it.name == if (context.resources.configuration.isNightModeActive) "Busnes Dark" else "Busnes Light" }
 }
