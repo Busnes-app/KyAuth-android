@@ -1,6 +1,6 @@
 # Play Console Data safety: KyAuth (`play` flavor)
 
-Draft for `org.kysecurity.authenticator` 0.4.0 (versionCode 4). Grounded in the worktree at
+Draft for `org.kysecurity.authenticator` 0.4.2 (versionCode 5). Grounded in the worktree at
 `release-0.4.0` as of 2026-10-13, including its uncommitted changes. Paths are relative to
 `app/src/` unless noted. "Unproven" means the claim was not tested against a built `playRelease` APK.
 

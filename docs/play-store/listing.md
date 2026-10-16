@@ -50,7 +50,7 @@ KyAuth is open source under the MIT license.
 
 https://busnes.app/privacy.html
 
-## What's new (0.4.0)
+## What's new (0.4.2)
 
 ```text
 First public release.
