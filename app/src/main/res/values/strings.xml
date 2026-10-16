@@ -11,6 +11,11 @@
     <string name="unlock_biometrics">Unlock with Biometrics</string>
     <string name="unlock_pin">Enter PIN</string>
     <string name="unpair_account">Unpair Account</string>
+    <string name="unpair_required_factor">KyIdentity needs this phone as your sign-in factor, so it is still paired. Add another factor in KyIdentity first, then unpair.</string>
+    <string name="unpair_not_revoked">KyIdentity did not confirm the removal, so it may still list this phone. Remove it on your KyIdentity devices page.</string>
+    <string name="reset_kyauth">Reset KyAuth</string>
+    <string name="reset_kyauth_message">Erases every code, the PIN and the pairing on this phone. It cannot be undone. Remove this phone on your KyIdentity devices page afterwards, then pair again.</string>
+    <string name="reset_kyauth_confirm">Erase everything</string>
     <string name="change_pin">Change PIN</string>
     <string name="enable_pin">Require PIN as second factor</string>
     <string name="lock_now">Lock Now</string>

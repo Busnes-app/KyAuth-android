@@ -1,6 +1,7 @@
 package org.kysecurity.authenticator.pairing
 
 import java.net.URI
+import java.net.URLEncoder
 import org.kysecurity.authenticator.BuildConfig
 
 object PairingEndpoint {
@@ -18,6 +19,14 @@ object PairingEndpoint {
     fun registrationUrl(serverUrl: String): URI = endpoint(serverUrl, "/api/notifications/native/register")
 
     fun tokenUrl(serverUrl: String): URI = endpoint(serverUrl, "/oauth/token")
+
+    /** `.../api/notifications/native/devices/{deviceId}/{action}`, the device-signed routes. */
+    fun deviceUrl(serverUrl: String, deviceId: String, action: String): URI {
+        val register = registrationUrl(serverUrl)
+        val base = register.path.removeSuffix("/api/notifications/native/register")
+        val id = URLEncoder.encode(deviceId, "UTF-8").replace("+", "%20")
+        return URI("${register.scheme}://${register.rawAuthority}$base/api/notifications/native/devices/$id/$action")
+    }
 
     private fun endpoint(serverUrl: String, path: String): URI {
         val server = URI(validateServerUrl(serverUrl))

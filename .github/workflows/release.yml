@@ -30,7 +30,7 @@ jobs:
         run: |
           name=$(grep -oP 'versionName = "\K[^"]+' app/build.gradle.kts)
           [[ "$GITHUB_REF_NAME" == "v$name" ]] || { echo "tag $GITHUB_REF_NAME != versionName $name"; exit 1; }
-      - name: Build signed APKs
+      - name: Build signed APKs and the Play bundle
         env:
           KEYSTORE_BASE64: ${{ secrets.KYAUTH_KEYSTORE_BASE64 }}
           KYAUTH_STORE_PASSWORD: ${{ secrets.KYAUTH_STORE_PASSWORD }}
@@ -39,7 +39,7 @@ jobs:
         run: |
           export KYAUTH_KEYSTORE="$RUNNER_TEMP/release.jks"
           base64 -d <<<"$KEYSTORE_BASE64" > "$KYAUTH_KEYSTORE"
-          ./gradlew assembleGithubRelease assembleFdroidRelease
+          ./gradlew assembleGithubRelease assembleFdroidRelease bundlePlayRelease
           rm "$KYAUTH_KEYSTORE"
       # An unsigned APK is named *-unsigned.apk, so a missing secret fails the copy; apksigner
       # proves the signature and prints the certificate digest for the notes.
@@ -55,6 +55,20 @@ jobs:
           [[ -n "$digest" ]]
           echo "DIGEST=$digest" >> "$GITHUB_ENV"
           (cd dist && sha256sum *.apk > SHA256SUMS)
+      # jarsigner exits 0 on an unsigned bundle, so match its verdict.
+      - name: Verify and stage the Play bundle
+        run: |
+          aab=app/build/outputs/bundle/playRelease/app-play-release.aab
+          jarsigner -verify "$aab" | grep -x 'jar verified.'
+          mkdir -p play/whatsnew
+          cp "$aab" app/build/outputs/mapping/playRelease/mapping.txt play/
+          code=$(grep -oP 'versionCode = \K\d+' app/build.gradle.kts)
+          cp "fastlane/metadata/android/en-US/changelogs/$code.txt" play/whatsnew/whatsnew-en-US
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: play-bundle
+          path: play/
+          retention-days: 7
       - uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
         with:
           subject-path: dist/*.apk
@@ -64,3 +78,24 @@ jobs:
         run: |
           gh release create "$GITHUB_REF_NAME" dist/* --repo "$GITHUB_REPOSITORY" --verify-tag --generate-notes \
             --notes "Signing certificate SHA-256: \`$DIGEST\`. Play builds are signed by Google Play and carry a different certificate."
+
+  # Its own job, so a failed upload re-runs alone instead of re-publishing the GitHub release.
+  play:
+    needs: release
+    runs-on: ubuntu-latest
+    environment: release
+    permissions: {}
+    steps:
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: play-bundle
+      # Internal track only: promote to closed testing or production in Play Console.
+      - uses: r0adkll/upload-google-play@e738b9dd8f2476ea806d921b64aacd24f34515a5 # v1.1.5
+        with:
+          serviceAccountJsonPlainText: ${{ secrets.PLAY_SERVICE_ACCOUNT_JSON }}
+          packageName: org.kysecurity.authenticator
+          releaseFiles: app-play-release.aab
+          mappingFile: mapping.txt
+          whatsNewDirectory: whatsnew
+          track: internal
+          status: completed

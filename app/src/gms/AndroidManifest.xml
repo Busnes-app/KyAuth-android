@@ -2,6 +2,10 @@
 <!-- Firebase's manifest surface, merged into play and github only; fdroid has no such class. -->
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
     <application>
+        <!-- No Firebase installation or token until the user pairs over FCM: see PushTokenProvider. -->
+        <meta-data
+            android:name="firebase_messaging_auto_init_enabled"
+            android:value="false" />
         <service
             android:name=".mfa.KyAuthMessagingService"
             android:exported="false">

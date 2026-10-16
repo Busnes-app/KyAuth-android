@@ -1,6 +1,7 @@
 package org.kysecurity.authenticator.security
 
 import android.security.keystore.KeyGenParameterSpec
+import android.security.keystore.KeyPermanentlyInvalidatedException
 import android.security.keystore.KeyProperties
 import java.security.KeyFactory
 import java.security.KeyPairGenerator
@@ -42,8 +43,14 @@ object VaultKek {
      * authentication, so [unwrap] fails until the prompt succeeds, and the cipher is
      * single-use: one authentication unwraps one blob.
      */
-    fun unwrapCipher(): Cipher = Cipher.getInstance(TRANSFORMATION).apply {
-        init(Cipher.DECRYPT_MODE, entryOrCreate().privateKey, oaepSpec())
+    fun unwrapCipher(): Cipher = try {
+        Cipher.getInstance(TRANSFORMATION).apply {
+            init(Cipher.DECRYPT_MODE, entryOrCreate().privateKey, oaepSpec())
+        }
+    } catch (e: KeyPermanentlyInvalidatedException) {
+        // The screen lock was removed. Drop the dead key so a PIN unlock re-wraps under a new one.
+        delete()
+        throw IllegalStateException("The screen lock changed. Unlock with your PIN, or reset KyAuth.", e)
     }
 
     fun unwrap(authenticatedCipher: Cipher, ciphertext: ByteArray): ByteArray =

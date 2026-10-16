@@ -86,6 +86,15 @@ the `release` environment's secrets: `KYAUTH_KEYSTORE_BASE64` (`base64 -w0` of t
 `KYAUTH_STORE_PASSWORD`, `KYAUTH_KEY_ALIAS` and `KYAUTH_KEY_PASSWORD`. F-Droid notes are in
 [docs/f-droid.md](docs/f-droid.md).
 
+The same run builds the Play bundle, signed with that keystore as the Play upload key, and a
+second `play` job uploads it to the internal track with `PLAY_SERVICE_ACCOUNT_JSON` (a service
+account with Release permission on this app). Promote it to testing or production in Play Console.
+
+Google Play re-signs what it installs. KyIdentity servers grade attestation against
+`KYIDENTITY_KYAUTH_CERT_SHA256`, so it must list the Play app signing certificate's SHA-256
+(Play Console, Test and release → App integrity → App signing) as well as the GitHub release
+digest, lowercase hex without colons.
+
 ## Contributing and security
 
 - [CONTRIBUTING.md](CONTRIBUTING.md) covers setup and the rules a change must keep.

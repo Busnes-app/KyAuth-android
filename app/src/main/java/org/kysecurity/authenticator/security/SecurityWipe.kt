@@ -2,6 +2,7 @@ package org.kysecurity.authenticator.security
 
 import android.app.NotificationManager
 import android.content.Context
+import org.kysecurity.authenticator.pairing.ChannelPush
 import org.kysecurity.authenticator.pairing.DeviceSigningKey
 import org.kysecurity.authenticator.pairing.PairingStore
 import org.kysecurity.authenticator.pairing.UnifiedPushRegistrar
@@ -71,6 +72,7 @@ object SecurityWipe {
      */
     fun clearPush(context: Context) {
         runCatching { UnifiedPushRegistrar.unregister(context) }
+        ChannelPush.forget()
         listOf("push", "mfa_push_challenge").forEach { runCatching { context.deleteSharedPreferences(it) } }
         runCatching { context.getSystemService(NotificationManager::class.java).cancelAll() }
     }

@@ -141,15 +141,17 @@ object AppLockManager {
     /**
      * Unlocks with Biometric / Device Credential. [authenticatedCipher] must come from a
      * `BiometricPrompt.AuthenticationResult`; it may only be null on a device with no wrapped keys.
+     * A fresh key is made only when no vault exists: one it could never open would lock the user out.
      */
     @Synchronized
-    fun unlockWithBiometrics(context: Context, authenticatedCipher: Cipher?): Boolean {
+    fun unlockWithBiometrics(context: Context, authenticatedCipher: Cipher?, vaultExists: Boolean): Boolean {
         val key = when {
             getPrefs(context).getString(KEY_KEK_WRAPPED_KEYS, null) != null -> {
                 val cipher = authenticatedCipher ?: return false
                 unwrapKeys(context, cipher) ?: return false
             }
             hasLegacyWrapping(context) -> migrateLegacyWrapping(context) ?: return false
+            vaultExists -> return false
             else -> CredentialCipher.generateVaultKey()
         }
         adopt(context, key)

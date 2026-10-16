@@ -149,16 +149,15 @@ private fun keystoreHmac(alias: String, data: ByteArray): ByteArray {
     return hmac(secretKey, data)
 }
 
+/** Unusable while the device is locked, so a stolen locked phone is no PIN-guessing oracle. */
 private fun createPepperKeyIfAbsent(alias: String) {
-    runCatching {
-        val keyStore = KeyStore.getInstance(ANDROID_KEYSTORE).apply { load(null) }
-        if (!keyStore.containsAlias(alias)) {
-            val keyGenerator = KeyGenerator.getInstance(KeyProperties.KEY_ALGORITHM_HMAC_SHA256, ANDROID_KEYSTORE)
-            keyGenerator.init(
-                KeyGenParameterSpec.Builder(alias, KeyProperties.PURPOSE_SIGN)
-                    .build(),
-            )
-            keyGenerator.generateKey()
-        }
-    }
+    val keyStore = KeyStore.getInstance(ANDROID_KEYSTORE).apply { load(null) }
+    if (keyStore.containsAlias(alias)) return
+    KeyGenerator.getInstance(KeyProperties.KEY_ALGORITHM_HMAC_SHA256, ANDROID_KEYSTORE).apply {
+        init(
+            KeyGenParameterSpec.Builder(alias, KeyProperties.PURPOSE_SIGN)
+                .setUnlockedDeviceRequired(true)
+                .build(),
+        )
+    }.generateKey()
 }

@@ -65,6 +65,11 @@ class PushStore(context: Context) {
         preferences.edit().putCredential(latestKey(UNIFIED_PUSH), null).commit()
     }
 
+    /** The FCM token was deleted: the next one is fetched fresh and seeded by [markRegistered]. */
+    fun forgetFcm(): Unit = synchronized(LOCK) {
+        preferences.edit().putCredential(latestKey(FCM), null).commit()
+    }
+
     fun forgetRegistration() = preferences.edit()
         .putCredential("registered", null)
         .remove("refresh_pending")

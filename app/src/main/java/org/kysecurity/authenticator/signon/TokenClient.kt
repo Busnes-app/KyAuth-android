@@ -2,7 +2,7 @@ package org.kysecurity.authenticator.signon
 
 import org.json.JSONObject
 import org.kysecurity.authenticator.pairing.PairingEndpoint
-import java.net.HttpURLConnection
+import org.kysecurity.authenticator.pairing.ServerHttp
 import java.net.URLEncoder
 
 sealed class TokenResult {
@@ -22,25 +22,11 @@ class TokenClient {
         } catch (e: java.net.URISyntaxException) {
             return TokenResult.Failure("The paired server address is not valid.")
         }
-        val connection = (endpoint.toURL().openConnection() as HttpURLConnection).apply {
-            requestMethod = "POST"
-            connectTimeout = 10_000
-            readTimeout = 10_000
-            doOutput = true
-            instanceFollowRedirects = false
-            setRequestProperty("Content-Type", "application/x-www-form-urlencoded")
-            setRequestProperty("Accept", "application/json")
-        }
         return try {
-            connection.outputStream.bufferedWriter(Charsets.UTF_8).use { it.write(formBody(clientId, assertion)) }
-            val status = connection.responseCode
-            val body = (if (status in 200..299) connection.inputStream else connection.errorStream)
-                ?.bufferedReader(Charsets.UTF_8)?.use { it.readText() }.orEmpty()
-            parse(status, body)
-        } catch (e: java.io.IOException) {
+            val response = ServerHttp.send(endpoint, "POST", "application/x-www-form-urlencoded", formBody(clientId, assertion))
+            parse(response.status, response.body)
+        } catch (e: Exception) {
             TokenResult.Failure("Could not reach KyIdentity. Check the connection and try again.")
-        } finally {
-            connection.disconnect()
         }
     }
 

@@ -2,7 +2,6 @@ package org.kysecurity.authenticator.pairing
 
 import org.json.JSONArray
 import org.json.JSONObject
-import java.net.HttpURLConnection
 
 private val LEVELS = setOf("none", "tee", "strongbox")
 
@@ -22,32 +21,16 @@ class PairingClient {
         val endpoint = PairingEndpoint.validatedRegistrationUrl(pairing.serverUrl, pairing.registrationUrl)
         val request = registrationRequestJson(pairing, deviceName, deviceIdentifier, push, publicKeyBase64, attestationChain)
 
-        val connection = (endpoint.toURL().openConnection() as HttpURLConnection).apply {
-            requestMethod = "POST"
-            connectTimeout = 10_000
-            readTimeout = 10_000
-            doOutput = true
-            instanceFollowRedirects = false
-            setRequestProperty("Content-Type", "application/json")
-            setRequestProperty("Accept", "application/json")
+        val reply = ServerHttp.send(endpoint, "POST", "application/json", request)
+        val response = JSONObject(reply.body.ifBlank { "{}" })
+        if (!reply.ok || !response.optBoolean("success")) {
+            val errorMsg = response.optString(
+                "error_description",
+                response.optString("error", "Pairing failed (${reply.status})"),
+            )
+            throw IllegalStateException(errorMsg)
         }
-
-        try {
-            connection.outputStream.bufferedWriter(Charsets.UTF_8).use { it.write(request) }
-            val body = (if (connection.responseCode in 200..299) connection.inputStream else connection.errorStream)
-                ?.bufferedReader(Charsets.UTF_8)?.use { it.readText() }.orEmpty()
-            val response = JSONObject(body.ifBlank { "{}" })
-            if (connection.responseCode !in 200..299 || !response.optBoolean("success")) {
-                val errorMsg = response.optString(
-                    "error_description",
-                    response.optString("error", "Pairing failed (${connection.responseCode})"),
-                )
-                throw IllegalStateException(errorMsg)
-            }
-            return parseRegistration(body, pairing, deviceName, attestationChain)
-        } finally {
-            connection.disconnect()
-        }
+        return parseRegistration(reply.body, pairing, deviceName, attestationChain)
     }
 
     internal fun parseRegistration(
