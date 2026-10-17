@@ -89,6 +89,8 @@ the `release` environment's secrets: `KYAUTH_KEYSTORE_BASE64` (`base64 -w0` of t
 The same run builds the Play bundle, signed with that keystore as the Play upload key, and a
 second `play` job uploads it to the internal track with `PLAY_SERVICE_ACCOUNT_JSON` (a service
 account with Release permission on this app). Promote it to testing or production in Play Console.
+Without that secret the job skips the upload with a warning; upload the run's `play-bundle`
+artifact by hand.
 
 Google Play re-signs what it installs. KyIdentity servers grade attestation against
 `KYIDENTITY_KYAUTH_CERT_SHA256`, so it must list the Play app signing certificate's SHA-256
