@@ -19,7 +19,24 @@ KyAuth is not a password manager. Passwords and passkeys for other sites belong 
 - Android 12 (API 31) or newer.
 - A secure screen lock (PIN, pattern or password). The vault key is bound to it; KyAuth will not
   run without one.
-- A KyIdentity server reachable over HTTPS.
+- For push MFA and app sign-on: a KyIdentity server reachable over HTTPS. Local TOTP code generation works without KyIdentity.
+
+## Install and use independently
+
+Install a signed APK from a published [GitHub release](https://github.com/Busnes-app/KyAuth-android/releases),
+or an available store channel listed by that release. Do not assume that an F-Droid flavor
+means an F-Droid listing is already published. Check the release’s certificate digest and
+SHA-256 provenance; keep the same channel/signer for updates.
+
+To use local TOTP, set a secure device lock, open **Codes**, scan the site’s authenticator
+QR or enter its setup key, and confirm a generated code at that site. Pairing KyIdentity is
+not required for this path. Save that site’s recovery codes separately: KyAuth has no
+backup, export or sync.
+
+For push/sign-on, first install [KyIdentity](https://github.com/Busnes-app/KyIdentity-server),
+then follow [Getting started](#getting-started). Configure FCM/APNs relay or UnifiedPush
+on the server as appropriate and observe a real browser sign-in request and approval.
+Unit tests and pairing success alone do not prove background delivery.
 
 ## Builds
 
@@ -63,13 +80,19 @@ KyIdentity server. It is off by default.
 
 ## Building
 
+Clone this repository, install the Android SDK required by `app/build.gradle.kts`, and
+set `ANDROID_HOME` or a gitignored `local.properties` SDK path. For a local evaluation,
+`./gradlew installFdroidDebug` builds/installs a development APK on a connected Android
+12+ test device without Firebase. It cannot update a differently signed release.
+
 Any JDK 17 or newer can start the build. The Gradle wrapper fetches Gradle, and Gradle provisions
 the JDK 25 its daemon needs.
 
 ```bash
 ./gradlew assemblePlayDebug          # or assembleGithubDebug, assembleFdroidDebug
 ./gradlew testPlayDebugUnitTest testFdroidDebugUnitTest lintPlayDebug lintFdroidDebug
-./gradlew connectedPlayDebugAndroidTest   # needs an emulator with a screen-lock PIN
+./gradlew connectedPlayDebugAndroidTest   # needs an emulator; Keystore tests temporarily set a screen-lock PIN
+# A physical-device check is still needed for real push, biometrics and hardware attestation.
 ```
 
 Release builds are signed only when signing material is present, either as `KYAUTH_KEYSTORE`,
