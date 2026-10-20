@@ -6,6 +6,7 @@ import androidx.test.ext.junit.runners.AndroidJUnit4
 import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNotEquals
 import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Test
@@ -53,6 +54,39 @@ class PushStoreTest {
         store.transport = PushCredential.UNIFIED_PUSH // switched; no endpoint yet
         store.markRegistered(a)
         assertTrue(store.refreshPending())
+    }
+
+    @Test fun fcmKeysSurviveStorageAndAreFreshPerPairing() {
+        val store = PushStore(context)
+        assertEquals(null, store.fcmKeys())
+        val first = store.newFcmKeys()
+        assertEquals(first.p256dh, PushStore(context).fcmKeys()?.p256dh)
+        assertEquals(first.auth, PushStore(context).fcmKeys()?.auth)
+        assertEquals(first.p256dh, store.fcmKeysForRefresh().p256dh) // a refresh reuses this pairing's keys
+        assertNotEquals(first.p256dh, store.newFcmKeys().p256dh)
+    }
+
+    @Test fun keyedPairingRefusesPlaintextAndIsNotStaleForItsOwnToken() {
+        val store = PushStore(context)
+        val keys = store.newFcmKeys()
+        store.markRegistered(a.withKeys(keys))
+        assertFalse(store.refreshPending())
+        assertFalse(store.acceptsPlaintextFcm())
+        assertFalse(store.tokenChanged(paired = true, a)) // onNewToken hands the token alone
+        assertTrue(store.tokenChanged(paired = true, b))
+    }
+
+    @Test fun keylessPairingUpgradesOnItsNextRefresh() {
+        val store = PushStore(context)
+        store.markRegistered(a) // paired before KyAuth sent FCM keys
+        assertTrue(store.acceptsPlaintextFcm())
+        assertFalse(store.tokenChanged(paired = true, a))
+        val keys = store.fcmKeysForRefresh() // the refresh makes keys...
+        assertTrue(store.acceptsPlaintextFcm()) // ...but KyIdentity has not taken them yet
+        store.markRegistered(a.withKeys(keys)) // its 2xx
+        assertEquals(keys.p256dh, store.registered()?.p256dh)
+        assertFalse(store.refreshPending())
+        assertFalse(store.acceptsPlaintextFcm())
     }
 
     @Test fun forgottenUnifiedPushEndpointIsNotReused() {

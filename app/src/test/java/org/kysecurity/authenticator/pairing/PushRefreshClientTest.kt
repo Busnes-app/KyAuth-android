@@ -3,6 +3,8 @@ package org.kysecurity.authenticator.pairing
 import org.json.JSONObject
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNotEquals
+import org.junit.Assert.assertTrue
 import org.junit.Assert.assertThrows
 import org.junit.Test
 
@@ -33,6 +35,33 @@ class PushRefreshClientTest {
         )
     }
 
+    // KyIdentity push_target_test.go "fcm with keys", with the RFC 8291 section 5 receiver keys; KyAuth iOS pins it too.
+    @Test
+    fun fcmWithKeysMessageMatchesGoldenVector() {
+        val keys = org.kysecurity.authenticator.mfa.PushVectors.keys
+        assertEquals(
+            "kyidentity-push-token-v2|https://id.example.com|d-456|1791331200000|fcm|" +
+                "3cfaa3f1d62d114805029366153fbb440a2d4e4b56406a04830579ac65db6a5c|" +
+                "BCVxsr7N_eNgVRqvHtD0zTZsEc6-VV-JvLexhqUzORcxaOzi6-AYWXvTBHm4bjyPjs7Vd8pZGH6SRpkNtoIAiw4|BTBZMqHH6r4Tts7J_aSIgg",
+            message(PushCredential(PushCredential.FCM, "fcm-token-1").withKeys(keys)),
+        )
+    }
+
+    // A keyless FCM pairing refreshes with its token and new keys: the signature and the body carry both.
+    @Test
+    fun refreshUpgradesAKeylessFcmPairing() {
+        val registered = PushCredential(PushCredential.FCM, "fcm-token-1")
+        val keys = PushKeys.generate()
+        val upgrade = registered.withKeys(keys)
+        assertNotEquals(registered, upgrade)
+        assertTrue(message(upgrade).endsWith("|${keys.p256dh}|${keys.auth}"))
+        val body = JSONObject(PushRefreshClient.requestJson(upgrade, 1L, "sig"))
+        assertEquals("fcm", body.getString("pushTransport"))
+        assertEquals("fcm-token-1", body.getString("pushToken"))
+        assertEquals(keys.p256dh, body.getString("pushP256dh"))
+        assertEquals(keys.auth, body.getString("pushAuth"))
+    }
+
     @Test
     fun refusesSeparatorInSignedField() {
         assertThrows(IllegalArgumentException::class.java) {
@@ -44,7 +73,7 @@ class PushRefreshClientTest {
     }
 
     @Test
-    fun requestCarriesKeysOnlyForUnifiedPush() {
+    fun requestOmitsKeysForAKeylessCredential() {
         val up = JSONObject(PushRefreshClient.requestJson(unifiedPush, 1791331200000, "sig"))
         assertEquals("https://ntfy.example.net/upAbC123?up=1", up.getString("pushToken"))
         assertEquals("unifiedpush", up.getString("pushTransport"))

@@ -5,6 +5,7 @@ import android.content.SharedPreferences
 import org.kysecurity.authenticator.BuildConfig
 import org.kysecurity.authenticator.pairing.PushCredential.Companion.FCM
 import org.kysecurity.authenticator.pairing.PushCredential.Companion.UNIFIED_PUSH
+import org.kysecurity.authenticator.security.PushKeyWrap
 
 /** Push delivery state (prefs "push"). The registered credential is only what KyIdentity acknowledged with a 2xx. */
 class PushStore(context: Context) {
@@ -27,12 +28,33 @@ class PushStore(context: Context) {
 
     fun broken(): String? = preferences.getString("broken", null)
 
+    /** This pairing's FCM push keys, or null for a pairing made before KyAuth sent them. */
+    fun fcmKeys(): PushKeys? = preferences.getString("fcm_keys", null)
+        ?.let { sealed -> runCatching { PushKeys.decode(String(PushKeyWrap.open(sealed), Charsets.UTF_8)) }.getOrNull() }
+
+    /** Fresh FCM keys for a new pairing: the previous pairing's must never open this one's pushes. */
+    fun newFcmKeys(): PushKeys = synchronized(LOCK) {
+        PushKeys.generate().also { keys ->
+            preferences.edit().putString("fcm_keys", PushKeyWrap.seal(keys.encode().toByteArray(Charsets.UTF_8))).commit()
+        }
+    }
+
+    /** Keys for an FCM refresh. A pairing that has none gets them now, so the refresh upgrades it to sealed pushes. */
+    fun fcmKeysForRefresh(): PushKeys = synchronized(LOCK) { fcmKeys() ?: newFcmKeys() }
+
+    /**
+     * Plaintext FCM is accepted only while KyIdentity holds no keys for this device (a pairing made
+     * before KyAuth sent them, not yet refreshed). Once it does, a plaintext challenge can only
+     * have been made by the relay or Firebase, so it is refused.
+     */
+    fun acceptsPlaintextFcm(): Boolean = registered()?.p256dh == null
+
     /** Records a new credential from a transport; true when KyIdentity now holds a stale one. */
     fun tokenChanged(paired: Boolean, current: PushCredential): Boolean = synchronized(LOCK) {
-        preferences.edit().putCredential(latestKey(current.transport), current)
+        preferences.edit().putCredential(latestKey(current.transport), tokenOnly(current))
             .apply { if (current.transport == UNIFIED_PUSH) remove("broken") }
             .commit()
-        val stale = paired && current.transport == transport && current != registered()
+        val stale = paired && current.transport == transport && latest(current.transport) != registered()
         if (stale) markRefreshPending()
         stale
     }
@@ -52,13 +74,21 @@ class PushStore(context: Context) {
         // acknowledged seeds it. A UnifiedPush endpoint only ever comes from onNewEndpoint: an
         // acknowledgement must never restore one that forgetUnifiedPush retired.
         if (credential.transport == FCM && preferences.credential(latestKey(FCM)) == null) {
-            edit.putCredential(latestKey(FCM), credential)
+            edit.putCredential(latestKey(FCM), tokenOnly(credential))
         }
         edit.commit()
         // No usable credential for the selected transport (a switch awaiting its endpoint) stays pending too.
-        val latest = if (transport == UNIFIED_PUSH) unifiedPushCredential() else preferences.credential(latestKey(FCM))
-        preferences.edit().putBoolean("refresh_pending", latest != credential).commit()
+        preferences.edit().putBoolean("refresh_pending", latest(transport) != credential).commit()
     }
+
+    /**
+     * What KyIdentity should hold for [transport] now. The FCM token is stored alone and joined to
+     * this pairing's keys here, so new keys (a keyless pairing's upgrade) make the registration stale.
+     */
+    private fun latest(transport: String): PushCredential? =
+        if (transport == UNIFIED_PUSH) unifiedPushCredential() else preferences.credential(latestKey(FCM))?.withKeys(fcmKeys())
+
+    private fun tokenOnly(credential: PushCredential) = if (credential.transport == FCM) credential.withKeys(null) else credential
 
     /** The connector deleted this registration's keys: its endpoint must not be sent again. */
     fun forgetUnifiedPush(): Unit = synchronized(LOCK) {

@@ -24,7 +24,7 @@ class KyAuthUnifiedPushService : PushService() {
             Log.w(TAG, "Dropping UnifiedPush message that did not decrypt")
             return
         }
-        IncomingPush.handle(this, IncomingPush.unifiedPushData(message.content) ?: return)
+        IncomingPush.handle(this, IncomingPush.jsonData(message.content) ?: return)
     }
 
     override fun onRegistrationFailed(reason: FailedReason, instance: String) =

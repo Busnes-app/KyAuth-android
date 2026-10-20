@@ -19,6 +19,7 @@ class SecurityWipeAliasTest {
             "kyauth_pin_pepper",
             "kyidentity-device-signing-v1",
             "kysignon-device-signing-v1",
+            "kyauth_fcm_push_keys", // PushKeyWrap.ALIAS: the sealed FCM push keys
             // The removed KyIdentity passkey: a key left behind is a live factor surviving a wipe.
             "kyauth_identity_passkey_a",
             "kyauth_identity_passkey_b",
