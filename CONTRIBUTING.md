@@ -4,12 +4,13 @@ Read [CODE_OF_CONDUCT.md](CODE_OF_CONDUCT.md) before you contribute.
 
 ## Setup
 
-Use a supported Android SDK and JDK 17. The Gradle wrapper downloads the required Gradle version.
+Use the Android SDK required by the build and JDK 17+ to start the wrapper. Gradle provisions its configured JDK 25 daemon toolchain; an offline build needs those artifacts already cached.
 
 Run the test suite and build the debug APK before you submit a change:
 
 ```bash
-./gradlew test assembleDebug
+./gradlew testPlayDebugUnitTest testFdroidDebugUnitTest lintPlayDebug lintFdroidDebug
+./gradlew assemblePlayDebug assembleFdroidDebug
 ```
 
 ## Security rules
