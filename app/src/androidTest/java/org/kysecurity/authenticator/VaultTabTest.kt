@@ -3,6 +3,7 @@ package org.kysecurity.authenticator
 import android.content.Context
 import android.view.View
 import android.view.ViewGroup
+import android.widget.Button
 import android.widget.TextView
 import androidx.test.core.app.ActivityScenario
 import androidx.test.core.app.ApplicationProvider
@@ -75,11 +76,48 @@ class VaultTabTest {
                 assertTrue(shown.contains("Sign-in request"))
                 assertTrue(shown.contains("No codes yet"))
                 assertTrue(shown.indexOf("Sign-in request") < shown.indexOf("No codes yet"))
+                assertTrue(shown.contains("Account: fixture-user\nServer: example.test"))
+                assertTrue(shown.any { Regex("Expires in (1:00|0:[0-5]\\d)").matches(it) })
+                assertFalse(shown.any { "User:" in it || "seconds" in it || "https://" in it || "Fixture" in it })
                 assertTrue(shown.contains("Vault"))
                 assertFalse(shown.contains("Push MFA"))
                 assertFalse(shown.contains("Passwords"))
             }
         }
+    }
+
+    // A legacy push names no account; without a username from pairing the card names none either.
+    @Test fun requestWithoutAnyUsernameNeverShowsThePhoneAsTheUser() {
+        MfaPushChallengeStore(context).save(challenge(60_000).copy(username = null))
+        ActivityScenario.launch(MainActivity::class.java).use { scenario ->
+            scenario.onActivity { activity ->
+                val shown = texts(activity.window.decorView)
+                assertTrue(shown.contains("Server: example.test"))
+                assertFalse(shown.any { "Account:" in it || "User:" in it || "Fixture" in it })
+            }
+        }
+    }
+
+    @Test fun requestCountsDownToExpiredAndDisablesApprove() {
+        MfaPushChallengeStore(context).save(challenge(2_500))
+        ActivityScenario.launch(MainActivity::class.java).use { scenario ->
+            scenario.onActivity { activity ->
+                assertTrue(texts(activity.window.decorView).any { it.startsWith("Expires in 0:0") })
+                assertTrue(approveButton(activity.window.decorView)!!.isEnabled)
+            }
+            Thread.sleep(4_000)
+            scenario.onActivity { activity ->
+                val shown = texts(activity.window.decorView)
+                assertTrue(shown.contains("Expired"))
+                assertFalse(approveButton(activity.window.decorView)!!.isEnabled)
+            }
+        }
+    }
+
+    private fun approveButton(view: View): Button? = when {
+        view is Button && view.text.toString() == "Approve request" -> view
+        view is ViewGroup -> (0 until view.childCount).firstNotNullOfOrNull { approveButton(view.getChildAt(it)) }
+        else -> null
     }
 
     @Test fun lockedRequestShowsOnLockScreenWithoutTheVault() {

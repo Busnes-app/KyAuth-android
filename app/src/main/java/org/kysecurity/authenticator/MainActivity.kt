@@ -50,6 +50,7 @@ import org.kysecurity.authenticator.mfa.MfaMessage
 import org.kysecurity.authenticator.mfa.MfaPushChallengeStore
 import org.kysecurity.authenticator.mfa.MfaResponseClient
 import org.kysecurity.authenticator.mfa.MfaResponseResult
+import org.kysecurity.authenticator.mfa.RequestCardText
 import org.kysecurity.authenticator.pairing.AttestationChallenge
 import org.kysecurity.authenticator.pairing.attestationSummary
 import org.kysecurity.authenticator.pairing.DeviceSigningKey
@@ -105,6 +106,10 @@ class MainActivity : AppCompatActivity() {
     private var demo = false
     private var nextDemoPushAt = 0L
     private var pendingChallenge: MfaChallenge? = null
+
+    /** The shown request card's countdown and Approve button, which [ticker] updates each second. */
+    private class RequestCountdown(val challenge: MfaChallenge, val expiry: TextView, val approve: Button)
+    private var requestCountdown: RequestCountdown? = null
     private var challengeObserver: android.content.SharedPreferences.OnSharedPreferenceChangeListener? = null
     private var pendingTotpEntry: TotpEntry? = null
     /** A pairing scan result for the enrollment screen to act on: text, or failure. */
@@ -134,6 +139,7 @@ class MainActivity : AppCompatActivity() {
             if (!isVaultLoading && (AppLockManager.isUnlocked() || demo) && activeTab == Tab.VAULT) {
                 updateTotpViews()
             }
+            updateRequestCountdown()
             simulateDemoPush()
             handler.postDelayed(this, 1000)
         }
@@ -271,6 +277,7 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun renderContent() {
+        requestCountdown = null
         val root = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             setBackgroundColor(ThemeManager.color(context, R.color.ky_background))
@@ -1114,7 +1121,13 @@ class MainActivity : AppCompatActivity() {
             setPadding(dp(20), dp(20), dp(20), dp(20))
         }
         card.addView(title(if (challenge.purpose == "step_up") "Confirm a sensitive action" else "Sign-in request"))
-        card.addView(message("A request was received for:\n${challenge.serverUrl}\nUser: ${challenge.username ?: account.deviceName}\nExpires in ${challengeStore.secondsRemaining(challenge)} seconds.\n\nEnter the 2-digit number shown on your computer screen:"))
+        card.addView(message(RequestCardText.details(challenge, account.username)).apply { setPadding(0, dp(4), 0, dp(4)) })
+        val expiry = message(RequestCardText.expiry(challengeStore.secondsRemaining(challenge))).apply {
+            setTextColor(ThemeManager.color(context, R.color.ky_text))
+            fontFeatureSettings = "tnum" // the countdown's width stays still as digits change
+        }
+        card.addView(expiry)
+        card.addView(message("Enter the 2-digit number shown on your computer screen:"))
         if (demo) card.addView(message(getString(R.string.demo_push_hint, challenge.matchDigits)))
         val digits = EditText(this).apply {
             hint = "00"
@@ -1125,7 +1138,9 @@ class MainActivity : AppCompatActivity() {
             gravity = Gravity.CENTER
             textSize = 24f
         }
-        val approve = {
+        val approve = approve@{
+            // The countdown can reach 0 between ticks; an expired request is never answered.
+            if (challengeStore.isExpired(challenge)) return@approve
             val selected = digits.text.toString().trim()
             if (demo) answerDemoChallenge(challenge, approve = true, selected) else respondToChallenge(challenge, account, approve = true, selected)
         }
@@ -1133,10 +1148,12 @@ class MainActivity : AppCompatActivity() {
             (actionId == EditorInfo.IME_ACTION_DONE).also { if (it) approve() }
         }
         card.addView(digits)
-        card.addView(primaryButton("Approve request").apply {
+        val approveButton = primaryButton("Approve request").apply {
             layoutParams = fullWidthParams(bottom = 8)
             setOnClickListener { approve() }
-        })
+        }
+        card.addView(approveButton)
+        requestCountdown = RequestCountdown(challenge, expiry, approveButton)
 
         val btnDeny = secondaryButton("Deny request").apply {
             layoutParams = fullWidthParams(bottom = 8)
@@ -1149,6 +1166,17 @@ class MainActivity : AppCompatActivity() {
             digits.post { getSystemService(InputMethodManager::class.java).showSoftInput(digits, 0) }
         }
         return true
+    }
+
+    /** Counts the shown request down; at 0 it reads "Expired" and Approve is disabled until the next render drops it. */
+    private fun updateRequestCountdown() {
+        val countdown = requestCountdown ?: return
+        val seconds = MfaPushChallengeStore(this).secondsRemaining(countdown.challenge)
+        countdown.expiry.text = RequestCardText.expiry(seconds)
+        if (seconds <= 0 && countdown.approve.isEnabled) {
+            countdown.approve.isEnabled = false
+            countdown.approve.alpha = 0.5f // the custom background has no disabled state of its own
+        }
     }
 
     private fun startDemo() {

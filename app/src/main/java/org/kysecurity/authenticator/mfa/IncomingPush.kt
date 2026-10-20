@@ -22,6 +22,8 @@ import org.kysecurity.authenticator.pairing.PushStore
 object IncomingPush {
     private const val CHANNEL_ID = "kyauth_mfa_push"
     private const val RECONNECT_NOTIFICATION_ID = 1
+    /** Fields KyIdentity puts only in sealed pushes; the parser reads the username under both keys. */
+    private val SEALED_ONLY = setOf("username", "user")
 
     fun handle(context: Context, data: Map<String, String>) {
         val challenge = challenge(data, PairingStore(context).account()) ?: return
@@ -42,10 +44,11 @@ object IncomingPush {
     /**
      * A sealed push (`kyauth`, RFC 8291) opens only with [keys], and only its decrypted fields are
      * used. A plaintext push is accepted only when [plaintextAllowed] (KyIdentity holds no keys for
-     * this device): otherwise the relay or Firebase could inject requests.
+     * this device): otherwise the relay or Firebase could inject requests. KyIdentity sends the
+     * username only sealed, so a plaintext push's username is dropped: it could only be theirs.
      */
     internal fun fcmData(data: Map<String, String>, keys: PushKeys?, plaintextAllowed: Boolean): Map<String, String>? {
-        val sealed = data["kyauth"] ?: return data.takeIf { plaintextAllowed }
+        val sealed = data["kyauth"] ?: return data.takeIf { plaintextAllowed }?.minus(SEALED_ONLY)
         if (keys == null) return null
         return runCatching { jsonData(WebPush.decrypt(PushKeys.unb64(sealed), keys)) }.getOrNull()
     }
