@@ -15,6 +15,8 @@ import org.kysecurity.authenticator.MainActivity
 import org.kysecurity.authenticator.R
 import org.kysecurity.authenticator.pairing.PairedAccount
 import org.kysecurity.authenticator.pairing.PairingStore
+import org.kysecurity.authenticator.pairing.PushKeys
+import org.kysecurity.authenticator.pairing.PushStore
 
 /** The one receive path for every push transport: parse, save, notify. */
 object IncomingPush {
@@ -31,8 +33,25 @@ object IncomingPush {
     internal fun challenge(data: Map<String, String>, paired: PairedAccount?, nowMs: Long = System.currentTimeMillis()): MfaChallenge? =
         runCatching { MfaPushChallengeParser.parse(data, paired, nowMs) }.getOrNull()
 
-    /** A decrypted UnifiedPush body: a flat JSON object of strings, else null. */
-    internal fun unifiedPushData(content: ByteArray): Map<String, String>? = runCatching {
+    /** An FCM data message's challenge fields, opened with this pairing's keys; null when refused. */
+    fun fcmData(context: Context, data: Map<String, String>): Map<String, String>? {
+        val store = PushStore(context)
+        return fcmData(data, if ("kyauth" in data) store.fcmKeys() else null, store.acceptsPlaintextFcm())
+    }
+
+    /**
+     * A sealed push (`kyauth`, RFC 8291) opens only with [keys], and only its decrypted fields are
+     * used. A plaintext push is accepted only when [plaintextAllowed] (KyIdentity holds no keys for
+     * this device): otherwise the relay or Firebase could inject requests.
+     */
+    internal fun fcmData(data: Map<String, String>, keys: PushKeys?, plaintextAllowed: Boolean): Map<String, String>? {
+        val sealed = data["kyauth"] ?: return data.takeIf { plaintextAllowed }
+        if (keys == null) return null
+        return runCatching { jsonData(WebPush.decrypt(PushKeys.unb64(sealed), keys)) }.getOrNull()
+    }
+
+    /** A decrypted push body: a flat JSON object of strings, else null. */
+    internal fun jsonData(content: ByteArray): Map<String, String>? = runCatching {
         val json = JSONObject(String(content, Charsets.UTF_8))
         json.keys().asSequence().associateWith { json.get(it) as String }
     }.getOrNull()

@@ -24,7 +24,7 @@ class IncomingPushTest {
     // Every transport must reach the same parser: FCM hands a map, UnifiedPush a JSON body.
     private val transports: List<(Map<String, String>) -> Map<String, String>?> = listOf(
         { it },
-        { IncomingPush.unifiedPushData(JSONObject(it).toString().toByteArray()) },
+        { IncomingPush.jsonData(JSONObject(it).toString().toByteArray()) },
     )
 
     private fun accepted(data: Map<String, String>) = transports.map { decode ->
@@ -47,8 +47,8 @@ class IncomingPushTest {
 
     @Test
     fun refusesUnifiedPushBodyThatIsNotAFlatStringObject() {
-        assertNull(IncomingPush.unifiedPushData("""{"challengeId":1}""".toByteArray()))
-        assertNull(IncomingPush.unifiedPushData("""{"a":{"b":"c"}}""".toByteArray()))
-        assertNull(IncomingPush.unifiedPushData("not json".toByteArray()))
+        assertNull(IncomingPush.jsonData("""{"challengeId":1}""".toByteArray()))
+        assertNull(IncomingPush.jsonData("""{"a":{"b":"c"}}""".toByteArray()))
+        assertNull(IncomingPush.jsonData("not json".toByteArray()))
     }
 }

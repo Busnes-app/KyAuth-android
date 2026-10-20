@@ -359,8 +359,12 @@ class MainActivity : AppCompatActivity() {
                             var keyReplaced = false
                             var push: PushCredential? = null
                             val result = runCatching {
-                                push = if (transport == PushCredential.UNIFIED_PUSH) unifiedPush else ChannelPush.fcmCredential().getOrThrow()
+                                val credential = if (transport == PushCredential.UNIFIED_PUSH) unifiedPush else ChannelPush.fcmCredential().getOrThrow()
                                 val hadAccount = runCatching { store.account() != null }.getOrDefault(false)
+                                // Fresh per pairing: an old pairing's keys never open the new one's pushes. If this
+                                // throws, the old keys are untouched; once it succeeds, a failure clears the old pairing.
+                                val fcmKeys = pushStore.newFcmKeys()
+                                push = if (transport == PushCredential.FCM) credential?.withKeys(fcmKeys) else credential
                                 keyReplaced = hadAccount
                                 val key = DeviceSigningKey.regenerate(AttestationChallenge.forPairing(pairing))
                                 PairingClient().register(
@@ -1214,7 +1218,8 @@ class MainActivity : AppCompatActivity() {
             return
         }
         Thread {
-            val credential = ChannelPush.fcmCredential()
+            // A pairing made before KyAuth sent FCM keys gets them here, upgrading it to sealed pushes.
+            val credential = ChannelPush.fcmCredential().mapCatching { it.withKeys(push.fcmKeysForRefresh()) }
             runOnUiThread {
                 credential.onSuccess { refreshPush(account, it) }
                     .onFailure { toast(it.message ?: "Firebase is unavailable") }

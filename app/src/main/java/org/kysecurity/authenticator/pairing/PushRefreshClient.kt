@@ -26,7 +26,7 @@ class PushRefreshClient {
             return fields.joinToString("|").toByteArray(Charsets.UTF_8)
         }
 
-        // FCM carries no keys, so they are omitted (as at registration) rather than sent empty.
+        // A keyless FCM credential (a pairing made before KyAuth sent keys) omits them, as at registration, rather than sending them empty.
         internal fun requestJson(push: PushCredential, issuedAtMs: Long, signature: String): String = JSONObject()
             .put("pushToken", push.token)
             .put("pushTransport", push.transport)

@@ -32,6 +32,23 @@ class PairingClientTest {
     }
 
     @Test
+    fun registrationRequestJson_carriesFcmKeys() {
+        val keys = PushKeys.generate()
+        val request = JSONObject(
+            PairingClient().registrationRequestJson(
+                pairing = QrPairing(serverUrl = "https://signin.example.com", pairingToken = "pair-token"),
+                deviceName = "Pixel",
+                deviceIdentifier = "i",
+                push = PushCredential(PushCredential.FCM, "fcm-token").withKeys(keys),
+                publicKeyBase64 = "pk",
+            ),
+        )
+        assertEquals("fcm", request.getString("pushTransport"))
+        assertEquals(keys.p256dh, request.getString("pushP256dh"))
+        assertEquals(keys.auth, request.getString("pushAuth"))
+    }
+
+    @Test
     fun registrationRequestJson_carriesUnifiedPushKeys() {
         val request = JSONObject(
             PairingClient().registrationRequestJson(

@@ -1,5 +1,6 @@
 package org.kysecurity.authenticator.mfa
 
+import android.util.Log
 import com.google.firebase.messaging.FirebaseMessagingService
 import com.google.firebase.messaging.RemoteMessage
 import org.kysecurity.authenticator.pairing.PairingStore
@@ -12,5 +13,16 @@ class KyAuthMessagingService : FirebaseMessagingService() {
         if (PushStore(this).tokenChanged(paired, PushCredential(PushCredential.FCM, token))) IncomingPush.notifyReconnect(this)
     }
 
-    override fun onMessageReceived(message: RemoteMessage) = IncomingPush.handle(this, message.data)
+    override fun onMessageReceived(message: RemoteMessage) {
+        val data = IncomingPush.fcmData(this, message.data)
+        if (data == null) {
+            Log.w(TAG, "Dropping FCM message that is not sealed to this pairing")
+            return
+        }
+        IncomingPush.handle(this, data)
+    }
+
+    private companion object {
+        const val TAG = "KyAuthMessagingService"
+    }
 }
