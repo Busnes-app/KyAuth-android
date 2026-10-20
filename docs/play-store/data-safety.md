@@ -17,6 +17,10 @@ Draft for `org.kysecurity.authenticator` 0.4.2 (versionCode 5). Grounded in the 
 | UnifiedPush distributor (separate app chosen by user) | registration only, on device; the distributor's own server is outside this app | User picks "Use UnifiedPush" | `main/.../MainActivity.kt:1425-1432`, `main/.../mfa/KyAuthUnifiedPushService.kt:15-26` |
 | Another app on device (KyPost) | KyIdentity ID token + account name via AccountManager | User-approved sign-on | `main/.../signon/SignOnActivity.kt:146-155` |
 
+KyIdentity forwards FCM pushes through the FCM relay Worker the developer runs
+(KyIdentity-server `workers/fcn`), so the developer receives the FCM token with every push, plus
+the challenge fields in the clear (problem 5). The app never contacts the relay itself.
+
 Nothing else leaves the device. The only `HttpURLConnection` users are the four KyIdentity
 clients above (grep for `openConnection` under `main/` and `gms/`). TOTP secrets, the vault,
 the PIN and biometric results stay local. Demo mode makes no network calls
@@ -61,7 +65,7 @@ better than calling the server a third party. Explain the self-hosted model in t
 
 ### Personal info > User IDs: **Collected**, not shared
 
-- What: KyIdentity `userId` (`PairingClient.kt:95-97`) and `sub` in the sign-on assertion (`DeviceAssertion.kt:44`).
+- What: KyIdentity `userId` (`PairingClient.kt:95-97`) and `sub` in the sign-on assertion (`DeviceAssertion.kt:44`). Over FCM the developer's relay also receives it as `deviceUserId` in every push (problem 5).
 - Ephemeral: **No**. The server stores the device registration.
 - Required. Pairing is the app's core function. Demo mode is the only path without it (`DemoMode.kt:10`).
 - Purposes: **App functionality**, **Account management**.
@@ -73,7 +77,9 @@ better than calling the server a third party. Explain the self-hosted model in t
   - Random installation UUID (`PairingStore.kt:23`).
   - `Build.MODEL` (`MainActivity.kt:365`).
   - Device public key and attestation chain (`PairingClient.kt:101,108`).
-  - Push token or UnifiedPush endpoint (`PairingClient.kt:102-107`).
+  - Push token or UnifiedPush endpoint (`PairingClient.kt:102-107`). The developer's FCM relay
+    receives the FCM token and KyIdentity's `deviceId` with every push, and keeps the token's
+    SHA-256 hash (problem 5).
   - Firebase FID and FCM token (Firebase: "Generates and collects a per-installation identifier (FID)").
   - ML Kit per-installation ID.
 - Ephemeral: **No**.
@@ -126,7 +132,18 @@ better than calling the server a third party. Explain the self-hosted model in t
 2. **Fixed: unpair revokes on the server.** It now sends a device-signed `POST .../devices/{id}/revoke` (KyIdentity `feat/device-self-revoke`) and deletes the FCM token and device key. If the server cannot confirm, the user is told to remove the phone on the devices page. Was: **Unpair is local-only.** `unpairIdentity()` (`MainActivity.kt:1950-1962`) and `SecurityWipe.wipe` (`security/SecurityWipe.kt:11-57`) never tell KyIdentity, so the device ID, model, public key and push token stay on the server. The deletion answer leans on the user removing the device on their KyIdentity devices page. Either revoke on the server during unpair (best effort), or tell the user in the unpair dialog.
 3. **Fixed: Firebase starts only at pairing over FCM.** Auto-init is off in the manifest and switched on when the user pairs or reconnects over Firebase. The token is deleted on unpair, wipe, reset, and once KyIdentity confirms a switch to UnifiedPush. Unproven on a device: no traffic capture yet. Was: **Firebase collects before any consent or need.** FCM auto-init is on, so FID and device metadata go to Google at first launch: before pairing, in demo mode, and when the user has chosen UnifiedPush. Nothing calls `FirebaseMessaging.deleteToken()` (grep: no hits), whether the user unpairs, switches to UnifiedPush (`MainActivity.kt:1429-1432`) or wipes. Fix: set `firebase_messaging_auto_init_enabled=false` in `gms/AndroidManifest.xml`, enable it at pairing, and delete the token on unpair or transport switch. After that fix, Device IDs could arguably be marked Optional.
 4. **The Firebase project looks like a scratch project (unproven).** `gms/res/values/firebase.xml:5-6` uses project `device-streaming-e3aa5b87`, which looks like an Android Studio Device Streaming project. Confirm it is the production project and that the committed API key (`firebase.xml:4`) is restricted to this package and signing cert.
-5. **The FCM payload carries IDs through Google in clear.** KyIdentity sends `deviceId` and `deviceUserId` in FCM data (`main/.../mfa/MfaPushChallengeStore.kt:27-28`). This is server-side, so it is not on the app's form, but it is not end-to-end encrypted the way UnifiedPush is. Note it in the KyIdentity or privacy docs.
+5. **The FCM payload carries IDs through the developer's relay and Google in clear.** Android FCM
+   pushes are never sealed: `PushCredential` refuses keys for FCM (`main/.../pairing/PushCredential.kt:13-15`),
+   and KyIdentity seals only when the device registered `pushP256dh` (KyIdentity-server
+   `internal/mfa/push_relay.go:225-236`). The relay (`workers/fcn`) and FCM therefore see the FCM
+   token and `data` = `type`, `title`, `body`, `challengeId`, `deviceId`, `deviceUserId`, `purpose`,
+   `expiresAtEpochMs`, `devicePlatform` (`push_relay.go:197-209`; `workers/fcn/src/fcm.ts:253-260`
+   forwards `data` as is). The app reads `deviceId` and `deviceUserId` (`main/.../mfa/MfaPushChallengeStore.kt:27-28`).
+   The relay keeps no raw token and no payload, only a claim named after the token's SHA-256 with
+   the server's relay key id, which persists once a send has delivered (KyIdentity-server
+   `push-relay-shared/relay-coordinator.ts:35-46,192-217`). The form above already declares User
+   IDs and Device IDs as collected and not ephemeral, which covers this. Sealing FCM pushes the way
+   iOS does would remove the IDs from the relay and Google.
 
 ## Sources
 
