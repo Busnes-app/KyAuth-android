@@ -33,6 +33,18 @@ object PushVectors {
         "02HrWy01gILm-SDh7u6SutG3QPgnO8zgjnPLz-KB5WMJC-6ybBt-L4X5MXH9eFpjxC2CHDLU_4OU9X-2qIK-QfhOY-6xQt5fOq7MG53QoqWg9Q0DwxoH" +
         "p8y_HTB7-EHbrYB7ukroZAbso9gPKsZZaWlFZ-0xE6BiEHgSE1IzZ28s10UHoRhvYGCTa2A6-rquFY4Jh8uTjaiWZCUrIgkHVY_TlDwnKsS-i2Ax0G5Q" +
         "9cQUu7upBB5-7EY3yg2IYN5AvqnvmN1BEkU58T2cG_YgWJfThuXUgIYavjvv"
+
+    // The same challenge, platform android, with the username KyIdentity adds to sealed payloads
+    // only (`sealedChallenge`, username alice), from its RelaySender into the same 640-byte record.
+    const val SERVER_SEALED_WITH_USERNAME = "Dmlo7C6dU8cKAAnEew80OwAAAoBBBJXRNp_5ly-QvFfQ4b7zWuJHbFJXs0uoAKxksljotUC25RSje2xMbMGYDw3Cf_-EnKfS" +
+        "xVEwaw40Ypl2mwH5eq3NWj3LglzNLBifPr2Sh5GGcNY7kA5cpRM2C2_x6yJHcM562QIHjUfKBNaWP3c2xBCmwoTRnoizuHhg_lt0d8kFEKBfDzr-Zl" +
+        "OpNxFDMh3BDN037EDuqbWrDiI9tzKxj2f33czPKwDkqPB0IAoW4TYTrIv9e41Yb0HTQenBjKKZFHa0eQjt88jvtxIKGdicFH_XbYrSiOOrXzASg4BN" +
+        "UNZAo8FrpcrhD8fnOwocD_0nVkaC0eUrDCl_-Z3bnxmhSJvjBw8vrz63qAcJRY7iZVOvjRU7KyNKXOcr-xOJOQ5WkpcV_WvksFSL1CZPFe7TsSDK8m" +
+        "G3YgwzlvN2V3CaA_s7HC20Xqr8MwJliTHPZd9fqfFml2jug-AjndonpMryGnc4n6u8vEoIwrFPivWhhH93gNZhnVgyBDahTrHqrfExe_kn7kyMalzt" +
+        "VvZVTyDjp7n8nkqq9lJFSjKW1y1FND0CU79Kaepg5HuQasfox9Fs3RFZjNii2k5EvNhbv0YDEYIasO7fyKF-vuPNmfuqazjWkD7qyDPSZBTdnEWhDw" +
+        "1m4LO3XEPBhOhPv83uHbtu7q7uouI_eTpxYyY06R-qhDXPZ3SZbh6PBEP0PmIN0EYzVFCPuTy_j0pKrH7sAbT6YTFpRj0XiPqVWTTr2--rIZg3OzN8" +
+        "f-YNLc-x_IaKNnqfpJSPdQoG7e6FCzcv_K42T9mPvX_fl-5Cr7_CMPYk1ANRVgm8y4iQW3WHDi7oDPsycFBONwB_V0-hFQboImYQeHKAuJvhvu0jEN" +
+        "PU6rDRVtlZApgG_VXDG5kzsPn2hLAJLiddQJ_l_PJxLeLCc_lidei2ksMQzsxNdZwlyeXHqsh5"
 }
 
 class WebPushTest {
@@ -89,6 +101,21 @@ class SealedFcmPushTest {
         assertEquals("step_up", challenge.purpose)
         assertEquals(1_791_331_200_000L, challenge.expiresAtEpochMs)
         assertNull(challenge.username)
+    }
+
+    @Test
+    fun opensServerSealedUsername() {
+        val fields = IncomingPush.fcmData(mapOf("type" to "mfa_challenge", "kyauth" to PushVectors.SERVER_SEALED_WITH_USERNAME), keys, plaintextAllowed = false)!!
+        val challenge = IncomingPush.challenge(fields, paired, now)!!
+        assertEquals("ch-1", challenge.challengeId)
+        assertEquals("alice", challenge.username)
+    }
+
+    // KyIdentity never sends a username unsealed, so one in a plaintext push was put there in transit.
+    @Test
+    fun plaintextUsernameIsDropped() {
+        val fields = IncomingPush.fcmData(plaintext + ("username" to "mallory") + ("user" to "mallory"), null, plaintextAllowed = true)!!
+        assertNull(IncomingPush.challenge(fields, paired, now)!!.username)
     }
 
     @Test

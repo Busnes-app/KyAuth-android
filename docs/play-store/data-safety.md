@@ -23,6 +23,14 @@ pairing made with this build or refreshed since, the challenge is RFC 8291 seale
 sees only `type` and ciphertext; a pairing made before it still sends the challenge fields in
 the clear until it refreshes (problem 5). The app never contacts the relay itself.
 
+Since KyIdentity added it, a sealed challenge also carries the signing-in account's username,
+which the request card shows. It is inside the RFC 8291 ciphertext only, so the relay and FCM
+cannot read it, and KyIdentity never puts it in the plaintext form: KyAuth drops a `username` in a
+plaintext push (`IncomingPush.fcmData`). It travels server to device, is kept with the pending
+request in app-private prefs until answered or expired, and is never sent back. So the developer
+receives no username and no new declaration is needed: this adds nothing to the Data types below.
+The username saved at pairing (from the QR) was already on the device.
+
 Nothing else leaves the device. The only `HttpURLConnection` users are the four KyIdentity
 clients above (grep for `openConnection` under `main/` and `gms/`). TOTP secrets, the vault,
 the PIN and biometric results stay local. Demo mode makes no network calls
@@ -142,8 +150,9 @@ better than calling the server a third party. Explain the self-hosted model in t
    `PushStore.acceptsPlaintextFcm`). A pairing made before that build has no keys until its next
    Reconnect (token rotation or transport switch) or a re-pair, and nothing forces one. Until then
    the relay (`workers/fcn`) and FCM see the FCM token and `data` = `type`, `title`, `body`,
-   `challengeId`, `deviceId`, `deviceUserId`, `purpose`, `expiresAtEpochMs`, `devicePlatform`
-   (`push_relay.go:197-209`; `workers/fcn/src/fcm.ts:253-260` forwards `data` as is). Sealed or
+   `challengeId`, `deviceId`, `deviceUserId`, `purpose`, `expiresAtEpochMs`, `devicePlatform`,
+   never the username, which KyIdentity sends sealed only (`challengeData` vs `sealedChallenge`,
+   `push_relay.go`; `workers/fcn/src/fcm.ts:253-260` forwards `data` as is). Sealed or
    not, the relay and FCM always see the FCM token, the send time and the message size. The relay
    keeps no raw token and no payload, only a claim named after the token's SHA-256 with the
    server's relay key id, which persists once a send has delivered (KyIdentity-server
