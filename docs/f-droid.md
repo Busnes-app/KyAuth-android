@@ -24,9 +24,9 @@ Repo: https://github.com/Busnes-app/KyAuth-android.git
 Binaries: https://github.com/Busnes-app/KyAuth-android/releases/download/v%v/kyauth-v%v-fdroid.apk
 
 Builds:
-  - versionName: 0.4.2
-    versionCode: 5
-    commit: v0.4.2
+  - versionName: 0.5.0
+    versionCode: 6
+    commit: v0.5.0
     subdir: app
     gradle:
       - fdroid
@@ -35,8 +35,8 @@ AllowedAPKSigningKeys: <signing certificate SHA-256 from the GitHub release note
 
 AutoUpdateMode: Version
 UpdateCheckMode: Tags
-CurrentVersion: 0.4.2
-CurrentVersionCode: 5
+CurrentVersion: 0.5.0
+CurrentVersionCode: 6
 ```
 
 `Binaries` with `AllowedAPKSigningKeys` asks F-Droid to rebuild from source, check the result

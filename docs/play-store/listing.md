@@ -50,6 +50,13 @@ KyAuth is open source under the MIT license.
 
 https://busnes.app/privacy.html
 
+## What's new (0.5.0)
+
+```text
+• Sign-in requests sent through Firebase are now end-to-end encrypted. A phone paired before this update switches over when it next reconnects or is paired again.
+• The sign-in request card shows your account and server, and counts down the time left. Approve turns off when a request expires.
+```
+
 ## What's new (0.4.2)
 
 ```text
