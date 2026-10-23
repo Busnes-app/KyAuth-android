@@ -9,6 +9,7 @@ buildscript {
             classpath("org.bitbucket.b_c:jose4j:0.9.7")
             classpath("org.jdom:jdom2:2.0.6.1")
             classpath("org.apache.commons:commons-lang3:3.21.0")
+            classpath("org.jetbrains.kotlin:kotlin-gradle-plugin:2.4.21")
         }
     }
 }
