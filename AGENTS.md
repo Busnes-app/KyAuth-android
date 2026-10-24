@@ -128,6 +128,7 @@ KyAuth pairs an Android device with KyIdentity. It stores TOTP entries in an enc
 - Keep security checks fail-closed.
 - Add a focused test for non-trivial logic.
 - Update this file when a durable product contract, workflow, or file boundary changes.
+- Update `docs/ASSURANCE-CASE.md` in the same change when a trust boundary or security requirement moves.
 
 ## Verification
 
