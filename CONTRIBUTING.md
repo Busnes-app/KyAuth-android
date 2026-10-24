@@ -13,6 +13,23 @@ Run the test suite and build the debug APK before you submit a change:
 ./gradlew assemblePlayDebug assembleFdroidDebug
 ```
 
+## Coding standard
+
+Kotlin code follows the [Kotlin coding conventions](https://kotlinlang.org/docs/coding-conventions.html)
+(`kotlin.code.style=official` in `gradle.properties`, so Android Studio formats to them). Android
+code follows Android Lint. UI follows [STYLE_GUIDE.md](STYLE_GUIDE.md). CI enforces what a tool can
+check:
+
+| Standard | Enforced by |
+|---|---|
+| Kotlin compiles cleanly | `assemble*` and the unit-test tasks in the `verify` job of `.github/workflows/android.yml` |
+| Android Lint | `lintPlayDebug lintGithubDebug lintFdroidDebug` in the `verify` job. Lint errors fail the build; warnings are reported but do not |
+| Common vulnerability patterns | CodeQL for Java/Kotlin (`.github/workflows/codeql.yml`) |
+| No Google code in the F-Droid build | The `F-Droid build carries no Google Play code` step in the `verify` job |
+
+No formatter or style linter runs in CI, so layout and naming are a review matter: match the file
+you are editing.
+
 ## Security rules
 
 - Keep release pairing HTTPS-only.

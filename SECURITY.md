@@ -15,3 +15,8 @@ ship the fix, and credit you in the release notes unless you prefer otherwise.
 KyAuth's security contract is [AGENTS.md](AGENTS.md): the vault, the device key, Push MFA,
 passkeys and sign-on. A way to break any promise there is in scope. Server-side issues belong
 to [KyIdentity-server](https://github.com/Busnes-app/KyIdentity-server/security/advisories/new).
+
+## See also
+
+- [docs/VERIFYING-RELEASES.md](docs/VERIFYING-RELEASES.md): verify a release APK and rebuild it
+- [docs/ASSURANCE-CASE.md](docs/ASSURANCE-CASE.md): threat model and the argument that the protections hold

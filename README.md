@@ -127,6 +127,10 @@ digest, lowercase hex without colons.
   behaviour.
 - Report vulnerabilities privately as described in [SECURITY.md](SECURITY.md), not in a public
   issue.
+- [Verifying releases](docs/VERIFYING-RELEASES.md) checks an APK's signing certificate and build
+  provenance, and rebuilds it from source to compare.
+- [Assurance case](docs/ASSURANCE-CASE.md) covers the threat model, the trust boundaries and why the
+  security requirements hold.
 
 ## License
 
