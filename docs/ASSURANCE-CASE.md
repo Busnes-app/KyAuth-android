@@ -123,7 +123,7 @@ These are recorded, not hidden ([AGENTS.md, Outstanding security work](../AGENTS
 
 ## Evidence
 
-- **Tests:** 39 test classes. JVM unit tests cover the parsers, policies, crypto wire formats
+- **Tests:** 39 test files. JVM unit tests cover the parsers, policies, crypto wire formats
   and golden vectors (`WebPushTest` against RFC 8291 appendix A, `PushRefreshClientTest`).
   Instrumented tests cover Keystore, vault and UI behaviour. CI runs the unit tests for all three
   flavors and the instrumented suite on an API 35 emulator on every push and pull request
