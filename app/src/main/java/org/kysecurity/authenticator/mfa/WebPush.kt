@@ -1,10 +1,10 @@
 package org.kysecurity.authenticator.mfa
 
+import com.google.crypto.tink.subtle.Hkdf
 import org.kysecurity.authenticator.pairing.PushKeys
 import java.nio.ByteBuffer
 import javax.crypto.Cipher
 import javax.crypto.KeyAgreement
-import javax.crypto.Mac
 import javax.crypto.spec.GCMParameterSpec
 import javax.crypto.spec.SecretKeySpec
 
@@ -40,15 +40,7 @@ object WebPush {
         return padded.copyOf(end)
     }
 
-    /** RFC 5869 HKDF-SHA256 for outputs of at most one block (32 bytes). */
-    private fun hkdf(salt: ByteArray, ikm: ByteArray, info: ByteArray, length: Int): ByteArray {
-        val prk = hmac(salt, ikm)
-        return hmac(prk, info + 1).copyOf(length)
-    }
-
-    private fun hmac(key: ByteArray, data: ByteArray): ByteArray =
-        Mac.getInstance("HmacSHA256").run {
-            init(SecretKeySpec(key, "HmacSHA256"))
-            doFinal(data)
-        }
+    /** RFC 5869 HKDF-SHA256. */
+    private fun hkdf(salt: ByteArray, ikm: ByteArray, info: ByteArray, length: Int): ByteArray =
+        Hkdf.computeHkdf("HMACSHA256", ikm, salt, info, length)
 }
