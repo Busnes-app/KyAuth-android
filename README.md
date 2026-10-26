@@ -1,5 +1,8 @@
 # KyAuth for Android
 
+[![OpenSSF Best Practices](https://www.bestpractices.dev/projects/15921/badge)](https://www.bestpractices.dev/projects/15921)
+[![OpenSSF Scorecard](https://api.scorecard.dev/projects/github.com/Busnes-app/KyAuth-android/badge)](https://scorecard.dev/viewer/?uri=github.com/Busnes-app/KyAuth-android)
+
 KyAuth is the Android authenticator for the KySecurity suite. It pairs a
 phone with your self-hosted [KyIdentity](https://github.com/Busnes-app/KyIdentity-server) server
 and gives you:
