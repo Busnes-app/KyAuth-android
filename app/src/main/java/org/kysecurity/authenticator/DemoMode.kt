@@ -25,9 +25,9 @@ object DemoMode {
     fun active(requested: Boolean, paired: PairedAccount?) = requested && paired == null
 
     fun entries() = listOf(
-        TotpEntry(title = "Example Mail", secretBase32 = "JBSWY3DPEHPK3PXP", url = "https://mail.example.com", id = "demo-mail"),
-        TotpEntry(title = "Example Cloud", secretBase32 = "KRSXG5CTMVRXEZLU", url = "https://cloud.example.com", id = "demo-cloud"),
-        TotpEntry(title = "Example Bank", secretBase32 = "GEZDGNBVGY3TQOJQ", notes = "Demo account", id = "demo-bank"),
+        TotpEntry(title = "Example Mail", secretBase32 = "JBSWY3DPEHPK3PXPJBSWY3DPEHPK3PXP", url = "https://mail.example.com", id = "demo-mail"),
+        TotpEntry(title = "Example Cloud", secretBase32 = "KRSXG5CTMVRXEZLUKRSXG5CTMVRXEZLU", url = "https://cloud.example.com", id = "demo-cloud"),
+        TotpEntry(title = "Example Bank", secretBase32 = "GEZDGNBVGY3TQOJQGEZDGNBVGY3TQOJQ", notes = "Demo account", id = "demo-bank"),
     )
 
     fun challenge(nowMs: Long, random: Random = Random.Default): MfaChallenge {

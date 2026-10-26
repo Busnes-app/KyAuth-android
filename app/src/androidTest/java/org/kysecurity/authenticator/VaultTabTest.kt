@@ -1,10 +1,14 @@
 package org.kysecurity.authenticator
 
 import android.content.Context
+import android.content.ClipData
+import android.content.ClipboardManager
 import android.view.View
 import android.view.ViewGroup
 import android.widget.Button
+import android.widget.EditText
 import android.widget.TextView
+import androidx.appcompat.app.AlertDialog
 import androidx.test.core.app.ActivityScenario
 import androidx.test.core.app.ApplicationProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
@@ -13,6 +17,7 @@ import org.junit.After
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
+import org.junit.Assert.assertEquals
 import org.junit.Before
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -21,6 +26,9 @@ import org.kysecurity.authenticator.mfa.MfaPushChallengeStore
 import org.kysecurity.authenticator.pairing.PairedAccount
 import org.kysecurity.authenticator.pairing.PairingStore
 import org.kysecurity.authenticator.security.AppLockManager
+import org.kysecurity.authenticator.totp.TotpEntry
+import org.kysecurity.authenticator.totp.TotpVault
+import java.io.File
 
 /** Fake unlocked state; does not simulate biometric authentication. */
 @RunWith(AndroidJUnit4::class)
@@ -51,6 +59,98 @@ class VaultTabTest {
     private fun texts(view: View): List<String> = buildList {
         if (view is TextView) add(view.text.toString())
         if (view is ViewGroup) for (i in 0 until view.childCount) addAll(texts(view.getChildAt(i)))
+    }
+
+    private fun views(view: View): List<View> = buildList {
+        add(view)
+        if (view is ViewGroup) for (i in 0 until view.childCount) addAll(views(view.getChildAt(i)))
+    }
+
+    @Suppress("UNCHECKED_CAST")
+    private fun dialog(activity: MainActivity) = (MainActivity::class.java.getDeclaredField("openDialogs")
+        .apply { isAccessible = true }.get(activity) as Set<AlertDialog>).single { it.isShowing }
+
+    @Test fun weakLegacyEntryStaysVisibleUncopyableAndEditableWithoutChangingItsSecret() {
+        val file = File(context.filesDir, "totp_vault.bin")
+        val before = if (file.exists()) file.readBytes() else null
+        val key = ByteArray(32) { 9 }
+        val legacy = TotpEntry("Legacy fixture", " jbsw y3dp ehpk 3pxp ", notes = "Retained notes", id = "legacy-fixture")
+        val strong = TotpEntry("Strong fixture", "GEZDGNBVGY3TQOJQGEZDGNBVGY3TQOJQ", id = "strong-fixture")
+        try {
+            TotpVault.save(file, key, listOf(legacy, strong))
+            ActivityScenario.launch(MainActivity::class.java).use { scenario ->
+                scenario.onActivity { activity ->
+                    val shown = texts(activity.window.decorView)
+                    assertTrue(shown.contains(legacy.title))
+                    assertTrue(shown.contains(strong.title))
+                    assertTrue(shown.contains("Retained notes"))
+                    assertTrue(shown.contains(activity.getString(R.string.totp_secret_too_short)))
+                    val code = views(activity.window.decorView).filterIsInstance<TextView>()
+                        .single { it.text.toString() == activity.getString(R.string.totp_code_unavailable) }
+                    assertFalse(code.isClickable)
+                    val clipboard = activity.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
+                    clipboard.setPrimaryClip(ClipData.newPlainText("Fixture", "unchanged"))
+                    code.performClick() // Even a programmatic click must not copy a weak code.
+                    assertEquals("unchanged", clipboard.primaryClip?.getItemAt(0)?.text.toString())
+
+                    MainActivity::class.java.getDeclaredMethod("showEditTotpDialog", TotpEntry::class.java)
+                        .apply { isAccessible = true }.invoke(activity, legacy)
+                    val form = views(checkNotNull(dialog(activity).window).decorView)
+                    form.filterIsInstance<EditText>().single { it.hint.toString() == "Notes (optional)" }
+                        .setText("Set up again with the provider")
+                    form.filterIsInstance<Button>().single { it.text.toString() == "Save" }.performClick()
+                    val saved = TotpVault.load(file, key)
+                    assertEquals(listOf(legacy.copy(notes = "Set up again with the provider"), strong), saved)
+
+                    MainActivity::class.java.getDeclaredMethod("showEditTotpDialog", TotpEntry::class.java)
+                        .apply { isAccessible = true }.invoke(activity, saved.first())
+                    val edit = dialog(activity)
+                    val editForm = views(checkNotNull(edit.window).decorView)
+                    val replacement = editForm.filterIsInstance<EditText>()
+                        .single { it.hint.toString() == "Secret Key (Base32)" }
+                    replacement.setText("GE")
+                    editForm.filterIsInstance<Button>().single { it.text.toString() == "Save" }.performClick()
+                    assertTrue(edit.isShowing)
+                    assertEquals(activity.getString(R.string.totp_secret_too_short), replacement.error.toString())
+                    assertEquals(saved, TotpVault.load(file, key))
+                }
+            }
+        } finally {
+            if (before == null) file.delete() else file.writeBytes(before)
+        }
+    }
+
+    @Test fun manualImportRejectsShortSecretInlineAndPreservesTheFormForCorrection() {
+        val file = File(context.filesDir, "totp_vault.bin")
+        val before = if (file.exists()) file.readBytes() else null
+        val key = ByteArray(32) { 9 }
+        try {
+            TotpVault.save(file, key, emptyList())
+            ActivityScenario.launch(MainActivity::class.java).use { scenario ->
+                scenario.onActivity { activity ->
+                    MainActivity::class.java.getDeclaredMethod("showAddTotpDialog")
+                        .apply { isAccessible = true }.invoke(activity)
+                    val open = dialog(activity)
+                    val form = views(checkNotNull(open.window).decorView)
+                    form.filterIsInstance<EditText>().single { it.hint.toString() == "Account Name (e.g. GitHub)" }
+                        .setText("Imported fixture")
+                    val secret = form.filterIsInstance<EditText>().single { it.hint.toString() == "Secret Key (Base32)" }
+                    secret.setText("GE")
+                    val save = form.filterIsInstance<Button>().single { it.text.toString() == "Save" }
+                    save.performClick()
+                    assertTrue(open.isShowing)
+                    assertEquals("GE", secret.text.toString())
+                    assertEquals(activity.getString(R.string.totp_secret_too_short), secret.error.toString())
+                    assertEquals(emptyList<TotpEntry>(), TotpVault.load(file, key))
+                    secret.setText("GEZDGNBVGY3TQOJQGEZDGNBVGY3TQOJQ")
+                    save.performClick()
+                    assertFalse(open.isShowing)
+                    assertEquals("Imported fixture", TotpVault.load(file, key).single().title)
+                }
+            }
+        } finally {
+            if (before == null) file.delete() else file.writeBytes(before)
+        }
     }
 
     private fun challenge(expiresInMs: Long, purpose: String = "login") = MfaChallenge(

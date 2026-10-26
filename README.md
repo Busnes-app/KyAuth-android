@@ -31,10 +31,20 @@ or an available store channel listed by that release. Do not assume that an F-Dr
 means an F-Droid listing is already published. Check the release’s certificate digest and
 SHA-256 provenance; keep the same channel/signer for updates.
 
-To use local TOTP, set a secure device lock, open **Codes**, scan the site’s authenticator
+To use local TOTP, set a secure device lock, open **Vault**, scan the site’s authenticator
 QR or enter its setup key, and confirm a generated code at that site. Pairing KyIdentity is
 not required for this path. Save that site’s recovery codes separately: KyAuth has no
 backup, export or sync.
+
+Setup keys must contain at least 128 bits (16 bytes after Base32 decoding), as
+required by RFC 4226. A short key is refused when scanned, added or substituted.
+An older entry with a short key stays in the vault with its name, website, notes
+and original secret, but shows **Unavailable** and instructions to set up two-step
+verification again with the account provider. Long-press it to edit its details;
+unchanged legacy secrets can be retained while you arrange a replacement.
+Use the provider's recovery/sign-in process to get a new authenticator setup and
+confirm its code there. Do not pad, extend or otherwise change a secret on your
+own: it must match the provider. No records are automatically deleted or migrated.
 
 For push/sign-on, first install [KyIdentity](https://github.com/Busnes-app/KyIdentity-server),
 then follow [Getting started](#getting-started). Configure FCM/APNs relay or UnifiedPush
