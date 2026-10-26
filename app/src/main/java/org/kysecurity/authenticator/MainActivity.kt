@@ -79,7 +79,9 @@ import org.kysecurity.authenticator.totp.TotpVault
 import org.kysecurity.authenticator.totp.TotpVaultException
 import org.kysecurity.authenticator.totp.TotpEntry
 import org.kysecurity.authenticator.totp.TotpDisplay
+import org.kysecurity.authenticator.totp.TotpGenerator
 import org.kysecurity.authenticator.totp.TotpUriParser
+import org.kysecurity.authenticator.totp.WeakTotpSecretException
 import java.io.File
 import java.net.URI
 import java.util.UUID
@@ -689,9 +691,11 @@ class MainActivity : AppCompatActivity() {
                     copyTotpCode(clipboard, code, current.remainingSeconds)
                     Toast.makeText(this@MainActivity, getString(R.string.copy_code), Toast.LENGTH_SHORT).show()
                 }
+                isClickable = display.code != null
             }
             val timerView = TextView(this).apply {
-                text = getString(R.string.totp_expiry, display.remainingSeconds)
+                text = if (display.requiresReenrolment) getString(R.string.totp_secret_too_short)
+                    else getString(R.string.totp_expiry, display.remainingSeconds)
                 textSize = 14f
                 setTextColor(ThemeManager.color(context, R.color.ky_muted))
             }
@@ -699,6 +703,7 @@ class MainActivity : AppCompatActivity() {
             card.addView(codeView)
             card.addView(timerView)
             val progressView = ProgressBar(this, null, android.R.attr.progressBarStyleHorizontal).apply {
+                visibility = if (display.code == null) View.GONE else View.VISIBLE
                 progressTintList = ColorStateList.valueOf(ThemeManager.color(context, R.color.ky_cyan))
                 progressBackgroundTintList = ColorStateList.valueOf(ThemeManager.color(context, R.color.ky_border))
                 max = entry.periodSeconds.toInt()
@@ -732,7 +737,10 @@ class MainActivity : AppCompatActivity() {
         totpViews.forEach { views ->
             val display = TotpDisplay.state(views.entry, now, unavailable)
             views.code.text = display.formattedCode
-            views.timer.text = getString(R.string.totp_expiry, display.remainingSeconds)
+            views.code.isClickable = display.code != null
+            views.timer.text = if (display.requiresReenrolment) getString(R.string.totp_secret_too_short)
+                else getString(R.string.totp_expiry, display.remainingSeconds)
+            views.progress.visibility = if (display.code == null) View.GONE else View.VISIBLE
             views.progress.progress = max(0, display.remainingSeconds.toInt())
         }
     }
@@ -802,7 +810,9 @@ class MainActivity : AppCompatActivity() {
             ScanPurpose.TOTP -> {
                 if (text == null) return
                 val entry = runCatching { TotpUriParser.parse(text) }.getOrElse {
-                    Toast.makeText(this, "Invalid OTP QR code", Toast.LENGTH_SHORT).show()
+                    val message = if (it is WeakTotpSecretException) getString(R.string.totp_secret_too_short)
+                        else "Invalid OTP QR code"
+                    Toast.makeText(this, message, Toast.LENGTH_LONG).show()
                     return
                 }
                 if (resumed) queueTotpEntry(entry) else pendingTotpEntry = entry // loadTotpEntries adds it
@@ -864,6 +874,7 @@ class MainActivity : AppCompatActivity() {
                 val notes = notesInput.text.toString().trim().ifBlank { null }
                 if (title.isNotBlank() && secret.isNotBlank()) {
                     runCatching {
+                        TotpGenerator.requireStrongSecret(secret)
                         TotpEntry(
                             title = title,
                             secretBase32 = secret,
@@ -874,7 +885,10 @@ class MainActivity : AppCompatActivity() {
                         addTotpEntry(it)
                         dialog?.dismiss()
                     }.onFailure {
-                        Toast.makeText(this@MainActivity, it.message ?: "Invalid secret", Toast.LENGTH_SHORT).show()
+                        if (it is WeakTotpSecretException) {
+                            secretInput.error = getString(R.string.totp_secret_too_short)
+                            secretInput.requestFocus()
+                        } else Toast.makeText(this@MainActivity, it.message ?: "Invalid secret", Toast.LENGTH_SHORT).show()
                     }
                 } else {
                     Toast.makeText(this@MainActivity, "Account name and secret key are required", Toast.LENGTH_SHORT).show()
@@ -957,11 +971,14 @@ class MainActivity : AppCompatActivity() {
             setPadding(dp(24), 0, dp(24), 0)
             setOnClickListener {
                 val title = titleInput.text.toString().trim()
-                val secret = secretInput.text.toString().trim().replace(" ", "")
+                val rawSecret = secretInput.text.toString()
+                val secret = if (rawSecret == entry.secretBase32) entry.secretBase32
+                    else rawSecret.trim().replace(" ", "")
                 val url = urlInput.text.toString().trim().ifBlank { null }
                 val notes = notesInput.text.toString().trim().ifBlank { null }
                 if (title.isNotBlank() && secret.isNotBlank()) {
                     runCatching {
+                        if (secret != entry.secretBase32) TotpGenerator.requireStrongSecret(secret)
                         entry.copy(
                             title = title,
                             secretBase32 = secret,
@@ -979,7 +996,10 @@ class MainActivity : AppCompatActivity() {
                         renderContent()
                         dialog?.dismiss()
                     }.onFailure {
-                        Toast.makeText(this@MainActivity, it.message ?: "Invalid entry", Toast.LENGTH_SHORT).show()
+                        if (it is WeakTotpSecretException) {
+                            secretInput.error = getString(R.string.totp_secret_too_short)
+                            secretInput.requestFocus()
+                        } else Toast.makeText(this@MainActivity, it.message ?: "Invalid entry", Toast.LENGTH_SHORT).show()
                     }
                 } else {
                     Toast.makeText(this@MainActivity, "Account name and secret key are required", Toast.LENGTH_SHORT).show()

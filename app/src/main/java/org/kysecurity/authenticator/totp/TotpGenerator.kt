@@ -5,11 +5,13 @@ import java.util.Locale
 import javax.crypto.Mac
 import javax.crypto.spec.SecretKeySpec
 
+class WeakTotpSecretException : IllegalArgumentException("TOTP secret is too short; re-enrol with the issuer")
+
 object TotpGenerator {
     fun generate(entry: TotpEntry, epochSeconds: Long): String {
         val counter = epochSeconds / entry.periodSeconds
         val digest = Mac.getInstance("Hmac${entry.algorithm.name}").run {
-            init(SecretKeySpec(base32Decode(entry.secretBase32), algorithm))
+            init(SecretKeySpec(decodeStrongSecret(entry.secretBase32), algorithm))
             doFinal(ByteBuffer.allocate(Long.SIZE_BYTES).putLong(counter).array())
         }
         val offset = digest.last().toInt() and 0x0f
@@ -22,6 +24,16 @@ object TotpGenerator {
 
     fun secondsRemaining(entry: TotpEntry, epochSeconds: Long): Long =
         entry.periodSeconds - (epochSeconds % entry.periodSeconds)
+
+    /** Enrolment boundary; persisted entries remain readable regardless of their old key length. */
+    fun requireStrongSecret(secretBase32: String) {
+        decodeStrongSecret(secretBase32)
+    }
+
+    private fun decodeStrongSecret(secretBase32: String): ByteArray = base32Decode(secretBase32).also {
+        // RFC 4226 section 4 requires at least 128 bits, even when a different HMAC is selected.
+        if (it.size < 16) throw WeakTotpSecretException()
+    }
 
     /**
      * True when the secret decodes to at least one byte of key material.

@@ -29,6 +29,7 @@
     <string name="about_privacy_url" translatable="false">https://busnes.app/privacy.html</string>
     <string name="about_no_browser">No browser to open the link</string>
     <string name="totp_code_unavailable">Unavailable</string>
+    <string name="totp_secret_too_short">This secret is too short. Set up two-step verification again with the account provider.</string>
     <string name="totp_expiry">TAP TO COPY  ·  EXPIRES IN %1$d S</string>
     <string name="cancel">Cancel</string>
     <string name="pairing_failed_key_replaced">Pairing failed: %1$s. This phone had already replaced its device key, so it is no longer paired with KyIdentity. Pair it again.</string>

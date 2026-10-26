@@ -8,11 +8,11 @@ import org.junit.Test
 class TotpUriParserTest {
     @Test
     fun parsesStandardOtpAuthUri() {
-        val uri = "otpauth://totp/KySecurity:alice@example.com?secret=JBSWY3DPEHPK3PXP&issuer=KySecurity&algorithm=SHA256&digits=8&period=60"
+        val uri = "otpauth://totp/KySecurity:alice@example.com?secret=GEZDGNBVGY3TQOJQGEZDGNBVGY3TQOJQ&issuer=KySecurity&algorithm=SHA256&digits=8&period=60"
         val entry = TotpUriParser.parse(uri)
 
         assertEquals("KySecurity (alice@example.com)", entry.title)
-        assertEquals("JBSWY3DPEHPK3PXP", entry.secretBase32)
+        assertEquals("GEZDGNBVGY3TQOJQGEZDGNBVGY3TQOJQ", entry.secretBase32)
         assertEquals("KySecurity", entry.issuer)
         assertEquals(8, entry.digits)
         assertEquals(60L, entry.periodSeconds)
@@ -21,11 +21,11 @@ class TotpUriParserTest {
 
     @Test
     fun parsesMinimalOtpAuthUri() {
-        val uri = "otpauth://totp/GitHub:user?secret=NBSWY3DPEHPK3PXP"
+        val uri = "otpauth://totp/GitHub:user?secret=GEZDGNBVGY3TQOJQGEZDGNBVGY"
         val entry = TotpUriParser.parse(uri)
 
         assertEquals("GitHub (user)", entry.title)
-        assertEquals("NBSWY3DPEHPK3PXP", entry.secretBase32)
+        assertEquals("GEZDGNBVGY3TQOJQGEZDGNBVGY", entry.secretBase32)
         assertEquals(6, entry.digits)
         assertEquals(30L, entry.periodSeconds)
         assertEquals(TotpEntry.Algorithm.SHA1, entry.algorithm)
@@ -54,8 +54,11 @@ class TotpUriParserTest {
     }
 
     @Test
-    fun acceptsShortButUsableSecret() {
-        val entry = TotpUriParser.parse("otpauth://totp/Acme?secret=AA")
-        assertEquals("AA", entry.secretBase32)
+    fun rejectsImportsBelow128BitsIncludingLegacyExamples() {
+        for (secret in listOf("AA", "JBSWY3DPEHPK3PXP", "GEZDGNBVGY3TQOJQGEZDGNBV")) {
+            assertThrows(IllegalArgumentException::class.java) {
+                TotpUriParser.parse("otpauth://totp/Acme?secret=$secret")
+            }
+        }
     }
 }

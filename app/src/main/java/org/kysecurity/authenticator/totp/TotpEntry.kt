@@ -19,6 +19,7 @@ data class TotpEntry(
         require(digits in 6..8)
         require(periodSeconds > 0)
         require(secretBase32.isNotBlank())
+        // Keep weak legacy vault records readable; imports and generation enforce the key floor.
         require(TotpGenerator.isUsableSecret(secretBase32)) { "TOTP secret is not usable Base32" }
     }
 

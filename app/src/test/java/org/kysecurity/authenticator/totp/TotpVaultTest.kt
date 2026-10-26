@@ -46,6 +46,21 @@ class TotpVaultTest {
         assertEquals(1.toByte(), file.readBytes()[0])
     }
 
+    @Test fun `legacy weak records survive loading and metadata edits alongside strong records`() {
+        val mixed = entries + TotpEntry("Strong", "GEZDGNBVGY3TQOJQGEZDGNBVGY3TQOJQ")
+        TotpVault.save(file, key, mixed)
+        val loaded = TotpVault.load(file, key)
+        assertEquals(mixed, loaded)
+        assertThrows(IllegalArgumentException::class.java) { TotpGenerator.generate(loaded.first(), 150) }
+        val edited = loaded.first().copy(notes = "Set up again with the provider")
+        val saved = listOf(edited) + loaded.drop(1)
+        TotpVault.save(file, key, saved)
+        assertEquals(saved, TotpVault.load(file, key))
+        assertEquals(mixed.first().secretBase32, edited.secretBase32)
+        assertEquals(mixed.first().id, edited.id)
+        assertEquals("755224", TotpGenerator.generate(loaded.last(), 0))
+    }
+
     @Test fun `replaces the file atomically and leaves no temp`() {
         TotpVault.save(file, key, entries)
         TotpVault.save(file, key, entries.take(1))

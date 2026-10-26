@@ -27,6 +27,7 @@ object TotpUriParser {
 
         val secret = queryParams["secret"].orEmpty().trim()
         require(secret.isNotBlank()) { "Missing OTP secret parameter" }
+        TotpGenerator.requireStrongSecret(secret)
 
         val issuer = queryParams["issuer"]?.trim()?.ifBlank { null }
         val digits = queryParams["digits"]?.toIntOrNull() ?: 6
