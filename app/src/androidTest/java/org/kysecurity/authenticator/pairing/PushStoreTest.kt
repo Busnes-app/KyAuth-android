@@ -9,45 +9,70 @@ import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotEquals
 import org.junit.Assert.assertTrue
 import org.junit.Before
+import org.junit.Assume.assumeTrue
 import org.junit.Test
 import org.junit.runner.RunWith
+import org.kysecurity.authenticator.BuildConfig
 
-// Runs on the play flavor (CI), where FCM is the default transport.
+// Shared state invariants run on every available transport; FCM-only workflows are explicit.
 @RunWith(AndroidJUnit4::class)
 class PushStoreTest {
     private val context = ApplicationProvider.getApplicationContext<Context>()
     private val a = PushCredential(PushCredential.FCM, "token-a")
     private val b = PushCredential(PushCredential.FCM, "token-b")
+    private val transports = if (BuildConfig.HAS_FCM) listOf(PushCredential.FCM, PushCredential.UNIFIED_PUSH)
+        else listOf(PushCredential.UNIFIED_PUSH)
+
+    private fun credential(transport: String, token: String) = if (transport == PushCredential.FCM)
+        PushCredential(transport, token) else PushCredential(transport, "https://push.example.net/$token", "p256dh", "auth")
+
+    private fun storeFor(transport: String): PushStore {
+        reset()
+        return PushStore(context).apply { this.transport = transport }
+    }
 
     @Before @After fun reset() {
         context.deleteSharedPreferences("push")
     }
 
     @Test fun rotationDuringARefreshStaysPending() {
-        val store = PushStore(context)
-        store.markRegistered(PushCredential(PushCredential.FCM, "token-0"))
-        assertTrue(store.tokenChanged(paired = true, a)) // refresh for A starts
-        assertTrue(store.tokenChanged(paired = true, b)) // B lands before A's 2xx
-        store.markRegistered(a)
-        assertEquals(a, store.registered())
-        assertTrue(store.refreshPending())
+        for (transport in transports) {
+            val store = storeFor(transport)
+            val first = credential(transport, "token-a")
+            val second = credential(transport, "token-b")
+            store.markRegistered(credential(transport, "token-0"))
+            assertTrue(store.tokenChanged(paired = true, first)) // refresh for A starts
+            assertTrue(store.tokenChanged(paired = true, second)) // B lands before A's 2xx
+            store.markRegistered(first)
+            assertEquals(first, store.registered())
+            assertTrue(store.refreshPending())
+        }
     }
 
     @Test fun acknowledgingTheLatestClearsPending() {
-        val store = PushStore(context)
-        store.markRegistered(PushCredential(PushCredential.FCM, "token-0"))
-        store.tokenChanged(paired = true, b)
-        store.markRegistered(b)
-        assertFalse(store.refreshPending())
+        for (transport in transports) {
+            val store = storeFor(transport)
+            val latest = credential(transport, "token-b")
+            store.markRegistered(credential(transport, "token-0"))
+            store.tokenChanged(paired = true, latest)
+            store.markRegistered(latest)
+            assertFalse(store.refreshPending())
+        }
     }
 
     @Test fun firstRegistrationIsNotPending() {
-        val store = PushStore(context)
-        store.markRegistered(a)
-        assertFalse(store.refreshPending())
+        for (transport in transports) {
+            val store = storeFor(transport)
+            val first = credential(transport, "token-a")
+            // UnifiedPush's first endpoint arrives from its distributor, never from an ack.
+            if (transport == PushCredential.UNIFIED_PUSH) store.tokenChanged(paired = false, first)
+            store.markRegistered(first)
+            assertFalse(store.refreshPending())
+        }
     }
 
     @Test fun switchAwaitingItsEndpointStaysPending() {
+        assumeTrue("FCM switching is absent from this build", BuildConfig.HAS_FCM)
         val store = PushStore(context)
         store.markRegistered(PushCredential(PushCredential.FCM, "token-0"))
         store.tokenChanged(paired = true, a) // FCM refresh for A starts
@@ -67,6 +92,7 @@ class PushStoreTest {
     }
 
     @Test fun keyedPairingRefusesPlaintextAndIsNotStaleForItsOwnToken() {
+        assumeTrue("FCM pairing is absent from this build", BuildConfig.HAS_FCM)
         val store = PushStore(context)
         val keys = store.newFcmKeys()
         store.markRegistered(a.withKeys(keys))
@@ -77,6 +103,7 @@ class PushStoreTest {
     }
 
     @Test fun keylessPairingUpgradesOnItsNextRefresh() {
+        assumeTrue("Legacy FCM pairing is absent from this build", BuildConfig.HAS_FCM)
         val store = PushStore(context)
         store.markRegistered(a) // paired before KyAuth sent FCM keys
         assertTrue(store.acceptsPlaintextFcm())
@@ -103,7 +130,7 @@ class PushStoreTest {
         val up = PushCredential(PushCredential.UNIFIED_PUSH, "https://push.example.net/up", "p256dh", "auth")
         store.transport = PushCredential.UNIFIED_PUSH
         store.tokenChanged(paired = true, up) // refresh for up starts
-        store.transport = PushCredential.FCM
+        if (BuildConfig.HAS_FCM) store.transport = PushCredential.FCM
         store.forgetUnifiedPush() // "Use Firebase"
         store.transport = PushCredential.UNIFIED_PUSH // and back, awaiting a fresh endpoint
         store.markRegistered(up) // the old refresh's 2xx lands
