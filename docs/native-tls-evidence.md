@@ -59,6 +59,23 @@ clipboard access fail; activity startup also exceeded the test's 2.5-second
 challenge lifetime. Tests now await actual focus and start the short expiry after
 launch. A failing full suite is never counted as a passing build.
 
+At head `9682626`, hosted API35 run [40448951911](https://github.com/Busnes-app/KyAuth-android/actions/runs/40448951911)
+passed every TLS method but failed two UI window-focus preconditions. Another
+F-Droid run [40448956208](https://github.com/Busnes-app/KyAuth-android/actions/runs/40448956208)
+passed. Failed-job logs show the app resumed/rendered with an occluded unsecured
+keyguard; they contain no ANR and do not identify the exact focus owner. The
+earlier local SystemUI ANR does not explain this hosted failure. Local API36
+with swipe keyguard did not reproduce the API35 countdown failure.
+
+The test-only repair wakes/dismisses unsecured keyguard before each shared-rule
+test, waits up to five seconds for dismissal and leaves secure credentials alone.
+It removes the countdown's unnecessary focus wait. The weak-entry copy
+test still waits for actual window focus and reads the real clipboard. A deliberate
+production mutation that copied `MUTATED-WEAK` failed that assertion against
+`unchanged`; original production bytes were restored exactly. Fresh complete
+native suites and hosted CI must qualify the repair separately. Timeout
+diagnostics retain keyguard state and the window focus owner.
+
 The complete F-Droid run also succeeds: 37 executed tests pass and three FCM-only
 workflows are excluded by explicit JUnit assumptions because that flavor has no
 FCM transport. All four TLS methods run normally. Shared push-state regressions

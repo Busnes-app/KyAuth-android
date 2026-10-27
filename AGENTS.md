@@ -166,6 +166,14 @@ all four TLS methods and the successful RSA-2048 direct-trust control are requir
 An aborted/incomplete bundle never establishes a pass. Gate negative controls:
 `python3 scripts/test-native-tls-gate.py`.
 
+UI tests using `ShowOverKeyguard` wake and dismiss the unsecured keyguard before
+each test, with a bounded wait for dismissal; secure devices keep their credential
+and skip dismissal. Clipboard
+assertions require real window focus and read the actual clipboard. Countdown
+assertions use activity state without requiring clipboard access. A local
+SystemUI failure does not establish the cause of a hosted focus failure; timeout
+diagnostics record the current focus owner.
+
 ## Outstanding security work
 
 Recorded so it is not mistaken for done:

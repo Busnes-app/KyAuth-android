@@ -76,7 +76,17 @@ class VaultTabTest {
             var focused = false
             scenario.onActivity { focused = it.window.decorView.hasWindowFocus() }
             if (focused) return
-            check(android.os.SystemClock.elapsedRealtime() < deadline) { "Activity window never gained focus" }
+            check(android.os.SystemClock.elapsedRealtime() < deadline) {
+                val keyguard = context.getSystemService(android.app.KeyguardManager::class.java)
+                val owners = android.os.ParcelFileDescriptor.AutoCloseInputStream(
+                    InstrumentationRegistry.getInstrumentation().uiAutomation.executeShellCommand("dumpsys -t 2 window"),
+                ).use { stream ->
+                    stream.bufferedReader().readLines().filter {
+                        it.contains("mCurrentFocus") || it.contains("mFocusedApp") || it.contains("mFocusedWindow")
+                    }.joinToString("; ")
+                }
+                "Activity window never gained focus (keyguardLocked=${keyguard.isKeyguardLocked}, secure=${keyguard.isDeviceSecure}; $owners)"
+            }
             android.os.SystemClock.sleep(50)
         }
     }
@@ -213,7 +223,6 @@ class VaultTabTest {
 
     @Test fun requestCountsDownToExpiredAndDisablesApprove() {
         ActivityScenario.launch(MainActivity::class.java).use { scenario ->
-            awaitWindowFocus(scenario)
             scenario.onActivity { activity ->
                 // Start the short expiry after startup; a slow emulator can take longer than 2.5 s to launch.
                 MfaPushChallengeStore(context).save(challenge(2_500))
