@@ -71,7 +71,10 @@ jobs:
             adb shell input keyevent KEYCODE_WAKEUP
             adb shell wm dismiss-keyguard
             # A cold-booted launcher can ANR; its dialog would steal window focus from the UI tests.
+            # Hide future error dialogs, then restart the launcher to drop one already showing.
             adb shell settings put global hide_error_dialogs 1
+            adb shell am force-stop com.google.android.apps.nexuslauncher
+            adb shell dumpsys window | grep -E 'mCurrentFocus|mFocusedApp' || true
             # No PIN here: SecureLockScreen sets one only around the Keystore tests, so no PIN
             # keyguard can interrupt the UI tests.
             scripts/test-android.sh "$(adb get-serialno)" ${{ matrix.channel }}
