@@ -132,11 +132,11 @@ dependencies {
     implementation("com.google.android.material:material:1.14.0")
     implementation("androidx.biometric:biometric:1.1.0")
     gmsImplementation("com.google.android.gms:play-services-code-scanner:16.1.0")
-    gmsImplementation("com.google.firebase:firebase-messaging:26.0.0")
+    gmsImplementation("com.google.firebase:firebase-messaging:26.0.1")
     "fdroidImplementation"("com.journeyapps:zxing-android-embedded:4.3.0")
     implementation("org.unifiedpush.android:connector:3.3.5")
     // WebPush HKDF. Already shipped by the connector (runtime scope); same version, so no new code in the APK.
-    implementation("com.google.crypto.tink:tink:1.23.0")
+    implementation("com.google.crypto.tink:tink:1.24.0")
 
     testImplementation("junit:junit:4.13.2")
     testImplementation("org.json:json:20260814")
