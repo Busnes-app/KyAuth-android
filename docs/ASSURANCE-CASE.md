@@ -48,6 +48,10 @@ KyAuth open. Both are inside every boundary here. Server-side issues belong to
    10 s to connect or read and 30 s overall. Release builds refuse any server or registration URL
    that is not `https`, and the registration URL must have the pairing server's origin
    (`pairing/PairingEndpoint.kt`).
+   `pairing/ServerTls.kt` retains native socket-aware trust and hostname checks, then
+   inspects the complete evaluated chain, including its anchor, for actual RSA-2048
+   or EC-256 minimum keys. Unknown keys or an unavailable verified chain fail closed.
+   This factory applies to app-owned requests only; SDK transports keep their own TLS.
 2. **Push services → KyAuth.** Both push services hand data only to `mfa/IncomingPush.kt`. A sealed
    FCM push is decrypted with RFC 8291 (`mfa/WebPush.kt`) using keys only this pairing holds. A
    plaintext FCM push is accepted only while the pairing has no keys
@@ -94,6 +98,7 @@ KyAuth open. Both are inside every boundary here. Server-side issues belong to
 |---|---|---|
 | Cleartext transport, downgrade | `https` required in release builds for the server and registration URLs; debug allows only loopback `http` | `pairing/PairingEndpoint.kt` |
 | Redirect to another host | Redirects disabled on the one HTTP client | `pairing/ServerHttp.kt` (`instanceFollowRedirects = false`) |
+| Undersized TLS certificate keys | Native trust validation followed by a full evaluated-chain key floor, including roots omitted from the wire; no hostname or pin override | `pairing/ServerTls.kt`; `ServerHttpTLSDeviceTest`; [native evidence and limits](native-tls-evidence.md) |
 | Resource exhaustion from a hostile server | 64 KiB response cap, 10 s timeouts, 30 s overall deadline | `pairing/ServerHttp.kt` (`readBounded`) |
 | Forged or replayed push request | RFC 8291 sealed FCM, plaintext refused once keys are registered, device and account must match, expiry at most 10 minutes ahead | `mfa/WebPush.kt`, `mfa/IncomingPush.kt`, `pairing/PushStore.kt` |
 | Approval signed for the wrong context | The signed message binds origin, user, device, challenge, purpose and expiry | `mfa/MfaChallenge.kt` |
@@ -124,10 +129,10 @@ These are recorded, not hidden ([AGENTS.md, Outstanding security work](../AGENTS
 
 ## Evidence
 
-- **Tests:** 39 test files. JVM unit tests cover the parsers, policies, crypto wire formats
+- **Tests:** JVM unit tests cover the parsers, policies, crypto wire formats
   and golden vectors (`WebPushTest` against RFC 8291 appendix A, `PushRefreshClientTest`).
   Instrumented tests cover Keystore, vault and UI behaviour. CI runs the unit tests for all three
-  flavors and the instrumented suite on an API 35 emulator on every push and pull request
+  flavors and the complete Play/F-Droid instrumented suites on API 35 emulators on every push and pull request
   (`.github/workflows/android.yml`).
 - **Static analysis:** CodeQL for Java/Kotlin on every push and pull request to `main` and weekly
   (`.github/workflows/codeql.yml`). Android Lint for all three flavors in CI. OpenSSF Scorecard.

@@ -70,6 +70,27 @@ class VaultTabTest {
     private fun dialog(activity: MainActivity) = (MainActivity::class.java.getDeclaredField("openDialogs")
         .apply { isAccessible = true }.get(activity) as Set<AlertDialog>).single { it.isShowing }
 
+    private fun awaitWindowFocus(scenario: ActivityScenario<MainActivity>) {
+        val deadline = android.os.SystemClock.elapsedRealtime() + 10_000
+        while (true) {
+            var focused = false
+            scenario.onActivity { focused = it.window.decorView.hasWindowFocus() }
+            if (focused) return
+            check(android.os.SystemClock.elapsedRealtime() < deadline) {
+                val keyguard = context.getSystemService(android.app.KeyguardManager::class.java)
+                val owners = android.os.ParcelFileDescriptor.AutoCloseInputStream(
+                    InstrumentationRegistry.getInstrumentation().uiAutomation.executeShellCommand("dumpsys -t 2 window"),
+                ).use { stream ->
+                    stream.bufferedReader().readLines().filter {
+                        it.contains("mCurrentFocus") || it.contains("mFocusedApp") || it.contains("mFocusedWindow")
+                    }.joinToString("; ")
+                }
+                "Activity window never gained focus (keyguardLocked=${keyguard.isKeyguardLocked}, secure=${keyguard.isDeviceSecure}; $owners)"
+            }
+            android.os.SystemClock.sleep(50)
+        }
+    }
+
     @Test fun weakLegacyEntryStaysVisibleUncopyableAndEditableWithoutChangingItsSecret() {
         val file = File(context.filesDir, "totp_vault.bin")
         val before = if (file.exists()) file.readBytes() else null
@@ -79,6 +100,8 @@ class VaultTabTest {
         try {
             TotpVault.save(file, key, listOf(legacy, strong))
             ActivityScenario.launch(MainActivity::class.java).use { scenario ->
+                // Android refuses clipboard reads until the window, not just the activity, is focused.
+                awaitWindowFocus(scenario)
                 scenario.onActivity { activity ->
                     val shown = texts(activity.window.decorView)
                     assertTrue(shown.contains(legacy.title))
@@ -199,9 +222,13 @@ class VaultTabTest {
     }
 
     @Test fun requestCountsDownToExpiredAndDisablesApprove() {
-        MfaPushChallengeStore(context).save(challenge(2_500))
         ActivityScenario.launch(MainActivity::class.java).use { scenario ->
             scenario.onActivity { activity ->
+                // Start the short expiry after startup; a slow emulator can take longer than 2.5 s to launch.
+                MfaPushChallengeStore(context).save(challenge(2_500))
+                for (method in listOf("loadPendingPushChallenge", "renderContent")) {
+                    MainActivity::class.java.getDeclaredMethod(method).apply { isAccessible = true }.invoke(activity)
+                }
                 assertTrue(texts(activity.window.decorView).any { it.startsWith("Expires in 0:0") })
                 assertTrue(approveButton(activity.window.decorView)!!.isEnabled)
             }
