@@ -6,6 +6,7 @@ import java.io.IOException
 import java.io.InputStream
 import java.net.HttpURLConnection
 import java.net.URI
+import javax.net.ssl.HttpsURLConnection
 
 /**
  * One blocking request to KyIdentity. No redirects, and the body is capped in size and total time:
@@ -30,6 +31,12 @@ object ServerHttp {
 
     fun send(url: URI, method: String, contentType: String, body: String): Response {
         val connection = (url.toURL().openConnection() as HttpURLConnection).apply {
+            // PairingEndpoint requires HTTPS in release; HTTP is debug-loopback only.
+            if (this is HttpsURLConnection) {
+                sslSocketFactory = try { ServerTls.socketFactory } catch (e: Exception) {
+                    throw IOException("Secure TLS is unavailable on this device", e)
+                }
+            }
             requestMethod = method
             connectTimeout = TIMEOUT_MS
             readTimeout = TIMEOUT_MS

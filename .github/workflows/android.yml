@@ -32,6 +32,10 @@ jobs:
 
   device:
     runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        channel: [Play, Fdroid]
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: actions/setup-java@b843ebf9b913146b38da2eaa7aeddf76074ae1ad # v6.1.0
@@ -41,6 +45,15 @@ jobs:
           cache: gradle
       # Separate runner: validate here too, before the emulator script runs ./gradlew.
       - uses: gradle/actions/wrapper-validation@3f5f9adaf7d9fecd50b5935e54106014257a94e6 # v6.4.0
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version: '1.27.3'
+          cache: false # Standard-library fixture has no module dependencies or go.sum.
+      - name: Calibrate native TLS peers
+        working-directory: scripts/tls-fixtures
+        run: GODEBUG=fips140=off go test -race -count=1 ./...
+      - run: shellcheck scripts/test-android.sh
+      - run: python3 scripts/test-native-tls-gate.py
       - name: Enable KVM
         run: |
           echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
@@ -59,13 +72,21 @@ jobs:
             adb shell wm dismiss-keyguard
             # No PIN here: SecureLockScreen sets one only around the Keystore tests, so no PIN
             # keyguard can interrupt the UI tests.
-            ./gradlew connectedPlayDebugAndroidTest
-      # The console no longer names failing instrumented tests; keep the report.
-      - if: failure()
+            scripts/test-android.sh "$(adb get-serialno)" ${{ matrix.channel }}
+      # Keep passing and failing native counters alongside the complete device report.
+      - if: always()
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
-          name: android-test-results
+          name: android-test-results-${{ matrix.channel }}
+          include-hidden-files: true
           path: |
             app/build/outputs/androidTest-results/
             app/build/reports/androidTests/
+            .tls-fixtures/run.*/ready.json
+            .tls-fixtures/run.*/fixture-stats.json
+            .tls-fixtures/run.*/fixture.log
+            .tls-fixtures/run.*/native-tls.log
+            .tls-fixtures/run.*/run-info.json
+            .tls-fixtures/run.*/android-test-results/
+            .tls-fixtures/run.*/native-tls-gate.txt
           retention-days: 7

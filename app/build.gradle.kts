@@ -80,6 +80,12 @@ android {
     }
 
     sourceSets {
+        // Explicit fixture builds only: public loopback anchors never enter release sources.
+        providers.gradleProperty("tlsFixtureDir").orNull?.let { fixturePath ->
+            val fixture = file(fixturePath)
+            getByName("debug").manifest.srcFile(fixture.resolve("AndroidManifest.xml"))
+            getByName("debug").res.srcDir(fixture.resolve("res"))
+        }
         // Both: java.srcDir alone does not reach kotlinc for a flavor source set.
         listOf("play", "github").forEach { flavor ->
             getByName(flavor).java.srcDir("src/gms/java")
