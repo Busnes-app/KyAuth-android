@@ -70,6 +70,8 @@ jobs:
             adb shell svc power stayon true
             adb shell input keyevent KEYCODE_WAKEUP
             adb shell wm dismiss-keyguard
+            # A cold-booted launcher can ANR; its dialog would steal window focus from the UI tests.
+            adb shell settings put global hide_error_dialogs 1
             # No PIN here: SecureLockScreen sets one only around the Keystore tests, so no PIN
             # keyguard can interrupt the UI tests.
             scripts/test-android.sh "$(adb get-serialno)" ${{ matrix.channel }}
