@@ -19,7 +19,7 @@ work=$(mktemp -d "$ROOT/.tls-fixtures/run.XXXXXXXX")
 fixture_pid=''
 ports=''
 control=''
-# shellcheck disable=SC2329 # Invoked indirectly by the EXIT trap below.
+# shellcheck disable=SC2317,SC2329 # EXIT trap call; diagnostics differ across ShellCheck versions.
 cleanup() {
     # Counters contain public fixture traffic only and survive a failed device run.
     if [ -n "$control" ] && [ ! -s "$work/fixture-stats.json" ]; then
