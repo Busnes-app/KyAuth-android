@@ -1,0 +1,2 @@
+• Codes whose secret is shorter than 128 bits are no longer added or shown. Existing accounts stay readable, and KyAuth tells you to re-enrol them with the issuer.
+• Connections to your server refuse certificates with weak keys.
