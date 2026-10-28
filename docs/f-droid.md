@@ -30,13 +30,19 @@ Builds:
     subdir: app
     gradle:
       - fdroid
+  - versionName: 0.5.0.1
+    versionCode: 7
+    commit: v0.5.0.1
+    subdir: app
+    gradle:
+      - fdroid
 
 AllowedAPKSigningKeys: <signing certificate SHA-256 from the GitHub release notes, lowercase>
 
 AutoUpdateMode: Version
 UpdateCheckMode: Tags
-CurrentVersion: 0.5.0
-CurrentVersionCode: 6
+CurrentVersion: 0.5.0.1
+CurrentVersionCode: 7
 ```
 
 `Binaries` with `AllowedAPKSigningKeys` asks F-Droid to rebuild from source, check the result
