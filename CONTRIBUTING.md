@@ -24,7 +24,7 @@ check:
 |---|---|
 | Kotlin compiles cleanly | `assemble*` and the unit-test tasks in the `verify` job of `.github/workflows/android.yml` |
 | Android Lint | `lintPlayDebug lintGithubDebug lintFdroidDebug` in the `verify` job. Lint errors fail the build; warnings are reported but do not |
-| Common vulnerability patterns | CodeQL for Java/Kotlin (`.github/workflows/codeql.yml`) |
+| Common vulnerability patterns | CodeQL for Java/Kotlin, Go, Python and Actions (`.github/workflows/codeql.yml`) |
 | No Google code in the F-Droid build | The `F-Droid build carries no Google Play code` step in the `verify` job |
 
 No formatter or style linter runs in CI, so layout and naming are a review matter: match the file
