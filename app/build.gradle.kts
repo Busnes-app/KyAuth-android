@@ -127,6 +127,9 @@ configurations.named("playImplementation") { extendsFrom(gmsImplementation) }
 configurations.named("githubImplementation") { extendsFrom(gmsImplementation) }
 
 dependencies {
+    // AGP's lint tool resolves Guava 33.4.0, which has a published advisory. Tooling
+    // only; it does not ship in the APK. Matches the buildscript constraint.
+    constraints { "androidLintTool"("com.google.guava:guava:33.7.2-jre") }
     implementation("androidx.core:core-ktx:1.19.1")
     implementation("androidx.appcompat:appcompat:1.8.0")
     implementation("com.google.android.material:material:1.14.0")
