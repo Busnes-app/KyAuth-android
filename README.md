@@ -150,3 +150,12 @@ digest, lowercase hex without colons.
 [MIT](LICENSE.txt)
 
 [![OctoCounts](https://api.octocounts.com/badge/Busnes-app/KyAuth-android/branch/main)](https://octocounts.com/github/Busnes-app/KyAuth-android/tree/main)
+
+## Documentation
+
+- [Verifying releases](docs/VERIFYING-RELEASES.md) — check a release APK's signature and source.
+- [F-Droid](docs/f-droid.md) — how the F-Droid listing is produced.
+- [TLS key-floor evidence](docs/native-tls-evidence.md) — the investigation behind Android's certificate-key minimums.
+- [Assurance case](docs/ASSURANCE-CASE.md) — threat model, trust boundaries, and why the security requirements are met.
+- [Contributing](CONTRIBUTING.md) — how to propose a change and what it must pass.
+- [Security policy](SECURITY.md) — how to report a vulnerability privately.
