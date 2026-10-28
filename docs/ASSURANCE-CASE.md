@@ -134,7 +134,7 @@ These are recorded, not hidden ([AGENTS.md, Outstanding security work](../AGENTS
   Instrumented tests cover Keystore, vault and UI behaviour. CI runs the unit tests for all three
   flavors and the complete Play/F-Droid instrumented suites on API 35 emulators on every push and pull request
   (`.github/workflows/android.yml`).
-- **Static analysis:** CodeQL for Java/Kotlin on every push and pull request to `main` and weekly
+- **Static analysis:** CodeQL for Java/Kotlin, Go, Python and Actions on every push and pull request to `main` and weekly
   (`.github/workflows/codeql.yml`). Android Lint for all three flavors in CI. OpenSSF Scorecard.
 - **Dynamic analysis:** the instrumented suite on an emulator. There is no fuzzing.
 - **Review:** changes land through pull requests with green CI ([CONTRIBUTING.md](../CONTRIBUTING.md#pull-requests)).
