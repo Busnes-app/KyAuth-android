@@ -56,7 +56,7 @@ object DeviceAssertion {
     fun derToRaw(der: ByteArray): ByteArray {
         require(der.size > 8 && der[0] == 0x30.toByte()) { "Not a DER ECDSA signature" }
         var i = 2
-        if (der[1].toInt() and 0x80 != 0) i += der[1].toInt() and 0x7f // long-form length
+        if ((der[1].toInt() and 0x80) != 0) i += der[1].toInt() and 0x7f // long-form length
         fun readInt(): BigInteger {
             require(i + 1 < der.size) { "DER bounds violation: can't read tag/length at offset $i" }
             require(der[i] == 0x02.toByte()) { "Expected INTEGER" }

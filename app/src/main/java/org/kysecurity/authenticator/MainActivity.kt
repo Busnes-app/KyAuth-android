@@ -9,6 +9,7 @@ import android.content.DialogInterface
 import android.content.Intent
 import android.content.pm.PackageManager
 import android.content.res.ColorStateList
+import android.graphics.Color
 import android.graphics.Typeface
 import android.graphics.drawable.GradientDrawable
 import android.os.Build
@@ -35,6 +36,8 @@ import android.widget.Space
 import android.widget.Switch
 import android.widget.TextView
 import android.widget.Toast
+import androidx.activity.SystemBarStyle
+import androidx.activity.enableEdgeToEdge
 import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
 import androidx.biometric.BiometricManager
@@ -42,7 +45,6 @@ import androidx.biometric.BiometricPrompt
 import androidx.core.app.ActivityCompat
 import androidx.core.content.ContextCompat
 import androidx.core.view.ViewCompat
-import androidx.core.view.WindowCompat
 import androidx.core.view.WindowInsetsCompat
 import org.kysecurity.authenticator.mfa.IncomingPush
 import org.kysecurity.authenticator.mfa.MfaChallenge
@@ -179,7 +181,8 @@ class MainActivity : AppCompatActivity() {
         super.onCreate(savedInstanceState)
         activeTab = Tab.restore(savedInstanceState?.getString(STATE_ACTIVE_TAB))
         demo = savedInstanceState?.getBoolean(STATE_DEMO) ?: false
-        WindowCompat.setDecorFitsSystemWindows(window, false)
+        // Transparent bars over the root's background; setRootContentView picks icon contrast.
+        enableEdgeToEdge(SystemBarStyle.dark(Color.TRANSPARENT), SystemBarStyle.dark(Color.TRANSPARENT))
         if (!BuildConfig.ALLOW_SCREENSHOTS) {
             window.setFlags(WindowManager.LayoutParams.FLAG_SECURE, WindowManager.LayoutParams.FLAG_SECURE)
         }
@@ -1785,8 +1788,8 @@ class MainActivity : AppCompatActivity() {
             dp(16) + systemBarFallbackHeight("navigation_bar_height"),
         )
         ViewCompat.setOnApplyWindowInsetsListener(root) { view, insets ->
-            val bars = insets.getInsets(WindowInsetsCompat.Type.systemBars())
-            view.setPadding(horizontal, dp(12) + bars.top, horizontal, dp(16) + bars.bottom)
+            val bars = insets.getInsets(WindowInsetsCompat.Type.systemBars() or WindowInsetsCompat.Type.displayCutout())
+            view.setPadding(horizontal + bars.left, dp(12) + bars.top, horizontal + bars.right, dp(16) + bars.bottom)
             insets
         }
     }
@@ -1794,8 +1797,6 @@ class MainActivity : AppCompatActivity() {
     private fun setRootContentView(root: View) {
         setContentView(root)
         val background = ThemeManager.color(this, R.color.ky_background)
-        window.statusBarColor = background
-        window.navigationBarColor = background
         val lightBackground = androidx.core.graphics.ColorUtils.calculateLuminance(background) > 0.5
         androidx.core.view.WindowCompat.getInsetsController(window, root).apply {
             isAppearanceLightStatusBars = lightBackground
