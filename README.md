@@ -26,10 +26,10 @@ KyAuth is not a password manager. Passwords and passkeys for other sites belong 
 
 ## Install and use independently
 
-Install a signed APK from a published [GitHub release](https://github.com/Busnes-app/KyAuth-android/releases),
-or an available store channel listed by that release. Do not assume that an F-Droid flavor
-means an F-Droid listing is already published. Check the release’s certificate digest and
-SHA-256 provenance; keep the same channel/signer for updates.
+Install KyAuth from [Google Play](https://play.google.com/store/apps/details?id=org.kysecurity.authenticator),
+or a signed APK from a published [GitHub release](https://github.com/Busnes-app/KyAuth-android/releases).
+For a GitHub APK, check the release’s certificate digest and SHA-256 provenance. KyAuth is not
+on F-Droid yet, although the repository has an F-Droid build. Keep the same channel/signer for updates.
 
 To use local TOTP, set a secure device lock, open **Vault**, scan the site’s authenticator
 QR or enter its setup key, and confirm a generated code at that site. Pairing KyIdentity is
@@ -55,7 +55,7 @@ Unit tests and pairing success alone do not prove background delivery.
 
 | Build | Channel | Sign-in request delivery | QR scanner |
 |---|---|---|---|
-| `play` | Google Play | Firebase (default) or UnifiedPush | Google Play services |
+| `play` | [Google Play](https://play.google.com/store/apps/details?id=org.kysecurity.authenticator) | Firebase (default) or UnifiedPush | Google Play services |
 | `github` | GitHub releases | Firebase (default) or UnifiedPush | Google Play services |
 | `fdroid` | F-Droid | UnifiedPush only, no Google code | Built-in (zxing) |
 
