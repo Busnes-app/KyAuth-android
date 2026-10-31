@@ -32,7 +32,10 @@ open class OneShot<T : Any> {
     }
 }
 
-object PendingSignOn : OneShot<SignOnRequest.Proceed>()
+/** A sign-on request and the response that answers it, so a launch can't swap in its own. */
+data class SignOnHandoff(val request: SignOnRequest.Proceed, val response: AccountAuthenticatorResponse?)
+
+object PendingSignOn : OneShot<SignOnHandoff>()
 
 /** The addAccount response, so an intent extra from a forged launch is never answered. */
 object PendingAddAccount : OneShot<AccountAuthenticatorResponse>()
