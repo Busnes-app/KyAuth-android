@@ -89,7 +89,7 @@ class KyIdentityAuthenticator(private val context: Context) : AbstractAccountAut
             is SignOnRequest.Proceed -> {
                 val intent = Intent(context, SignOnActivity::class.java)
                     .putExtra(AccountManager.KEY_ACCOUNT_AUTHENTICATOR_RESPONSE, response)
-                    .putExtra(SignOnActivity.EXTRA_REQUEST, PendingSignOn.issue(decision))
+                    .putExtra(SignOnActivity.EXTRA_REQUEST, PendingSignOn.issue(SignOnHandoff(decision, response)))
                 Bundle().apply { putParcelable(AccountManager.KEY_INTENT, intent) }
             }
         }

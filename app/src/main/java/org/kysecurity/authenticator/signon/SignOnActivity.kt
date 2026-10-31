@@ -37,15 +37,18 @@ class SignOnActivity : AppCompatActivity() {
         if (!BuildConfig.ALLOW_SCREENSHOTS) {
             window.setFlags(WindowManager.LayoutParams.FLAG_SECURE, WindowManager.LayoutParams.FLAG_SECURE)
         }
-        response = intent.parcelable(AccountManager.KEY_ACCOUNT_AUTHENTICATOR_RESPONSE)
-        // A forged or replayed launch has no nonce: learn nothing, touch nothing.
-        val request = PendingSignOn.take(intent.getStringExtra(EXTRA_REQUEST))
-        if (request == null) {
+        // A forged or replayed launch has no nonce: learn nothing, touch nothing. The extra's
+        // response only ever hears this error; the token goes to the one bound to the nonce.
+        val handoff = PendingSignOn.take(intent.getStringExtra(EXTRA_REQUEST))
+        if (handoff == null) {
             delivered = true
-            response?.onError(AccountManager.ERROR_CODE_CANCELED, "Sign-in request expired")
+            intent.parcelable<AccountAuthenticatorResponse>(AccountManager.KEY_ACCOUNT_AUTHENTICATOR_RESPONSE)
+                ?.onError(AccountManager.ERROR_CODE_CANCELED, "Sign-in request expired")
             finish()
             return
         }
+        response = handoff.response
+        val request = handoff.request
         val read = runCatching { PairingStore(this).account() }
         if (read.isFailure) {
             fail(AccountManager.ERROR_CODE_REMOTE_EXCEPTION, "KyAuth could not read its pairing; try again")
