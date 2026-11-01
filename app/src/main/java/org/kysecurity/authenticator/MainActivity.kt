@@ -11,7 +11,9 @@ import android.content.pm.PackageManager
 import android.content.res.ColorStateList
 import android.graphics.Color
 import android.graphics.Typeface
+import android.graphics.drawable.Drawable
 import android.graphics.drawable.GradientDrawable
+import android.graphics.drawable.LayerDrawable
 import android.os.Build
 import android.os.Bundle
 import android.os.Handler
@@ -311,7 +313,7 @@ class MainActivity : AppCompatActivity() {
     private fun renderEnrollmentView(root: LinearLayout) {
         root.gravity = Gravity.CENTER_HORIZONTAL
 
-        root.addView(brand("KyAuth", "SECURE ACCESS"))
+        root.addView(brand("KyAuth"))
         root.addView(title("Connect your account"))
         root.addView(message("Scan the 90-second QR code from KyIdentity. The pairing credential is used once and never stored."))
 
@@ -1624,6 +1626,25 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
+    /** A choice row: a hairline card, and when selected an accent-soft tint with an accent bar at the start. */
+    private fun choiceBackground(isSelected: Boolean): Drawable {
+        val row = GradientDrawable().apply {
+            setColor(ThemeManager.color(this@MainActivity, if (isSelected) R.color.ky_cyan_dim else R.color.ky_surface))
+            cornerRadius = dp(12).toFloat()
+            setStroke(dp(1), ThemeManager.color(this@MainActivity, R.color.ky_border))
+        }
+        if (!isSelected) return row
+        val bar = GradientDrawable().apply {
+            setColor(ThemeManager.color(this@MainActivity, R.color.ky_cyan))
+            cornerRadius = dp(2).toFloat()
+        }
+        return LayerDrawable(arrayOf(row, bar)).apply {
+            setLayerGravity(1, Gravity.START or Gravity.FILL_VERTICAL)
+            setLayerWidth(1, dp(3))
+            setLayerInsetRelative(1, dp(6), dp(10), 0, dp(10))
+        }
+    }
+
     private fun showChoiceDialog(heading: String, names: List<String>, current: String, preview: (Int) -> View?, onPick: (String) -> Unit) {
         val container = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
@@ -1654,11 +1675,7 @@ class MainActivity : AppCompatActivity() {
                 isClickable = true
                 isFocusable = true
                 contentDescription = if (isSelected) "$name, selected" else name
-                background = GradientDrawable().apply {
-                    setColor(ThemeManager.color(context, if (isSelected) R.color.ky_cyan_dim else R.color.ky_surface))
-                    cornerRadius = dp(12).toFloat()
-                    setStroke(dp(1), ThemeManager.color(context, if (isSelected) R.color.ky_cyan else R.color.ky_border))
-                }
+                background = choiceBackground(isSelected)
                 preview(index)?.let { addView(it, LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { marginEnd = dp(10) }) }
                 addView(TextView(context).apply {
                     text = name
@@ -1874,19 +1891,12 @@ class MainActivity : AppCompatActivity() {
         else -> 28
     }
 
-    private fun brand(title: String, subtitle: String): LinearLayout = LinearLayout(this).apply {
+    // Nothing sits under the brand; the page title follows as its own sentence.
+    private fun brand(title: String): LinearLayout = LinearLayout(this).apply {
         orientation = LinearLayout.VERTICAL
         gravity = Gravity.CENTER_HORIZONTAL
         setPadding(0, dp(40), 0, dp(40))
         addView(kyAuthWordmark(title, textSize = 28f, iconSizeDp = 48, centered = true))
-        addView(TextView(context).apply {
-            text = subtitle
-            textSize = 12f
-            typeface = Typeface.MONOSPACE
-            setTextColor(ThemeManager.color(context, R.color.ky_cyan))
-            gravity = Gravity.CENTER
-            letterSpacing = 0.2f
-        })
     }
 
     private fun kyAuthWordmark(
@@ -1933,9 +1943,11 @@ class MainActivity : AppCompatActivity() {
             setPadding(dp(2), 0, dp(2), 0)
             stateListAnimator = null
             elevation = 0f
-            setTextColor(ThemeManager.color(context, if (activeTab == tab) R.color.ky_cyan else R.color.ky_muted))
+            // The active tab is an accent-soft pill with strong ink, never accent text on accent-soft.
+            setTextColor(ThemeManager.color(context, if (activeTab == tab) R.color.ky_heading else R.color.ky_muted))
+            if (activeTab == tab) typeface = Typeface.DEFAULT_BOLD
             background = GradientDrawable().apply {
-                setColor(ThemeManager.color(context, if (activeTab == tab) R.color.ky_surface_elevated else R.color.ky_surface))
+                setColor(ThemeManager.color(context, if (activeTab == tab) R.color.ky_cyan_dim else R.color.ky_surface))
                 cornerRadius = dp(22).toFloat()
             }
             layoutParams = LinearLayout.LayoutParams(0, dp(56), 1f)
