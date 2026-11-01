@@ -1,4 +1,5 @@
 <resources>
+    <!-- Busnes Light. ThemeManager supplies the active pair half at runtime. -->
     <color name="ky_background">#F8F6F0</color>
     <color name="ky_surface">#FFFFFF</color>
     <color name="ky_surface_elevated">#FFFFFF</color>
@@ -7,7 +8,11 @@
     <color name="ky_cyan_dim">#FBF0EC</color>
     <color name="ky_heading">#182326</color>
     <color name="ky_text">#566461</color>
-    <color name="ky_muted">#66736F</color>
-    <color name="ky_error">#FF8A80</color>
-    <color name="ky_success">#81C784</color>
+    <color name="ky_muted">#566461</color>
+    <color name="ky_danger">#A8174E</color>
+    <color name="ky_danger_soft">#F5E3EA</color>
+    <color name="ky_warning">#7A5F00</color>
+    <color name="ky_warning_soft">#EFECE0</color>
+    <color name="ky_success">#267442</color>
+    <color name="ky_success_soft">#E5EEE8</color>
 </resources>

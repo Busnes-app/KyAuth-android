@@ -8,6 +8,7 @@ import androidx.core.graphics.ColorUtils
 import androidx.test.core.app.ApplicationProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -15,36 +16,65 @@ import org.junit.runner.RunWith
 @RunWith(AndroidJUnit4::class)
 class ThemeManagerTest {
     @Test
-    fun defaultsPreserveSavedChoicesAndBusnesTextHasContrast() {
+    fun defaultsFollowPhoneAndModeForcesHalf() {
         val context = withNight(false)
         val night = withNight(true)
         val prefs = context.getSharedPreferences("appearance", Context.MODE_PRIVATE)
         prefs.edit().clear().commit()
         try {
-            assertEquals(ThemeManager.FOLLOW_PHONE, ThemeManager.currentName(context))
+            assertEquals("Busnes", ThemeManager.pairName(context))
+            assertEquals(ThemeMode.SYSTEM, ThemeManager.mode(context))
             assertEquals(0xfff8f6f0.toInt(), ThemeManager.color(context, R.color.ky_background))
             assertEquals(0xff182326.toInt(), ThemeManager.color(night, R.color.ky_background))
-            ThemeManager.set(context, "Patina Ky")
-            assertEquals("Patina Ky", ThemeManager.currentName(context))
-            assertEquals(0xff0d0f14.toInt(), ThemeManager.color(context, R.color.ky_background))
-            ThemeManager.set(context, ThemeManager.FOLLOW_PHONE)
-            assertEquals(ThemeManager.FOLLOW_PHONE, ThemeManager.currentName(night))
-            assertEquals(0xff182326.toInt(), ThemeManager.color(night, R.color.ky_background))
-            ThemeManager.set(context, "unknown")
-            assertEquals(ThemeManager.FOLLOW_PHONE, ThemeManager.currentName(context))
-            for (name in listOf("Busnes Light", "Busnes Dark")) {
-                ThemeManager.set(context, name)
-                assertEquals(name, ThemeManager.currentName(context))
+            ThemeManager.setPair(context, "Ky")
+            assertEquals(0xffeef2f6.toInt(), ThemeManager.color(context, R.color.ky_background))
+            assertEquals(0xff10161e.toInt(), ThemeManager.color(night, R.color.ky_background))
+            ThemeManager.setMode(context, ThemeMode.DARK)
+            assertEquals(0xff10161e.toInt(), ThemeManager.color(context, R.color.ky_background))
+            ThemeManager.setMode(context, ThemeMode.LIGHT)
+            assertEquals(0xffeef2f6.toInt(), ThemeManager.color(night, R.color.ky_background))
+            ThemeManager.setPair(context, "unknown")
+            assertEquals("Ky", ThemeManager.pairName(context))
+        } finally {
+            prefs.edit().clear().commit()
+        }
+    }
+
+    @Test
+    fun legacySavedThemeMigratesOnceAndIsRemoved() {
+        val context = withNight(false)
+        val prefs = context.getSharedPreferences("appearance", Context.MODE_PRIVATE)
+        try {
+            prefs.edit().clear().putString("theme", "Busnes Dark").commit()
+            assertEquals(0xff182326.toInt(), ThemeManager.color(context, R.color.ky_background))
+            assertEquals("Busnes", ThemeManager.pairName(context))
+            assertEquals(ThemeMode.DARK, ThemeManager.mode(context))
+            assertFalse(prefs.contains("theme"))
+
+            prefs.edit().clear().putString("theme", "Coffee").commit()
+            assertEquals("Busnes", ThemeManager.pairName(context))
+            assertEquals(ThemeMode.SYSTEM, ThemeManager.mode(context))
+            assertFalse(prefs.contains("theme"))
+        } finally {
+            prefs.edit().clear().commit()
+        }
+    }
+
+    @Test
+    fun everyHalfHasReadableTextOnDevice() {
+        val prefs = withNight(false).getSharedPreferences("appearance", Context.MODE_PRIVATE)
+        try {
+            for (name in ThemeManager.pairNames()) for (night in listOf(false, true)) {
+                val context = withNight(night)
+                ThemeManager.setPair(context, name)
+                ThemeManager.setMode(context, ThemeMode.SYSTEM)
                 for (surface in listOf(R.color.ky_background, R.color.ky_surface)) {
-                    for (text in listOf(R.color.ky_text, R.color.ky_heading, R.color.ky_muted, R.color.ky_cyan)) {
-                        assertTrue(ColorUtils.calculateContrast(
+                    for (text in listOf(R.color.ky_text, R.color.ky_heading, R.color.ky_danger, R.color.ky_warning, R.color.ky_success)) {
+                        assertTrue("$name night=$night", ColorUtils.calculateContrast(
                             ThemeManager.color(context, text), ThemeManager.color(context, surface),
                         ) >= 4.5)
                     }
                 }
-                assertTrue(ColorUtils.calculateContrast(
-                    ThemeManager.buttonText(context), ThemeManager.color(context, R.color.ky_cyan),
-                ) >= 4.5)
             }
         } finally {
             prefs.edit().clear().commit()

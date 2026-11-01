@@ -8,6 +8,7 @@ import android.widget.Button
 import android.widget.EditText
 import android.widget.LinearLayout
 import android.widget.TextView
+import androidx.core.widget.doAfterTextChanged
 
 internal fun MainActivity.dp(value: Int): Int = (value * resources.displayMetrics.density).toInt()
 
@@ -114,4 +115,33 @@ internal fun MainActivity.emptyState(heading: String, body: String): LinearLayou
     setPadding(dp(24), dp(42), dp(24), dp(42))
     addView(title(heading).apply { gravity = Gravity.CENTER })
     addView(message(body).apply { gravity = Gravity.CENTER })
+}
+
+/** A state shown in its status colour. The word carries the meaning; the dot and tint only back it up. */
+internal enum class Status(val colorRes: Int, val softRes: Int) {
+    DANGER(R.color.ky_danger, R.color.ky_danger_soft),
+    WARNING(R.color.ky_warning, R.color.ky_warning_soft),
+    SUCCESS(R.color.ky_success, R.color.ky_success_soft),
+}
+
+/** A tinted status line with a leading dot. Hidden while its text is empty, so error slots can wait for an error. */
+internal fun MainActivity.statusMessage(status: Status, value: String = "", size: Float = 15f) = TextView(this).apply {
+    text = value
+    textSize = size
+    setTextColor(ThemeManager.color(context, status.colorRes))
+    background = GradientDrawable().apply {
+        setColor(ThemeManager.color(context, status.softRes))
+        cornerRadius = dp(14).toFloat()
+    }
+    val dot = GradientDrawable().apply {
+        shape = GradientDrawable.OVAL
+        setColor(ThemeManager.color(context, status.colorRes))
+        setSize(dp(8), dp(8))
+    }
+    setCompoundDrawablesRelativeWithIntrinsicBounds(dot, null, null, null)
+    compoundDrawablePadding = dp(10)
+    setPadding(dp(12), dp(8), dp(12), dp(8))
+    layoutParams = fullWidthParams(bottom = 12)
+    visibility = if (value.isEmpty()) android.view.View.GONE else android.view.View.VISIBLE
+    doAfterTextChanged { visibility = if (it.isNullOrEmpty()) android.view.View.GONE else android.view.View.VISIBLE }
 }

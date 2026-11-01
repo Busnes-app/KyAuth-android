@@ -110,7 +110,7 @@ KyAuth pairs an Android device with KyIdentity. It stores TOTP entries in an enc
 - Use the KyPost mail stamp with the KyAuth wordmark in the header and lock screen; keep the KyAuth launcher icon.
 - Use the three-part bottom pill: Vault, lock shield, Settings.
 - The Vault screen shows a pending Push MFA request at its top (the lock screen shows it alone while locked), then the TOTP list with a + icon to scan QR or add accounts manually with optional Website and Notes fields.
-- Use the 17 suite themes from `ThemeManager`. The default is Busnes Light; preserve valid saved choices.
+- Use the six ky-ui theme pairs from `ThemeManager` (Busnes, Matter, Ocean, Forest, Ky, Nord) with a Light or dark choice of System default, Light or Dark. The default is Busnes following the system. A pre-pairs saved name migrates once (`Themes.migrate`): a surviving half selects its pair with that half forced; a removed palette resets to Busnes following the system. Status colours (danger, warning, success and their soft tints) are separate from the accent; a status always shows its word with a dot (`statusMessage`), never colour alone. `ThemesTest` ports ky-ui's `check-status-colours.mjs` gate.
 - Use rounded, flat buttons. Do not add elevation shadows to custom controls.
 
 ## Project layout
@@ -124,7 +124,7 @@ KyAuth pairs an Android device with KyIdentity. It stores TOTP entries in an enc
 - `signon/`: `DeviceAssertion` (assertion builder), `TrustedConsumers` (caller pins),
   `KyIdentityAccount` (system account lifecycle), `KyIdentityAuthenticator` + service,
   `PendingSignOn`/`PendingAddAccount` (nonce handoffs), `SignOnActivity`, `TokenClient`.
-- `ThemeManager.kt`: the shared 17-theme palette and local theme preference.
+- `ThemeManager.kt`: the six ky-ui theme pairs, status colours, and the local pair and mode preference.
 - `UiComponents.kt`: reusable programmatic view styling and controls.
 - `AboutDialog.kt`: MIT About dialog with the privacy policy link.
 - `pairing/ServerTls.kt`: per-connection TLS key policy; preserve the default platform trust context and hostname verification before checking the evaluated chain, including its anchor. `docs/native-tls-evidence.md` owns scoped native observations and source links.

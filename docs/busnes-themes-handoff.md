@@ -1,8 +1,15 @@
-**Repo:** kyauth-android
-**Worktree:** /home/yoshi/busness.app/kyauth-android (branch main)
+**Repo:** KyAuth-android
 
-Added Busnes Light and Busnes Dark from ../busnes-color-theme-handoff.md. Busnes Light is the default/fallback; all 15 legacy palettes and valid saved selections remain. Added a heading token, readable accent labels, and system-bar icon contrast. Header/enrollment/lock-screen artwork now uses the exact ../Busnes.app-site/icons/kypost.png mail stamp as drawable-xxxhdpi/kypost_hero.png, explicitly confirmed by the user. KyAuth wordmark and launcher remain. Updated AGENTS.md and STYLE_GUIDE.md.
+Superseded by the ky-ui 0.11.0 theme pairs (branch `design/ky-themes`). The 15 legacy palettes and
+the separate Busnes Light and Busnes Dark entries are gone. `ThemeManager.kt` now holds six pairs
+(Busnes, Matter, Ocean, Forest, Ky, Nord) with values copied from ky-ui `src/themes.js` and
+`src/tokens.css`, a Light or dark mode (System default, Light, Dark), and per-half status colours.
 
-Validation: lintDebug and assembleDebug pass; text contrast checks pass (minimum 4.58:1 light, 4.90:1 dark). Full test and compileDebugAndroidTestSources are blocked by old SignOnPasskey* test references in the pre-existing, actively changing IdentityPasskey rename. Added ThemeManagerTest for defaults, saved choices, and palette contrast; it has not run on a device. One stale production string reference was updated to identity_passkey_restranded so the debug build succeeds.
+Saved choices: the old `appearance` key `theme` is read once and replaced by `pair` and `mode`.
+Busnes Light or Busnes Dark selects Busnes with that half forced; any other surviving half (Dark
+Matter, Light Matter, Ocean, White Cliffs, Forest, Patina Ky, Polished Ky) selects its pair with
+that half forced, as ky-ui does. Removed palettes (Tropics, Tropic Night, Coffee, Cyber Punk, Neon
+Purple, Space, Sky, Sun), "Follow phone" and nothing saved become Busnes following the system.
 
-Remaining: after the independent passkey rename finishes, rerun ./gradlew test lintDebug assembleDebug compileDebugAndroidTestSources; run ThemeManagerTest and visually inspect both palettes on a device. No install, commit, or deployment performed. Preserve the many unrelated dirty files and ongoing edits in this shared worktree.
+Checks: `ThemesTest` (JVM) covers the migration and ports ky-ui `scripts/check-status-colours.mjs`
+(180 checks across 12 halves). `ThemeManagerTest` (instrumented) covers the stored migration.
