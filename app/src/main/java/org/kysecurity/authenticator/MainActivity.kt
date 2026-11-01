@@ -677,7 +677,7 @@ class MainActivity : AppCompatActivity() {
                 val urlView = TextView(this).apply {
                     text = url
                     textSize = 13f
-                    setTextColor(ThemeManager.color(context, R.color.ky_cyan))
+                    setTextColor(ThemeManager.color(context, R.color.ky_muted))
                     setPadding(0, dp(4), 0, 0)
                 }
                 card.addView(urlView)
@@ -687,7 +687,7 @@ class MainActivity : AppCompatActivity() {
                 text = display.formattedCode
                 textSize = 34f
                 typeface = Typeface.create(Typeface.MONOSPACE, Typeface.BOLD)
-                setTextColor(ThemeManager.color(context, R.color.ky_cyan))
+                setTextColor(ThemeManager.color(context, R.color.ky_heading))
                 setPadding(0, 8, 0, 8)
                 setOnClickListener {
                     val current = TotpDisplay.state(entry, System.currentTimeMillis() / 1000, getString(R.string.totp_code_unavailable))
@@ -1046,7 +1046,7 @@ class MainActivity : AppCompatActivity() {
             val urlView = TextView(this).apply {
                 text = url
                 textSize = 13f
-                setTextColor(ThemeManager.color(context, R.color.ky_cyan))
+                setTextColor(ThemeManager.color(context, R.color.ky_muted))
                 setPadding(0, 0, 0, dp(4))
             }
             container.addView(urlView)
@@ -1932,51 +1932,57 @@ class MainActivity : AppCompatActivity() {
         }
         setPadding(dp(4), dp(4), dp(4), dp(4))
 
-        fun destination(label: String, tab: Tab) = Button(this@MainActivity).apply {
-            text = label
-            textSize = 11f
-            transformationMethod = null
-            isAllCaps = false
-            minWidth = 0
-            minHeight = 0
-            includeFontPadding = false
-            setPadding(dp(2), 0, dp(2), 0)
-            stateListAnimator = null
-            elevation = 0f
-            // The active tab is an accent-soft pill with strong ink, never accent text on accent-soft.
-            setTextColor(ThemeManager.color(context, if (activeTab == tab) R.color.ky_heading else R.color.ky_muted))
-            if (activeTab == tab) typeface = Typeface.DEFAULT_BOLD
-            background = GradientDrawable().apply {
-                setColor(ThemeManager.color(context, if (activeTab == tab) R.color.ky_cyan_dim else R.color.ky_surface))
-                cornerRadius = dp(22).toFloat()
+        // Each item is an outline icon over a label, as KyAuth Linux does. Only the active tab
+        // gets the accent-soft pill, behind its icon, with strong ink, never accent text on accent-soft.
+        fun item(label: String, icon: Int, active: Boolean, onClick: () -> Unit) =
+            object : LinearLayout(this@MainActivity) {
+                override fun getAccessibilityClassName(): CharSequence = Button::class.java.name
+            }.apply {
+                orientation = LinearLayout.VERTICAL
+                gravity = Gravity.CENTER
+                isClickable = true
+                isFocusable = true
+                isSelected = active
+                addView(ImageView(context).apply {
+                    setImageResource(icon)
+                    imageTintList = ColorStateList.valueOf(
+                        ThemeManager.color(context, if (active) R.color.ky_heading else R.color.ky_muted),
+                    )
+                    scaleType = ImageView.ScaleType.CENTER
+                    importantForAccessibility = View.IMPORTANT_FOR_ACCESSIBILITY_NO
+                    if (active) {
+                        background = GradientDrawable().apply {
+                            setColor(ThemeManager.color(context, R.color.ky_cyan_dim))
+                            cornerRadius = dp(16).toFloat()
+                        }
+                    }
+                }, LinearLayout.LayoutParams(dp(56), dp(30)))
+                addView(TextView(context).apply {
+                    text = label
+                    textSize = 13f
+                    includeFontPadding = false
+                    maxLines = 1
+                    setTextColor(ThemeManager.color(context, if (active) R.color.ky_heading else R.color.ky_muted))
+                    if (active) typeface = Typeface.DEFAULT_BOLD
+                }, LinearLayout.LayoutParams(
+                    LinearLayout.LayoutParams.WRAP_CONTENT,
+                    LinearLayout.LayoutParams.WRAP_CONTENT,
+                ).apply { topMargin = dp(4) })
+                layoutParams = LinearLayout.LayoutParams(0, dp(60), 1f)
+                setOnClickListener { onClick() }
             }
-            layoutParams = LinearLayout.LayoutParams(0, dp(56), 1f)
-            setOnClickListener {
-                activeTab = tab
-                renderContent()
-            }
+
+        fun destination(label: String, icon: Int, tab: Tab) = item(label, icon, activeTab == tab) {
+            activeTab = tab
+            renderContent()
         }
 
-        addView(destination(getString(R.string.tab_totp), Tab.VAULT))
-        addView(Button(this@MainActivity).apply {
-            contentDescription = "Lock KyAuth"
-            minWidth = 0
-            minHeight = 0
-            stateListAnimator = null
-            elevation = 0f
-            setCompoundDrawablesWithIntrinsicBounds(0, R.drawable.ic_nav_lock, 0, 0)
-            compoundDrawables[1]?.setTint(ThemeManager.color(context, R.color.ky_cyan))
-            background = GradientDrawable().apply {
-                setColor(ThemeManager.color(context, R.color.ky_surface_elevated))
-                cornerRadius = dp(22).toFloat()
-            }
-            layoutParams = LinearLayout.LayoutParams(dp(56), dp(56)).apply { marginStart = dp(2); marginEnd = dp(2) }
-            setOnClickListener {
-                lockSensitiveState()
-                renderContent()
-            }
-        })
-        addView(destination(getString(R.string.tab_settings), Tab.SETTINGS))
+        addView(destination(getString(R.string.tab_totp), R.drawable.ic_nav_vault, Tab.VAULT))
+        addView(item(getString(R.string.tab_lock), R.drawable.ic_nav_padlock, active = false) {
+            lockSensitiveState()
+            renderContent()
+        }.apply { contentDescription = "Lock KyAuth" })
+        addView(destination(getString(R.string.tab_settings), R.drawable.ic_nav_settings, Tab.SETTINGS))
     }
 
     private fun AlertDialog.Builder.showKyDialog(): AlertDialog {

@@ -108,7 +108,7 @@ KyAuth pairs an Android device with KyIdentity. It stores TOTP entries in an enc
 
 - Use the `KyAuth` name in user-visible text.
 - Use the KyPost mail stamp with the KyAuth wordmark in the header and lock screen; keep the KyAuth launcher icon.
-- Use the three-part bottom pill: Vault, lock shield, Settings.
+- Use the three-part bottom pill: Vault (shield), Lock (padlock), Settings (sliders), each an outline icon over its label.
 - The Vault screen shows a pending Push MFA request at its top (the lock screen shows it alone while locked), then the TOTP list with a + icon to scan QR or add accounts manually with optional Website and Notes fields.
 - Use the six ky-ui theme pairs from `ThemeManager` (Busnes, Matter, Ocean, Forest, Ky, Nord) with a Light or dark choice of System default, Light or Dark. The default is Busnes following the system. A pre-pairs saved name migrates once (`Themes.migrate`): a surviving half selects its pair with that half forced; a removed palette resets to Busnes following the system. Status colours (danger, warning, success and their soft tints) are separate from the accent; a status always shows its word with a dot (`statusMessage`), never colour alone. `ThemesTest` ports ky-ui's `check-status-colours.mjs` gate.
 - Use rounded, flat buttons. Do not add elevation shadows to custom controls.
