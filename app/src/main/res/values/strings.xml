@@ -5,7 +5,7 @@
     <string name="app_status">KyAuth is locked. Pair a KyIdentity account to begin.</string>
     <string name="tab_totp">Vault</string>
     <string name="tab_settings">Settings</string>
-    <string name="scan_qr">Scan QR Code</string>
+    <string name="scan_qr">Scan QR code</string>
     <string name="add_manually">Add Manually</string>
     <string name="unlock_title">Unlock KyAuth</string>
     <string name="unlock_biometrics">Unlock with Biometrics</string>
@@ -30,7 +30,7 @@
     <string name="about_no_browser">No browser to open the link</string>
     <string name="totp_code_unavailable">Unavailable</string>
     <string name="totp_secret_too_short">This secret is too short. Set up two-step verification again with the account provider.</string>
-    <string name="totp_expiry">TAP TO COPY  ·  EXPIRES IN %1$d S</string>
+    <string name="totp_expiry">Tap to copy  ·  expires in %1$d s</string>
     <string name="cancel">Cancel</string>
     <string name="pairing_failed_key_replaced">Pairing failed: %1$s. This phone had already replaced its device key, so it is no longer paired with KyIdentity. Pair it again.</string>
     <string name="attested_strongbox">Attested: StrongBox</string>
@@ -54,7 +54,7 @@
     <string name="add_totp_choice">Scan a QR code from your service or enter account details manually.</string>
     <string name="add_totp_description">Add a TOTP authentication code to your encrypted vault.</string>
     <string name="edit_account">Edit Account</string>
-    <string name="select_theme">Select Theme</string>
+    <string name="select_theme">Select theme</string>
     <string name="theme_label">Theme</string>
     <string name="theme_mode_label">Light or dark</string>
     <string name="signon_prompt">%1$s at %2$s wants to sign in as %3$s at %4$s.</string>

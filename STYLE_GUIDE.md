@@ -24,6 +24,9 @@ Danger, warning and success come from the active half (`ky_danger`, `ky_warning`
 - Keep 20dp content padding at the screen edge.
 - Add a larger header above dashboard content.
 - Keep the three-part navigation pill at the bottom of the dashboard.
+- Mark the active tab with an accent-soft pill and strong ink text, never accent text on accent-soft.
+- Show a selected choice as an accent-soft tint with an accent bar at its start, not a heavy accent fill or outline.
+- Put nothing under the brand: the wordmark stands alone and the page title follows as its own sentence.
 - Group Settings content in padded cards.
 
 ## Shape and depth
@@ -38,6 +41,7 @@ Danger, warning and success come from the active half (`ky_danger`, `ky_warning`
 
 - Use system-scaled `sp` text sizes.
 - Use monospace text only for codes, secrets, and technical values.
+- Write labels, titles and captions in sentence case. No ALL-CAPS tracked labels.
 - Keep button labels readable at large system font sizes.
 - Mark copied OTP codes as sensitive and clear the app-owned clipboard entry on lock or expiry.
 
