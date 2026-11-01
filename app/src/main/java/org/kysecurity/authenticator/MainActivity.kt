@@ -776,13 +776,13 @@ class MainActivity : AppCompatActivity() {
 
         var dialog: AlertDialog? = null
 
-        val btnScan = primaryButton("Scan QR Code").apply {
+        val btnScan = primaryButton(getString(R.string.scan_qr)).apply {
             setOnClickListener {
                 dialog?.dismiss()
                 scanTotpQr()
             }
         }
-        val btnManual = secondaryButton("Add Manually").apply {
+        val btnManual = secondaryButton(getString(R.string.add_manually)).apply {
             setOnClickListener {
                 dialog?.dismiss()
                 showAddTotpDialog()

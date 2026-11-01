@@ -7,7 +7,7 @@
     <string name="tab_settings">Settings</string>
     <string name="tab_lock">Lock</string>
     <string name="scan_qr">Scan QR code</string>
-    <string name="add_manually">Add Manually</string>
+    <string name="add_manually">Add manually</string>
     <string name="unlock_title">Unlock KyAuth</string>
     <string name="unlock_biometrics">Unlock with Biometrics</string>
     <string name="unlock_pin">Enter PIN</string>
@@ -24,7 +24,7 @@
     <string name="no_totp_entries">No TOTP entries. Tap + to add an account.</string>
     <string name="about_title">KyAuth</string>
     <string name="about_version_badge">v%1$s</string>
-    <string name="about_body">Developed by Busnes.app\n©%1$d - Licensed Under the MIT License</string>
+    <string name="about_body">Developed by Busnes.app\n©%1$d - Licensed under the MIT License</string>
     <string name="about_license_label">MIT License</string>
     <string name="about_privacy">Privacy policy</string>
     <string name="about_privacy_url" translatable="false">https://busnes.app/privacy.html</string>
@@ -51,7 +51,7 @@
     <string name="paired_to">Paired to %1$s\nAuthenticate to access your codes and sign-in approvals.</string>
     <string name="pin_retry_wait">Too many failed attempts. Try again in %1$d seconds.</string>
     <string name="pin_attempts_remaining">Failed attempt. %1$d attempts remaining before automatic data wipe.</string>
-    <string name="add_to_totp_vault">Add to Vault</string>
+    <string name="add_to_totp_vault">Add to vault</string>
     <string name="add_totp_choice">Scan a QR code from your service or enter account details manually.</string>
     <string name="add_totp_description">Add a TOTP authentication code to your encrypted vault.</string>
     <string name="edit_account">Edit Account</string>

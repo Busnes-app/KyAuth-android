@@ -92,7 +92,9 @@ fun showAboutDialog(activity: Activity) {
         setPadding(0, 0, 0, dp(10))
     })
     val license = TextView(activity).apply {
+        // The file keeps its 80-column breaks; join each paragraph so the text wraps to the dialog.
         text = activity.resources.openRawResource(R.raw.mit_license).bufferedReader().use { it.readText() }
+            .replace(Regex("([^\n])\n(?=[^\n])"), "$1 ")
         textSize = 12.5f
         setTextColor(mutedColor)
         setTextIsSelectable(true)

@@ -77,7 +77,7 @@ KyIdentity server. It is off by default.
 ## Getting started
 
 1. In KyIdentity, start pairing a new device to get a pairing QR code.
-2. In KyAuth, tap **Scan QR Code** and scan it within 90 seconds, or enter the server URL and
+2. In KyAuth, tap **Scan QR code** and scan it within 90 seconds, or enter the server URL and
    pairing token by hand.
 3. Confirm with your fingerprint. KyAuth now receives your sign-in requests.
 
