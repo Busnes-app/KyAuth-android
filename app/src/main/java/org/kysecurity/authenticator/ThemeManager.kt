@@ -2,6 +2,7 @@ package org.kysecurity.authenticator
 
 import android.content.Context
 import androidx.core.content.ContextCompat
+import androidx.core.content.edit
 
 /** One half of a pair. Colours are ARGB. Values match ky-ui 0.11.0 `src/themes.js` and `src/tokens.css`. */
 internal data class ThemeHalf(
@@ -157,11 +158,11 @@ object ThemeManager {
 
     fun setPair(context: Context, name: String) {
         val pair = Themes.pairs.firstOrNull { it.name == name } ?: return
-        prefs(context).edit().putString(KEY_PAIR, pair.id).apply()
+        prefs(context).edit { putString(KEY_PAIR, pair.id) }
     }
 
     fun setMode(context: Context, mode: ThemeMode) {
-        prefs(context).edit().putString(KEY_MODE, mode.id).apply()
+        prefs(context).edit { putString(KEY_MODE, mode.id) }
     }
 
     /** Light and dark preview colours (bg, accent) for each pair, in [pairNames] order. */
@@ -196,11 +197,11 @@ object ThemeManager {
         val prefs = prefs(context)
         if (prefs.contains(KEY_LEGACY_THEME)) {
             val migrated = Themes.migrate(prefs.getString(KEY_LEGACY_THEME, null))
-            prefs.edit()
-                .remove(KEY_LEGACY_THEME)
-                .putString(KEY_PAIR, migrated.pairId)
-                .putString(KEY_MODE, migrated.mode.id)
-                .apply()
+            prefs.edit {
+                remove(KEY_LEGACY_THEME)
+                putString(KEY_PAIR, migrated.pairId)
+                putString(KEY_MODE, migrated.mode.id)
+            }
             return migrated
         }
         return ThemeSelection(Themes.pair(prefs.getString(KEY_PAIR, null)).id, Themes.mode(prefs.getString(KEY_MODE, null)))
