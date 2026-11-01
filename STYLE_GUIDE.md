@@ -6,29 +6,18 @@ Use the Busnes.app-site KyPost mail stamp with the `KyAuth` wordmark in the head
 
 ## Themes
 
-`ThemeManager.kt` is the Android source of truth for these themes:
+`ThemeManager.kt` is the Android copy of ky-ui 0.11.0 `THEME_PAIRS`. Six pairs, each with a light and a dark half:
 
-- Busnes Light
-- Busnes Dark
-- Dark Matter
-- Light Matter
-- Tropics
-- Tropic Night
-- Ocean
-- Coffee
-- White Cliffs
-- Cyber Punk
-- Neon Purple
-- Space
-- Sky
-- Forest
-- Sun
-- Patina Ky
-- Polished Ky
+- Busnes (Busnes Light, Busnes Dark)
+- Matter (Matter Light, Matter Dark)
+- Ocean (Ocean Light, Ocean Dark)
+- Forest (Forest Light, Forest Dark)
+- Ky (Ky Light, Ky Dark)
+- Nord (Nord Light, Nord Dark)
 
-Busnes Light is the default when no valid theme is saved. Preserve existing saved choices. Use `ThemeManager.color` for app colors. Do not use fixed Patina colors for a themed view.
+Settings > Appearance has two rows: Theme (the pair) and Light or dark (System default, Light, Dark). The default is Busnes, System default. Use `ThemeManager.color` for app colors. Do not use fixed colors for a themed view.
 
-Keep danger and success colors separate from the theme palette.
+Danger, warning and success come from the active half (`ky_danger`, `ky_warning`, `ky_success` and their `_soft` tints), never from the accent. Danger is a cool crimson. Show a state with `statusMessage`: its word, a dot and the soft tint. Never use colour alone.
 
 ## Layout
 

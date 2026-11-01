@@ -1,0 +1,18 @@
+<resources>
+    <!-- Busnes Dark, for the window before ThemeManager draws the content. -->
+    <color name="ky_background">#182326</color>
+    <color name="ky_surface">#1F2B2E</color>
+    <color name="ky_surface_elevated">#1F2B2E</color>
+    <color name="ky_border">#3DF2EFE8</color>
+    <color name="ky_cyan">#F5865F</color>
+    <color name="ky_cyan_dim">#2B2622</color>
+    <color name="ky_heading">#F2EFE8</color>
+    <color name="ky_text">#B3BCB8</color>
+    <color name="ky_muted">#B3BCB8</color>
+    <color name="ky_danger">#FF8FB1</color>
+    <color name="ky_danger_soft">#3A373E</color>
+    <color name="ky_warning">#FFD25E</color>
+    <color name="ky_warning_soft">#3A3F34</color>
+    <color name="ky_success">#86EFAC</color>
+    <color name="ky_success_soft">#2B433D</color>
+</resources>

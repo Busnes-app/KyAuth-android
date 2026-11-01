@@ -55,6 +55,8 @@
     <string name="add_totp_description">Add a TOTP authentication code to your encrypted vault.</string>
     <string name="edit_account">Edit Account</string>
     <string name="select_theme">Select Theme</string>
+    <string name="theme_label">Theme</string>
+    <string name="theme_mode_label">Light or dark</string>
     <string name="signon_prompt">%1$s at %2$s wants to sign in as %3$s at %4$s.</string>
     <string name="signon_approve">Approve sign-in</string>
     <string name="signon_deny">Deny</string>

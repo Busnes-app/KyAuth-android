@@ -315,7 +315,7 @@ class MainActivity : AppCompatActivity() {
         root.addView(title("Connect your account"))
         root.addView(message("Scan the 90-second QR code from KyIdentity. The pairing credential is used once and never stored."))
 
-        val error = message("").apply { setTextColor(ThemeManager.color(context, R.color.ky_error)) }
+        val error = statusMessage(Status.DANGER)
         val progress = ProgressBar(this).apply { visibility = ProgressBar.GONE }
 
         val btnScan = primaryButton(getString(R.string.scan_qr)).apply {
@@ -500,7 +500,7 @@ class MainActivity : AppCompatActivity() {
             marginEnd = dp(12)
         }
 
-        val error = message("").apply { setTextColor(ThemeManager.color(context, R.color.ky_error)) }
+        val error = statusMessage(Status.DANGER)
         val failureState = AppLockManager.getFailureState(this)
         val nowSec = System.currentTimeMillis() / 1000
         val retryWaitSec = PinFailurePolicy.secondsUntilRetry(failureState, nowSec)
@@ -548,7 +548,7 @@ class MainActivity : AppCompatActivity() {
             setOnClickListener { showAboutDialog(this@MainActivity) }
         }, lockActionParams(top = 8))
         root.addView(ghostButton(getString(R.string.reset_kyauth)).apply {
-            setTextColor(ThemeManager.color(context, R.color.ky_error))
+            setTextColor(ThemeManager.color(context, R.color.ky_danger))
             setOnClickListener { confirmReset() }
         }, lockActionParams(top = 8))
     }
@@ -696,11 +696,14 @@ class MainActivity : AppCompatActivity() {
                 }
                 isClickable = display.code != null
             }
-            val timerView = TextView(this).apply {
-                text = if (display.requiresReenrolment) getString(R.string.totp_secret_too_short)
-                    else getString(R.string.totp_expiry, display.remainingSeconds)
-                textSize = 14f
-                setTextColor(ThemeManager.color(context, R.color.ky_muted))
+            val timerView = if (display.requiresReenrolment) {
+                statusMessage(Status.WARNING, getString(R.string.totp_secret_too_short), size = 14f)
+            } else {
+                TextView(this).apply {
+                    text = getString(R.string.totp_expiry, display.remainingSeconds)
+                    textSize = 14f
+                    setTextColor(ThemeManager.color(context, R.color.ky_muted))
+                }
             }
 
             card.addView(codeView)
@@ -1066,7 +1069,7 @@ class MainActivity : AppCompatActivity() {
             }
         }
         val btnDelete = secondaryButton("Delete Entry").apply {
-            setTextColor(ThemeManager.color(context, R.color.ky_error))
+            setTextColor(ThemeManager.color(context, R.color.ky_danger))
             setOnClickListener {
                 dialog?.dismiss()
                 totpEntries.removeAll { it.id == entry.id }
@@ -1180,7 +1183,7 @@ class MainActivity : AppCompatActivity() {
 
         val btnDeny = secondaryButton("Deny request").apply {
             layoutParams = fullWidthParams(bottom = 8)
-            setTextColor(ThemeManager.color(context, R.color.ky_error))
+            setTextColor(ThemeManager.color(context, R.color.ky_danger))
             setOnClickListener { if (demo) answerDemoChallenge(challenge, approve = false, "") else respondToChallenge(challenge, account, approve = false, "") }
         }
         card.addView(btnDeny)
@@ -1250,7 +1253,7 @@ class MainActivity : AppCompatActivity() {
             background = cardBackground()
             setPadding(dp(20), dp(16), dp(20), dp(16))
         }
-        banner.addView(message(listOfNotNull("Sign-in requests paused", broken).joinToString("\n")))
+        banner.addView(statusMessage(Status.WARNING, listOfNotNull("Sign-in requests paused", broken).joinToString("\n")))
         banner.addView(primaryButton("Reconnect").apply {
             setOnClickListener { reconnectPush(account) }
         }, fullWidthParams())
@@ -1388,10 +1391,8 @@ class MainActivity : AppCompatActivity() {
 
         val appearanceSection = settingsCard()
         appearanceSection.addView(title("Appearance"))
-        appearanceSection.addView(message("Theme: ${ThemeManager.currentName(this)}"))
-        appearanceSection.addView(secondaryButton("Select theme").apply {
-            setOnClickListener { showThemePicker() }
-        }, fullWidthParams())
+        appearanceSection.addView(settingsRow(getString(R.string.theme_label), ThemeManager.pairName(this)) { showThemePicker() })
+        appearanceSection.addView(settingsRow(getString(R.string.theme_mode_label), ThemeManager.mode(this).label) { showThemeModePicker() })
         sections.add(appearanceSection)
 
         if (demo) {
@@ -1417,7 +1418,11 @@ class MainActivity : AppCompatActivity() {
             systemAccount != null -> "Suite app sign-in: on. KyPost and other suite apps can use this account."
             else -> "Suite app sign-in: account missing"
         }
-        accountSection.addView(message(signOnState))
+        accountSection.addView(when {
+            !account.canSignOn -> message(signOnState)
+            systemAccount != null -> statusMessage(Status.SUCCESS, signOnState)
+            else -> statusMessage(Status.WARNING, signOnState)
+        })
         accountSection.addView(message(attestationSummary(account.attestedLevel, account.bootState, account.attestationReason, ::getString)))
         if (account.canSignOn && systemAccount == null) {
             accountSection.addView(secondaryButton("Restore system account").apply {
@@ -1430,7 +1435,7 @@ class MainActivity : AppCompatActivity() {
         }
 
         val btnUnpair = secondaryButton(getString(R.string.unpair_account)).apply {
-            setTextColor(ThemeManager.color(context, R.color.ky_error))
+            setTextColor(ThemeManager.color(context, R.color.ky_danger))
             setOnClickListener {
                 AlertDialog.Builder(this@MainActivity)
                     .setTitle("Unpair Device")
@@ -1503,7 +1508,13 @@ class MainActivity : AppCompatActivity() {
             push.unifiedPushCredential() == null -> "UnifiedPush: waiting for a distributor"
             else -> "UnifiedPush via ${UnifiedPushRegistrar.distributor(this) ?: "unknown distributor"}"
         }
-        section.addView(message(if (push.refreshPending()) "$status\nPaused until you reconnect on the Vault tab." else status))
+        val statusText = if (push.refreshPending()) "$status\nPaused until you reconnect on the Vault tab." else status
+        val statusKind = when {
+            unifiedPush && push.broken() != null -> Status.DANGER
+            push.refreshPending() || (unifiedPush && push.unifiedPushCredential() == null) -> Status.WARNING
+            else -> null
+        }
+        section.addView(statusKind?.let { statusMessage(it, statusText) } ?: message(statusText))
         if (unifiedPush) {
             section.addView(secondaryButton("Choose distributor").apply {
                 setOnClickListener { UnifiedPushRegistrar.pick(this@MainActivity) { it?.let(::toast); renderContent() } }
@@ -1565,15 +1576,61 @@ class MainActivity : AppCompatActivity() {
             .showKyDialog()
     }
 
+    /** A settings row in the Android pattern: label over the current value; tapping it opens the choices. */
+    private fun settingsRow(label: String, value: String, onClick: () -> Unit) = LinearLayout(this).apply {
+        orientation = LinearLayout.VERTICAL
+        setPadding(0, dp(10), 0, dp(10))
+        minimumHeight = dp(56)
+        isClickable = true
+        isFocusable = true
+        contentDescription = "$label: $value"
+        addView(TextView(context).apply {
+            text = label
+            textSize = 16f
+            setTextColor(ThemeManager.color(context, R.color.ky_heading))
+        })
+        addView(TextView(context).apply {
+            text = value
+            textSize = 14f
+            setTextColor(ThemeManager.color(context, R.color.ky_muted))
+        })
+        setOnClickListener { onClick() }
+    }
+
     private fun showThemePicker() {
-        val names = ThemeManager.names()
-        val current = ThemeManager.currentName(this)
+        val current = ThemeManager.pairName(this)
+        val previews = ThemeManager.pairPreviews()
+        showChoiceDialog(getString(R.string.select_theme), ThemeManager.pairNames(), current, { index ->
+            val (light, dark) = previews[index]
+            LinearLayout(this).apply {
+                orientation = LinearLayout.HORIZONTAL
+                listOf(light, dark).forEach { half ->
+                    addView(View(context).apply {
+                        background = GradientDrawable().apply {
+                            shape = GradientDrawable.OVAL
+                            setColor(half.bg)
+                            setStroke(dp(4), half.accent)
+                        }
+                    }, LinearLayout.LayoutParams(dp(22), dp(22)).apply { marginEnd = dp(6) })
+                }
+            }
+        }) { ThemeManager.setPair(this, it) }
+    }
+
+    private fun showThemeModePicker() {
+        val modes = ThemeMode.entries
+        showChoiceDialog(getString(R.string.theme_mode_label), modes.map { it.label }, ThemeManager.mode(this).label, { null }) { label ->
+            ThemeManager.setMode(this, modes.first { it.label == label })
+        }
+    }
+
+    private fun showChoiceDialog(heading: String, names: List<String>, current: String, preview: (Int) -> View?, onPick: (String) -> Unit) {
         val container = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             setPadding(dp(24), dp(24), dp(24), dp(20))
         }
         val titleView = TextView(this).apply {
-            text = getString(R.string.select_theme)
+            text = heading
             textSize = 20f
             typeface = Typeface.DEFAULT_BOLD
             setTextColor(ThemeManager.color(context, R.color.ky_heading))
@@ -1587,43 +1644,44 @@ class MainActivity : AppCompatActivity() {
 
         var dialog: AlertDialog? = null
 
-        names.forEach { name ->
+        names.forEachIndexed { index, name ->
             val isSelected = name == current
-            val itemBtn = Button(this).apply {
-                text = if (isSelected) "$name  ✓" else name
-                transformationMethod = null
-                textSize = 15f
-                typeface = if (isSelected) Typeface.DEFAULT_BOLD else Typeface.DEFAULT
-                gravity = Gravity.START or Gravity.CENTER_VERTICAL
+            val item = LinearLayout(this).apply {
+                orientation = LinearLayout.HORIZONTAL
+                gravity = Gravity.CENTER_VERTICAL
                 setPadding(dp(16), dp(12), dp(16), dp(12))
-                minHeight = dp(44)
-                stateListAnimator = null
-                elevation = 0f
-                setTextColor(ThemeManager.color(context, if (isSelected) R.color.ky_cyan else R.color.ky_text))
+                minimumHeight = dp(48)
+                isClickable = true
+                isFocusable = true
+                contentDescription = if (isSelected) "$name, selected" else name
                 background = GradientDrawable().apply {
-                    setColor(ThemeManager.color(context, if (isSelected) R.color.ky_surface_elevated else R.color.ky_surface))
+                    setColor(ThemeManager.color(context, if (isSelected) R.color.ky_cyan_dim else R.color.ky_surface))
                     cornerRadius = dp(12).toFloat()
-                    if (isSelected) {
-                        setStroke(dp(1), ThemeManager.color(context, R.color.ky_cyan))
-                    }
+                    setStroke(dp(1), ThemeManager.color(context, if (isSelected) R.color.ky_cyan else R.color.ky_border))
                 }
+                preview(index)?.let { addView(it, LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { marginEnd = dp(10) }) }
+                addView(TextView(context).apply {
+                    text = name
+                    textSize = 15f
+                    typeface = if (isSelected) Typeface.DEFAULT_BOLD else Typeface.DEFAULT
+                    setTextColor(ThemeManager.color(context, if (isSelected) R.color.ky_heading else R.color.ky_text))
+                }, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
+                if (isSelected) addView(TextView(context).apply {
+                    text = "✓"
+                    textSize = 16f
+                    typeface = Typeface.DEFAULT_BOLD
+                    setTextColor(ThemeManager.color(context, R.color.ky_heading))
+                })
                 setOnClickListener {
-                    ThemeManager.set(this@MainActivity, name)
+                    onPick(name)
                     dialog?.dismiss()
                     renderContent()
                 }
             }
-            listContainer.addView(itemBtn, fullWidthParams(bottom = 6))
+            listContainer.addView(item, fullWidthParams(bottom = 6))
         }
 
-        val scrollView = ScrollView(this).apply {
-            layoutParams = LinearLayout.LayoutParams(
-                ViewGroup.LayoutParams.MATCH_PARENT,
-                (resources.displayMetrics.heightPixels * 0.45f).toInt(),
-            )
-            addView(listContainer)
-        }
-        container.addView(scrollView)
+        container.addView(ScrollView(this).apply { addView(listContainer) })
 
         val btnCancel = ghostButton("Cancel").apply {
             setOnClickListener { dialog?.dismiss() }
