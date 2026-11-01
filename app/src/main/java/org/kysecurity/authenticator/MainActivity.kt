@@ -10,7 +10,6 @@ import android.content.Intent
 import android.content.pm.PackageManager
 import android.content.res.ColorStateList
 import android.graphics.Color
-import android.graphics.Typeface
 import android.graphics.drawable.Drawable
 import android.graphics.drawable.GradientDrawable
 import android.graphics.drawable.LayerDrawable
@@ -476,7 +475,7 @@ class MainActivity : AppCompatActivity() {
         root.addView(TextView(this).apply {
             text = getString(R.string.vault_locked)
             textSize = 12f
-            typeface = Typeface.MONOSPACE
+            typeface = context.spaceGrotesk()
             gravity = Gravity.CENTER
             letterSpacing = 0.18f
             setTextColor(ThemeManager.color(context, R.color.ky_cyan))
@@ -485,7 +484,7 @@ class MainActivity : AppCompatActivity() {
         root.addView(TextView(this).apply {
             text = getString(R.string.unlock_your_vault)
             textSize = 24f
-            typeface = Typeface.DEFAULT_BOLD
+            typeface = context.spaceGrotesk(bold = true)
             gravity = Gravity.CENTER
             setTextColor(ThemeManager.color(context, R.color.ky_heading))
         })
@@ -622,7 +621,7 @@ class MainActivity : AppCompatActivity() {
         val headerTitle = TextView(this).apply {
             text = getString(R.string.tab_totp)
             textSize = 20f
-            typeface = Typeface.DEFAULT_BOLD
+            typeface = context.spaceGrotesk(bold = true)
             setTextColor(ThemeManager.color(context, R.color.ky_heading))
             layoutParams = LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f)
         }
@@ -668,7 +667,7 @@ class MainActivity : AppCompatActivity() {
             val titleView = TextView(this).apply {
                 text = entry.title
                 textSize = 17f
-                typeface = Typeface.DEFAULT_BOLD
+                typeface = context.spaceGrotesk(bold = true)
                 setTextColor(ThemeManager.color(context, R.color.ky_heading))
             }
             card.addView(titleView)
@@ -677,7 +676,7 @@ class MainActivity : AppCompatActivity() {
                 val urlView = TextView(this).apply {
                     text = url
                     textSize = 13f
-                    setTextColor(ThemeManager.color(context, R.color.ky_cyan))
+                    setTextColor(ThemeManager.color(context, R.color.ky_muted))
                     setPadding(0, dp(4), 0, 0)
                 }
                 card.addView(urlView)
@@ -686,8 +685,9 @@ class MainActivity : AppCompatActivity() {
             val codeView = TextView(this).apply {
                 text = display.formattedCode
                 textSize = 34f
-                typeface = Typeface.create(Typeface.MONOSPACE, Typeface.BOLD)
-                setTextColor(ThemeManager.color(context, R.color.ky_cyan))
+                typeface = context.spaceGrotesk(bold = true)
+                fontFeatureSettings = "tnum" // every digit one width, so the code never shifts as it changes
+                setTextColor(ThemeManager.color(context, R.color.ky_heading))
                 setPadding(0, 8, 0, 8)
                 setOnClickListener {
                     val current = TotpDisplay.state(entry, System.currentTimeMillis() / 1000, getString(R.string.totp_code_unavailable))
@@ -761,7 +761,7 @@ class MainActivity : AppCompatActivity() {
         val titleView = TextView(this).apply {
             text = getString(R.string.add_to_totp_vault)
             textSize = 20f
-            typeface = Typeface.DEFAULT_BOLD
+            typeface = context.spaceGrotesk(bold = true)
             setTextColor(ThemeManager.color(context, R.color.ky_heading))
             setPadding(0, 0, 0, dp(4))
         }
@@ -776,13 +776,13 @@ class MainActivity : AppCompatActivity() {
 
         var dialog: AlertDialog? = null
 
-        val btnScan = primaryButton("Scan QR Code").apply {
+        val btnScan = primaryButton(getString(R.string.scan_qr)).apply {
             setOnClickListener {
                 dialog?.dismiss()
                 scanTotpQr()
             }
         }
-        val btnManual = secondaryButton("Add Manually").apply {
+        val btnManual = secondaryButton(getString(R.string.add_manually)).apply {
             setOnClickListener {
                 dialog?.dismiss()
                 showAddTotpDialog()
@@ -836,7 +836,7 @@ class MainActivity : AppCompatActivity() {
         val titleView = TextView(this).apply {
             text = getString(R.string.add_manually)
             textSize = 20f
-            typeface = Typeface.DEFAULT_BOLD
+            typeface = context.spaceGrotesk(bold = true)
             setTextColor(ThemeManager.color(context, R.color.ky_heading))
             setPadding(0, 0, 0, dp(4))
         }
@@ -925,7 +925,7 @@ class MainActivity : AppCompatActivity() {
         val titleView = TextView(this).apply {
             text = getString(R.string.edit_account)
             textSize = 20f
-            typeface = Typeface.DEFAULT_BOLD
+            typeface = context.spaceGrotesk(bold = true)
             setTextColor(ThemeManager.color(context, R.color.ky_heading))
             setPadding(0, 0, 0, dp(4))
         }
@@ -1036,7 +1036,7 @@ class MainActivity : AppCompatActivity() {
         val titleView = TextView(this).apply {
             text = entry.title
             textSize = 20f
-            typeface = Typeface.DEFAULT_BOLD
+            typeface = context.spaceGrotesk(bold = true)
             setTextColor(ThemeManager.color(context, R.color.ky_heading))
             setPadding(0, 0, 0, dp(4))
         }
@@ -1046,7 +1046,7 @@ class MainActivity : AppCompatActivity() {
             val urlView = TextView(this).apply {
                 text = url
                 textSize = 13f
-                setTextColor(ThemeManager.color(context, R.color.ky_cyan))
+                setTextColor(ThemeManager.color(context, R.color.ky_muted))
                 setPadding(0, 0, 0, dp(4))
             }
             container.addView(urlView)
@@ -1653,7 +1653,7 @@ class MainActivity : AppCompatActivity() {
         val titleView = TextView(this).apply {
             text = heading
             textSize = 20f
-            typeface = Typeface.DEFAULT_BOLD
+            typeface = context.spaceGrotesk(bold = true)
             setTextColor(ThemeManager.color(context, R.color.ky_heading))
             setPadding(0, 0, 0, dp(16))
         }
@@ -1680,13 +1680,13 @@ class MainActivity : AppCompatActivity() {
                 addView(TextView(context).apply {
                     text = name
                     textSize = 15f
-                    typeface = if (isSelected) Typeface.DEFAULT_BOLD else Typeface.DEFAULT
+                    typeface = context.spaceGrotesk(bold = isSelected)
                     setTextColor(ThemeManager.color(context, if (isSelected) R.color.ky_heading else R.color.ky_text))
                 }, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
                 if (isSelected) addView(TextView(context).apply {
                     text = "✓"
                     textSize = 16f
-                    typeface = Typeface.DEFAULT_BOLD
+                    typeface = context.spaceGrotesk(bold = true)
                     setTextColor(ThemeManager.color(context, R.color.ky_heading))
                 })
                 setOnClickListener {
@@ -1916,7 +1916,7 @@ class MainActivity : AppCompatActivity() {
         addView(TextView(context).apply {
             text = title
             this.textSize = textSize
-            typeface = Typeface.DEFAULT_BOLD
+            typeface = context.spaceGrotesk(bold = true)
             setTextColor(ThemeManager.color(context, R.color.ky_heading))
             includeFontPadding = false
         })
@@ -1932,51 +1932,57 @@ class MainActivity : AppCompatActivity() {
         }
         setPadding(dp(4), dp(4), dp(4), dp(4))
 
-        fun destination(label: String, tab: Tab) = Button(this@MainActivity).apply {
-            text = label
-            textSize = 11f
-            transformationMethod = null
-            isAllCaps = false
-            minWidth = 0
-            minHeight = 0
-            includeFontPadding = false
-            setPadding(dp(2), 0, dp(2), 0)
-            stateListAnimator = null
-            elevation = 0f
-            // The active tab is an accent-soft pill with strong ink, never accent text on accent-soft.
-            setTextColor(ThemeManager.color(context, if (activeTab == tab) R.color.ky_heading else R.color.ky_muted))
-            if (activeTab == tab) typeface = Typeface.DEFAULT_BOLD
-            background = GradientDrawable().apply {
-                setColor(ThemeManager.color(context, if (activeTab == tab) R.color.ky_cyan_dim else R.color.ky_surface))
-                cornerRadius = dp(22).toFloat()
+        // Each item is an outline icon over a label, as KyAuth Linux does. Only the active tab
+        // gets the accent-soft pill, behind its icon, with strong ink, never accent text on accent-soft.
+        fun item(label: String, icon: Int, active: Boolean, onClick: () -> Unit) =
+            object : LinearLayout(this@MainActivity) {
+                override fun getAccessibilityClassName(): CharSequence = Button::class.java.name
+            }.apply {
+                orientation = LinearLayout.VERTICAL
+                gravity = Gravity.CENTER
+                isClickable = true
+                isFocusable = true
+                isSelected = active
+                addView(ImageView(context).apply {
+                    setImageResource(icon)
+                    imageTintList = ColorStateList.valueOf(
+                        ThemeManager.color(context, if (active) R.color.ky_heading else R.color.ky_muted),
+                    )
+                    scaleType = ImageView.ScaleType.CENTER
+                    importantForAccessibility = View.IMPORTANT_FOR_ACCESSIBILITY_NO
+                    if (active) {
+                        background = GradientDrawable().apply {
+                            setColor(ThemeManager.color(context, R.color.ky_cyan_dim))
+                            cornerRadius = dp(16).toFloat()
+                        }
+                    }
+                }, LinearLayout.LayoutParams(dp(56), dp(30)))
+                addView(TextView(context).apply {
+                    text = label
+                    textSize = 13f
+                    includeFontPadding = false
+                    maxLines = 1
+                    setTextColor(ThemeManager.color(context, if (active) R.color.ky_heading else R.color.ky_muted))
+                    if (active) typeface = context.spaceGrotesk(bold = true)
+                }, LinearLayout.LayoutParams(
+                    LinearLayout.LayoutParams.WRAP_CONTENT,
+                    LinearLayout.LayoutParams.WRAP_CONTENT,
+                ).apply { topMargin = dp(4) })
+                layoutParams = LinearLayout.LayoutParams(0, dp(60), 1f)
+                setOnClickListener { onClick() }
             }
-            layoutParams = LinearLayout.LayoutParams(0, dp(56), 1f)
-            setOnClickListener {
-                activeTab = tab
-                renderContent()
-            }
+
+        fun destination(label: String, icon: Int, tab: Tab) = item(label, icon, activeTab == tab) {
+            activeTab = tab
+            renderContent()
         }
 
-        addView(destination(getString(R.string.tab_totp), Tab.VAULT))
-        addView(Button(this@MainActivity).apply {
-            contentDescription = "Lock KyAuth"
-            minWidth = 0
-            minHeight = 0
-            stateListAnimator = null
-            elevation = 0f
-            setCompoundDrawablesWithIntrinsicBounds(0, R.drawable.ic_nav_lock, 0, 0)
-            compoundDrawables[1]?.setTint(ThemeManager.color(context, R.color.ky_cyan))
-            background = GradientDrawable().apply {
-                setColor(ThemeManager.color(context, R.color.ky_surface_elevated))
-                cornerRadius = dp(22).toFloat()
-            }
-            layoutParams = LinearLayout.LayoutParams(dp(56), dp(56)).apply { marginStart = dp(2); marginEnd = dp(2) }
-            setOnClickListener {
-                lockSensitiveState()
-                renderContent()
-            }
-        })
-        addView(destination(getString(R.string.tab_settings), Tab.SETTINGS))
+        addView(destination(getString(R.string.tab_totp), R.drawable.ic_nav_vault, Tab.VAULT))
+        addView(item(getString(R.string.tab_lock), R.drawable.ic_nav_padlock, active = false) {
+            lockSensitiveState()
+            renderContent()
+        }.apply { contentDescription = "Lock KyAuth" })
+        addView(destination(getString(R.string.tab_settings), R.drawable.ic_nav_settings, Tab.SETTINGS))
     }
 
     private fun AlertDialog.Builder.showKyDialog(): AlertDialog {
@@ -1999,7 +2005,7 @@ class MainActivity : AppCompatActivity() {
                 window?.setBackgroundDrawable(background)
                 findViewById<TextView>(androidx.appcompat.R.id.alertTitle)?.apply {
                     setTextColor(ThemeManager.color(this@MainActivity, R.color.ky_heading))
-                    typeface = Typeface.DEFAULT_BOLD
+                    typeface = context.spaceGrotesk(bold = true)
                 }
                 findViewById<TextView>(android.R.id.message)?.apply {
                     setTextColor(ThemeManager.color(this@MainActivity, R.color.ky_muted))
@@ -2014,7 +2020,7 @@ class MainActivity : AppCompatActivity() {
                 ).forEach { which ->
                     getButton(which)?.apply {
                         setTextColor(ThemeManager.color(this@MainActivity, R.color.ky_cyan))
-                        typeface = Typeface.DEFAULT_BOLD
+                        typeface = context.spaceGrotesk(bold = true)
                     }
                 }
             }

@@ -24,7 +24,8 @@ Danger, warning and success come from the active half (`ky_danger`, `ky_warning`
 - Keep 20dp content padding at the screen edge.
 - Add a larger header above dashboard content.
 - Keep the three-part navigation pill at the bottom of the dashboard.
-- Mark the active tab with an accent-soft pill and strong ink text, never accent text on accent-soft.
+- Give every tab an outline icon over a 13sp label. Mark the active tab with an accent-soft pill behind its icon and strong ink, never accent text on accent-soft.
+- Show TOTP codes in strong ink and websites in muted ink. Keep the accent for the countdown bar and actions.
 - Show a selected choice as an accent-soft tint with an accent bar at its start, not a heavy accent fill or outline.
 - Put nothing under the brand: the wordmark stands alone and the page title follows as its own sentence.
 - Group Settings content in padded cards.
@@ -40,7 +41,8 @@ Danger, warning and success come from the active half (`ky_danger`, `ky_warning`
 ## Type and feedback
 
 - Use system-scaled `sp` text sizes.
-- Use monospace text only for codes, secrets, and technical values.
+- Set all text in Space Grotesk, bundled in `res/font` (OFL in `fonts/Space_Grotesk/OFL.txt`) and set as the theme font. Set bold with `spaceGrotesk(bold = true)`, never `Typeface.DEFAULT_BOLD`, which is Roboto.
+- Give codes and countdowns tabular figures (`fontFeatureSettings = "tnum"`) so they don't shift as digits change.
 - Write labels, titles and captions in sentence case. No ALL-CAPS tracked labels.
 - Keep button labels readable at large system font sizes.
 - Mark copied OTP codes as sensitive and clear the app-owned clipboard entry on lock or expiry.

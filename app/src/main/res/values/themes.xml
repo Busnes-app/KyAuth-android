@@ -4,6 +4,8 @@
         <item name="android:windowLightNavigationBar">true</item>
         <item name="android:statusBarColor">@color/ky_background</item>
         <item name="android:navigationBarColor">@color/ky_background</item>
-        <item name="android:fontFamily">sans</item>
+        <!-- Space Grotesk app-wide, bundled in res/font (OFL: fonts/Space_Grotesk/OFL.txt). -->
+        <item name="android:fontFamily">@font/space_grotesk</item>
+        <item name="fontFamily">@font/space_grotesk</item>
     </style>
 </resources>

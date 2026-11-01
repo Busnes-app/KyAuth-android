@@ -1,5 +1,6 @@
 package org.kysecurity.authenticator
 
+import android.content.Context
 import android.content.res.ColorStateList
 import android.graphics.Typeface
 import android.graphics.drawable.GradientDrawable
@@ -10,13 +11,18 @@ import android.widget.LinearLayout
 import android.widget.TextView
 import androidx.core.widget.doAfterTextChanged
 
+/** The app's one typeface, bundled in res/font. Typeface.create picks the family's 700 face for bold,
+ *  so a bold view stays Space Grotesk instead of falling back to Roboto's DEFAULT_BOLD. */
+internal fun Context.spaceGrotesk(bold: Boolean = false): Typeface =
+    Typeface.create(resources.getFont(R.font.space_grotesk), if (bold) 700 else 400, false)
+
 internal fun MainActivity.dp(value: Int): Int = (value * resources.displayMetrics.density).toInt()
 
 internal fun MainActivity.title(value: String) = TextView(this).apply {
     text = value
     textSize = 22f
     setTextColor(ThemeManager.color(context, R.color.ky_heading))
-    typeface = Typeface.DEFAULT_BOLD
+    typeface = context.spaceGrotesk(bold = true)
     setPadding(0, dp(16), 0, dp(8))
 }
 
@@ -32,7 +38,7 @@ internal fun MainActivity.primaryButton(label: String) = Button(this).apply {
     transformationMethod = null
     background = roundedButtonBackground(R.color.ky_cyan)
     setTextColor(ThemeManager.buttonText(context))
-    typeface = Typeface.DEFAULT_BOLD
+    typeface = context.spaceGrotesk(bold = true)
     minHeight = dp(48)
     stateListAnimator = null
     elevation = 0f
@@ -61,7 +67,7 @@ internal fun MainActivity.ghostButton(label: String) = Button(this).apply {
 internal fun MainActivity.numberButton(label: String) = Button(this).apply {
     text = label
     textSize = 24f
-    typeface = Typeface.DEFAULT_BOLD
+    typeface = context.spaceGrotesk(bold = true)
     backgroundTintList = ColorStateList.valueOf(ThemeManager.color(context, R.color.ky_surface))
     setTextColor(ThemeManager.color(context, R.color.ky_text))
     stateListAnimator = null
