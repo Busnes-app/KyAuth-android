@@ -4,7 +4,6 @@ import android.app.Activity
 import android.content.ActivityNotFoundException
 import android.content.Intent
 import android.graphics.Paint
-import android.graphics.Typeface
 import android.graphics.drawable.GradientDrawable
 import android.view.Gravity
 import android.view.View
@@ -35,13 +34,13 @@ fun showAboutDialog(activity: Activity) {
     header.addView(TextView(activity).apply {
         text = activity.getString(R.string.about_title)
         textSize = 22f
-        typeface = Typeface.DEFAULT_BOLD
+        typeface = context.spaceGrotesk(bold = true)
         setTextColor(textColor)
     })
     header.addView(TextView(activity).apply {
         text = activity.getString(R.string.about_version_badge, BuildConfig.VERSION_NAME)
         textSize = 12f
-        typeface = Typeface.DEFAULT_BOLD
+        typeface = context.spaceGrotesk(bold = true)
         setTextColor(ThemeManager.buttonText(activity))
         setPadding(dp(10), dp(3), dp(10), dp(3))
         background = GradientDrawable().apply {
@@ -63,7 +62,7 @@ fun showAboutDialog(activity: Activity) {
     container.addView(TextView(activity).apply {
         text = activity.getString(R.string.about_privacy)
         textSize = 14f
-        typeface = Typeface.DEFAULT_BOLD
+        typeface = context.spaceGrotesk(bold = true)
         paintFlags = paintFlags or Paint.UNDERLINE_TEXT_FLAG
         setTextColor(accentColor)
         setPadding(0, dp(12), 0, dp(4))
@@ -87,7 +86,7 @@ fun showAboutDialog(activity: Activity) {
     container.addView(TextView(activity).apply {
         text = activity.getString(R.string.about_license_label)
         textSize = 12f
-        typeface = Typeface.DEFAULT_BOLD
+        typeface = context.spaceGrotesk(bold = true)
         letterSpacing = 0.08f
         setTextColor(accentColor)
         setPadding(0, 0, 0, dp(10))
@@ -116,7 +115,7 @@ fun showAboutDialog(activity: Activity) {
     val close = Button(activity).apply {
         text = activity.getString(android.R.string.ok)
         isAllCaps = false
-        typeface = Typeface.DEFAULT_BOLD
+        typeface = context.spaceGrotesk(bold = true)
         setTextColor(ThemeManager.buttonText(activity))
         background = GradientDrawable().apply {
             cornerRadius = dp(24).toFloat()

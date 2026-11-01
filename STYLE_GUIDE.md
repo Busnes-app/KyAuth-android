@@ -41,7 +41,8 @@ Danger, warning and success come from the active half (`ky_danger`, `ky_warning`
 ## Type and feedback
 
 - Use system-scaled `sp` text sizes.
-- Use monospace text only for codes, secrets, and technical values.
+- Set all text in Space Grotesk, bundled in `res/font` (OFL in `fonts/Space_Grotesk/OFL.txt`) and set as the theme font. Set bold with `spaceGrotesk(bold = true)`, never `Typeface.DEFAULT_BOLD`, which is Roboto.
+- Give codes and countdowns tabular figures (`fontFeatureSettings = "tnum"`) so they don't shift as digits change.
 - Write labels, titles and captions in sentence case. No ALL-CAPS tracked labels.
 - Keep button labels readable at large system font sizes.
 - Mark copied OTP codes as sensitive and clear the app-owned clipboard entry on lock or expiry.
