@@ -50,6 +50,14 @@ KyAuth is open source under the MIT license.
 
 https://busnes.app/privacy.html
 
+## What's new (0.6.0)
+
+```text
+• New look: the whole app is set in Space Grotesk, codes are in strong ink, and every tab has an icon and a label.
+• Themes are now the six Ky theme pairs (Busnes, Matter, Ocean, Forest, Ky, Nord), each in light, dark or following your system. A theme that no longer exists switches to Busnes.
+• Sign-in approval answers only the request it was sent for.
+```
+
 ## What's new (0.5.0)
 
 ```text
