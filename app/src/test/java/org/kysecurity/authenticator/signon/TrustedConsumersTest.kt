@@ -18,6 +18,18 @@ class TrustedConsumersTest {
     }
 
     @Test
+    fun decide_acceptsFdroidBuildSignedWithReleaseKey() {
+        val caller = TrustedConsumers.decide(listOf("org.kysecurity.mail.fdroid"), { setOf(play) }, null)
+        assertEquals("org.kysecurity.mail.fdroid", caller?.packageName)
+        assertNull(TrustedConsumers.decide(listOf("org.kysecurity.mail.fdroid"), { setOf("00".repeat(32)) }, null))
+    }
+
+    @Test
+    fun decide_refusesUnpinnedGithubBuild() {
+        assertNull(TrustedConsumers.decide(listOf("org.kysecurity.mail.github"), { setOf(play) }, null))
+    }
+
+    @Test
     fun decide_refusesUnknownCert() {
         assertNull(TrustedConsumers.decide(listOf("org.kysecurity.mail"), { setOf("00".repeat(32)) }, null))
     }
