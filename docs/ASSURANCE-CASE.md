@@ -122,7 +122,7 @@ These are recorded, not hidden ([AGENTS.md, Outstanding security work](../AGENTS
   UnifiedPush delivery and the sign-on flow have not been observed on physical hardware.
 - A pairing made before KyAuth sent push keys stays plaintext over FCM until its next Reconnect
   or re-pair.
-- The GitHub and F-Droid builds of KyPost are not pinned, so they cannot sign on through KyAuth.
+- The GitHub build of KyPost is not pinned, so it cannot sign on through KyAuth.
 - Pairing trusts the QR code. Whoever controls the QR controls which server KyAuth pairs with.
   The server enforces the pairing token's 90-second lifetime. The client also refuses a QR whose
   `expiresAt` has passed, but it accepts one that has no `expiresAt`.

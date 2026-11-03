@@ -182,10 +182,10 @@ Recorded so it is not mistaken for done:
 - **Device verification.** Emulator tests cover secure-lock-backed `VaultKek` creation and backup
   flags. Full biometric prompts, including the per-use `VaultUnlockPrompt.showForSignature`, still
   require manual device verification; none of these are currently automated here.
-- **Consumer pins.** `TrustedConsumers.PINS` holds only `org.kysecurity.mail` (Play App Signing
-  certificate). The GitHub flavor `org.kysecurity.mail.github` is unpinned until its upload-key digest
-  is supplied, and `org.kysecurity.mail.fdroid` is unpinned because F-Droid signs with its own key and
-  the digest does not exist until F-Droid builds it; both fail closed. Every certificate in a
+- **Consumer pins.** `TrustedConsumers.PINS` holds `org.kysecurity.mail` and
+  `org.kysecurity.mail.fdroid`, both pinned to the Play App Signing certificate: F-Droid builds KyPost
+  reproducibly and ships the developer-signed APK. The GitHub flavor `org.kysecurity.mail.github` is
+  unpinned until its upload-key digest is supplied, and fails closed. Every certificate in a
   package's signing history must be pinned, so a key rotation needs old and new digests pinned
   together. Debug builds also accept `kyauthDebugConsumerCert`.
 - **Late sign-on launch.** A `SignOnActivity` launch more than 120 s after its nonce was issued (or a

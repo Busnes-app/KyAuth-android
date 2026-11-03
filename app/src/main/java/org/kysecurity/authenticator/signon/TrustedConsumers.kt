@@ -16,13 +16,17 @@ data class TrustedCaller(val packageName: String, val label: String)
  * process memory.
  */
 object TrustedConsumers {
-    // SHA-256 of the DER signing certificate, lowercase hex: the Play App Signing key.
-    // org.kysecurity.mail.github (digest not yet supplied) and org.kysecurity.mail.fdroid (F-Droid signs with
-    // its own key; no digest until F-Droid builds it) are unpinned and fail closed.
+    // SHA-256 of the DER signing certificate, lowercase hex. The Play App Signing key also signs the
+    // F-Droid build: F-Droid builds KyPost reproducibly and ships the developer-signed APK.
+    // org.kysecurity.mail.github (digest not yet supplied) is unpinned and fails closed.
     private class Consumer(val label: String, val digests: Set<String>)
 
     private val CONSUMERS: Map<String, Consumer> = mapOf(
         "org.kysecurity.mail" to Consumer(
+            "KyPost",
+            setOf("6f78411156058c1d27d5160699b73c0f45de266282383d8ca4361592e03a6c8e"),
+        ),
+        "org.kysecurity.mail.fdroid" to Consumer(
             "KyPost",
             setOf("6f78411156058c1d27d5160699b73c0f45de266282383d8ca4361592e03a6c8e"),
         ),
