@@ -48,6 +48,10 @@ object AppLockManager {
 
     val idleLock = IdleLock()
 
+    /** Called after every lock, on the locking thread: every open window must drop what it shows. */
+    @Volatile
+    var onLock: (() -> Unit)? = null
+
     fun isUnlocked(): Boolean = isUnlocked
 
     fun getVaultKey(): ByteArray? = if (isUnlocked) activeVaultKey else null
@@ -59,6 +63,7 @@ object AppLockManager {
         isUnlocked = false
         activeVaultKey?.fill(0)
         activeVaultKey = null
+        onLock?.invoke()
     }
 
     fun onWipe() {
@@ -123,7 +128,7 @@ object AppLockManager {
             .putString(KEY_WRAPPED_VAULT_KEY, wrapped.serialize())
             .putBoolean(KEY_PIN_ENABLED, true)
 
-        editor.commit()
+        check(editor.commit()) { "storage error" }
         clearFailureState(context)
     }
 
@@ -145,16 +150,23 @@ object AppLockManager {
      */
     @Synchronized
     fun unlockWithBiometrics(context: Context, authenticatedCipher: Cipher?, vaultExists: Boolean): Boolean {
-        val key = when {
+        val stored = when {
             getPrefs(context).getString(KEY_KEK_WRAPPED_KEYS, null) != null -> {
                 val cipher = authenticatedCipher ?: return false
                 unwrapKeys(context, cipher) ?: return false
             }
             hasLegacyWrapping(context) -> migrateLegacyWrapping(context) ?: return false
             vaultExists -> return false
-            else -> CredentialCipher.generateVaultKey()
+            else -> null
         }
-        adopt(context, key)
+        val key = stored ?: CredentialCipher.generateVaultKey()
+        // A new key's only copy is the wrapped one: no vault may be written under a key that was not saved.
+        if (!persistWrappedKeys(context, key) && stored == null) {
+            key.fill(0)
+            getPrefs(context).edit().remove(KEY_KEK_WRAPPED_KEYS).commit()
+            return false
+        }
+        adopt(key)
         clearFailureState(context)
         return true
     }
@@ -199,15 +211,15 @@ object AppLockManager {
         }.getOrNull() ?: return false
 
         clearFailureState(context)
-        adopt(context, vaultKey)
+        persistWrappedKeys(context, vaultKey)
+        adopt(vaultKey)
         return true
     }
 
-    private fun adopt(context: Context, key: ByteArray) {
+    private fun adopt(key: ByteArray) {
         activeVaultKey?.fill(0)
         activeVaultKey = key
         isUnlocked = true
-        persistWrappedKeys(context)
     }
 
     private fun unwrapKeys(context: Context, authenticatedCipher: Cipher): ByteArray? {
@@ -218,10 +230,10 @@ object AppLockManager {
         }.getOrNull()
     }
 
-    private fun persistWrappedKeys(context: Context) {
-        val totpKey = activeVaultKey ?: return
+    /** Returns whether the wrapped key reached storage. */
+    private fun persistWrappedKeys(context: Context, totpKey: ByteArray): Boolean {
         val wrapped = VaultKek.wrap(serializeWrappedKeys(totpKey))
-        getPrefs(context).edit()
+        return getPrefs(context).edit()
             .putString(KEY_KEK_WRAPPED_KEYS, Base64.getEncoder().encodeToString(wrapped))
             .remove(LEGACY_BIOMETRIC_WRAPPED_VAULT_KEY)
             .remove(RETIRED_HAS_PASSWORD_VAULT_KEY)

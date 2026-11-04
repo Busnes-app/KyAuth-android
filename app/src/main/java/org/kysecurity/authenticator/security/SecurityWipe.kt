@@ -73,7 +73,9 @@ object SecurityWipe {
     fun clearPush(context: Context) {
         runCatching { UnifiedPushRegistrar.unregister(context) }
         ChannelPush.forget()
-        listOf("push", "mfa_push_challenge").forEach { runCatching { context.deleteSharedPreferences(it) } }
+        runCatching { context.deleteSharedPreferences("push") }
+        // Cleared, not deleted: deleting drops the cached prefs a window observes, and later requests would not show.
+        runCatching { context.getSharedPreferences("mfa_push_challenge", Context.MODE_PRIVATE).edit().clear().commit() }
         runCatching { context.getSystemService(NotificationManager::class.java).cancelAll() }
     }
 

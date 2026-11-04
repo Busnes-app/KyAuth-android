@@ -67,7 +67,7 @@ KyAuth open. Both are inside every boundary here. Server-side issues belong to
    vault key is wrapped by an RSA-OAEP Keystore key that needs user authentication for every
    unwrap (`security/VaultKek.kt`).
 5. **The user → KyAuth.** Biometric or device credential for every signature and every vault
-   unlock. The optional PIN is a second local factor with a wipe after five failures.
+   unlock. The optional PIN is an alternative unlock, not a second factor, with a wipe after five failures.
 
 ## Secure design principles applied
 
@@ -85,7 +85,8 @@ KyAuth open. Both are inside every boundary here. Server-side issues belong to
   and Firebase Messaging (play and github builds only), zxing (fdroid only) and the UnifiedPush
   connector (`app/build.gradle.kts`).
 - **Separation of privilege.** The vault key and the device signing key are separate Keystore keys,
-  each bound to user authentication. The optional PIN adds a second local factor.
+  each bound to user authentication. The optional PIN adds no factor: it is another way to unlock,
+  through a second copy of the vault key wrapped under PBKDF2 over the PIN.
 - **Open design.** Only published algorithms: AES-256-GCM, RSA-OAEP, ECDSA P-256 with SHA-256,
   HMAC-SHA-256, PBKDF2-HMAC-SHA-256, RFC 6238 TOTP and RFC 8291 push encryption.
 - **Psychological acceptability.** Trade-offs are written where users read them: no TOTP backup

@@ -33,7 +33,7 @@ KySecurity apps such as KyPost can sign you in through KyAuth, with one fingerpr
 
 BUILT TO STAY LOCKED
 • KyAuth locks as soon as it leaves the screen, and after a period of inactivity you choose.
-• Add an optional PIN as a second lock. After five wrong PINs, KyAuth erases its data.
+• Add an optional PIN as another way to unlock. After five wrong PINs, KyAuth erases its data.
 • Screenshots and Android backup are blocked, and KyAuth connects to your server only over HTTPS.
 • No ads and no analytics SDK. Firebase is used only to deliver sign-in requests, and you can switch to UnifiedPush instead.
 

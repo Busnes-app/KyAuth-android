@@ -12,7 +12,7 @@
     <string name="unlock_biometrics">Unlock with Biometrics</string>
     <string name="unlock_pin">Enter PIN</string>
     <string name="unpair_account">Unpair Account</string>
-    <string name="unpair_confirm">Unpair this device from KyIdentity? Your TOTP codes stay on this phone, but KyAuth shows them only while it is paired: pair again to see them.</string>
+    <string name="unpair_confirm">Unpair this device from KyIdentity? Your TOTP codes stay in KyAuth on this phone.</string>
     <string name="fcm_unavailable">Could not get a Firebase push token (%1$s). Without Google Play services, use KyAuth\'s F-Droid build from the GitHub release, which uses UnifiedPush.</string>
     <string name="unpair_required_factor">KyIdentity needs this phone as your sign-in factor, so it is still paired. Add another factor in KyIdentity first, then unpair.</string>
     <string name="unpair_not_revoked">KyIdentity did not confirm the removal, so it may still list this phone. Remove it on your KyIdentity devices page.</string>
@@ -20,7 +20,8 @@
     <string name="reset_kyauth_message">Erases every code, the PIN and the pairing on this phone. It cannot be undone. Remove this phone on your KyIdentity devices page afterwards, then pair again.</string>
     <string name="reset_kyauth_confirm">Erase everything</string>
     <string name="change_pin">Change PIN</string>
-    <string name="enable_pin">Require PIN as second factor</string>
+    <string name="enable_pin">Allow PIN unlock</string>
+    <string name="enable_pin_explained">The PIN is another way to unlock KyAuth, not an extra factor: your fingerprint or screen lock still opens KyAuth on its own.</string>
     <string name="lock_now">Lock Now</string>
     <string name="copy_code">Code copied to clipboard</string>
     <string name="no_totp_entries">No TOTP entries. Tap + to add an account.</string>
@@ -52,6 +53,10 @@
     <string name="manual_pairing_required">Server URL and Pairing Token/PIN are required</string>
     <string name="vault_locked">VAULT LOCKED</string>
     <string name="unlock_your_vault">Unlock your vault</string>
+    <string name="unlock_unpaired">Authenticate to access your codes.</string>
+    <string name="use_without_kyidentity">Use KyAuth without KyIdentity</string>
+    <string name="pair_with_kyidentity">Pair with KyIdentity</string>
+    <string name="pair_with_kyidentity_message">Not paired. Pair with KyIdentity to approve sign-in requests and sign in to suite apps. Your codes stay in Vault.</string>
     <string name="paired_to">Paired to %1$s\nAuthenticate to access your codes and sign-in approvals.</string>
     <string name="pin_retry_wait">Too many failed attempts. Try again in %1$d seconds.</string>
     <string name="pin_attempts_remaining">Failed attempt. %1$d attempts remaining before automatic data wipe.</string>

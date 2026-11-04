@@ -31,7 +31,7 @@ or a signed APK from a published [GitHub release](https://github.com/Busnes-app/
 For a GitHub APK, check the release’s certificate digest and SHA-256 provenance. KyAuth is not
 on F-Droid yet, although the repository has an F-Droid build. Keep the same channel/signer for updates.
 
-To use local TOTP, set a secure device lock, open **Vault**, scan the site’s authenticator
+To use local TOTP, set a secure device lock, tap **Use KyAuth without KyIdentity**, unlock, then on **Vault** scan the site’s authenticator
 QR or enter its setup key, and confirm a generated code at that site. Pairing KyIdentity is
 not required for this path. Save that site’s recovery codes separately: KyAuth has no
 backup, export or sync.
