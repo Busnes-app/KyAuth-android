@@ -34,8 +34,8 @@ KyAuth pairs an Android device with KyIdentity. It stores TOTP entries in an enc
   (`setUserAuthenticationRequired(true)`, per-use), as `{"totp": base64}`. Wrapping needs no prompt;
   unwrapping requires a `BiometricPrompt.CryptoObject`. A device without a secure lock screen cannot
   use KyAuth.
-- The app locks when it moves to the background. It clears in-memory TOTP data in every KyAuth
-  window and zeroes the vault key arrays; a copied code is left to its expiry (below). App lock clears and dismisses open dialogs, including unsaved
+- The app locks when it moves to the background. It clears in-memory TOTP data and zeroes the vault
+  key arrays; a copied code is left to its expiry (below). App lock clears and dismisses open dialogs, including unsaved
   forms and revealed secrets.
 - The PIN is an optional second local factor. Failed PIN attempts use delays of 0, 5, 30, and 300 seconds. The fifth failure wipes local data.
 - Release builds disable screenshots and Android backup.

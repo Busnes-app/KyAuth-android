@@ -127,8 +127,6 @@ class MainActivity : AppCompatActivity() {
     private var vaultLoadGeneration: Long? = null
     /** [totpEntries] came from a successful load; only then may it be saved. */
     private var vaultLoaded = false
-    private var loadedLockGeneration = 0L
-    private var loadedVaultVersion = 0
     private data class TotpViews(
         val entry: TotpEntry,
         val code: TextView,
@@ -144,7 +142,6 @@ class MainActivity : AppCompatActivity() {
                 lockSensitiveState()
                 renderContent()
             }
-            dropIfLockedElsewhere()
             if (!isVaultLoading && (AppLockManager.isUnlocked() || demo) && activeTab == Tab.VAULT) {
                 updateTotpViews()
             }
@@ -164,9 +161,6 @@ class MainActivity : AppCompatActivity() {
 
     companion object {
         const val EXTRA_ADD_ACCOUNT = "add_account"
-
-        /** Bumped by every vault save in this process, so a window holding an older list cannot write it back. */
-        @Volatile private var vaultVersion = 0
 
         /** One pairing or unpairing at a time in this process: either can replace or delete the device key under the other. */
         private val pairingInProgress = java.util.concurrent.atomic.AtomicBoolean(false)
@@ -279,20 +273,7 @@ class MainActivity : AppCompatActivity() {
         totpViews.clear()
     }
 
-    /** Another KyAuth window locked the vault after this one loaded it: drop this window's copy. */
-    private fun dropIfLockedElsewhere(): Boolean {
-        if (!vaultLoaded || loadedLockGeneration == AppLockManager.lockGeneration) return false
-        clearSensitiveState()
-        if (AppLockManager.isUnlocked()) runCatching { loadTotpEntries() }.onFailure {
-            lockSensitiveState()
-            toast(VAULT_UNREADABLE)
-        }
-        renderContent()
-        return true
-    }
-
     private fun recordVaultActivity(): Boolean {
-        if (dropIfLockedElsewhere()) return false
         if (!AppLockManager.isUnlocked()) return true
         if (AppLockManager.idleLock.activity(android.os.SystemClock.elapsedRealtime(), idleTimeoutMillis())) return true
         lockSensitiveState()
@@ -730,8 +711,6 @@ class MainActivity : AppCompatActivity() {
                 setTextColor(ThemeManager.color(context, R.color.ky_heading))
                 setPadding(0, 8, 0, 8)
                 setOnClickListener {
-                    // Accessibility clicks skip dispatchTouchEvent: check the shared lock here too.
-                    if (dropIfLockedElsewhere() || !(AppLockManager.isUnlocked() || demo)) return@setOnClickListener
                     val current = TotpDisplay.state(entry, System.currentTimeMillis() / 1000, getString(R.string.totp_code_unavailable))
                     val code = current.code ?: return@setOnClickListener
                     val clipboard = getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
@@ -774,7 +753,7 @@ class MainActivity : AppCompatActivity() {
             }
 
             card.setOnLongClickListener {
-                if (!dropIfLockedElsewhere() && (AppLockManager.isUnlocked() || demo)) showEditOrDeleteTotpDialog(entry)
+                showEditOrDeleteTotpDialog(entry)
                 true
             }
             cards.add(card)
@@ -1037,13 +1016,6 @@ class MainActivity : AppCompatActivity() {
                             notes = notes,
                         )
                     }.onSuccess { updated ->
-                        // Another window changed or deleted this account after the editor opened: never write the old form back.
-                        if (totpEntries.firstOrNull { it.id == entry.id } != entry) {
-                            toast("This account changed in another KyAuth window. Open it again to edit it.")
-                            dialog?.dismiss()
-                            renderContent()
-                            return@setOnClickListener
-                        }
                         val idx = totpEntries.indexOfFirst { it.id == entry.id }
                         if (idx >= 0) {
                             totpEntries[idx] = updated
@@ -1152,12 +1124,8 @@ class MainActivity : AppCompatActivity() {
     private fun loadTotpEntries() {
         if (demo) return
         val vaultKey = AppLockManager.getVaultKey() ?: return
-        val generation = AppLockManager.lockGeneration
-        val version = vaultVersion
         totpEntries = TotpVault.load(vaultFile, vaultKey).toMutableList()
         vaultLoaded = true
-        loadedLockGeneration = generation
-        loadedVaultVersion = version
         pendingTotpEntry?.let {
             pendingTotpEntry = null
             totpEntries.add(it)
@@ -1165,10 +1133,7 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
-    /**
-     * Writes the list and returns true. If the write fails, or another KyAuth window saved since
-     * this one loaded, nothing is written: the list on disk is shown again and false is returned.
-     */
+    /** Writes the list and returns true. If the write fails, the list on disk is shown again and false is returned. */
     private fun saveTotpEntries(): Boolean {
         if (demo) return true
         val vaultKey = AppLockManager.getVaultKey()
@@ -1176,14 +1141,8 @@ class MainActivity : AppCompatActivity() {
             toast("TOTP vault is not open. The change was not saved.")
             return false
         }
-        val failure = if (loadedVaultVersion != vaultVersion) "The vault changed in another KyAuth window. The change was not saved; try again."
-            else runCatching { TotpVault.save(vaultFile, vaultKey, totpEntries) }.exceptionOrNull()
-                ?.let { "The change was not saved: ${it.message ?: "storage error"}" }
-        if (failure == null) {
-            loadedVaultVersion = ++vaultVersion
-            return true
-        }
-        toast(failure)
+        val failure = runCatching { TotpVault.save(vaultFile, vaultKey, totpEntries) }.exceptionOrNull() ?: return true
+        toast("The change was not saved: ${failure.message ?: "storage error"}")
         runCatching { loadTotpEntries() }.onFailure { lockSensitiveState() }
         return false
     }
@@ -1819,8 +1778,7 @@ class MainActivity : AppCompatActivity() {
                     check(unlock())
                 }
                 val totpKey = checkNotNull(AppLockManager.getVaultKey())
-                val version = vaultVersion
-                TotpVault.load(vaultFile, totpKey) to version
+                TotpVault.load(vaultFile, totpKey)
             }
             runOnUiThread {
                 if (vaultLoadGeneration != generation) return@runOnUiThread
@@ -1834,11 +1792,9 @@ class MainActivity : AppCompatActivity() {
                     onError()
                     return@runOnUiThread
                 }
-                result.onSuccess { (totp, version) ->
+                result.onSuccess { totp ->
                     totpEntries = totp.toMutableList()
                     vaultLoaded = true
-                    loadedLockGeneration = generation
-                    loadedVaultVersion = version
                     pendingTotpEntry?.let { entry ->
                         pendingTotpEntry = null
                         if (!addTotpEntry(entry)) toast("Could not save the scanned account. Scan it again.")
@@ -2273,11 +2229,6 @@ class MainActivity : AppCompatActivity() {
 
     private fun lockSensitiveState() {
         AppLockManager.lock()
-        clearSensitiveState()
-    }
-
-    /** Drops this window's decrypted entries, views and dialogs, without touching the shared lock. */
-    private fun clearSensitiveState() {
         isVaultLoading = false
         vaultLoadGeneration = null
         vaultLoaded = false
