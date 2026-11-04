@@ -382,6 +382,7 @@ class MainActivity : AppCompatActivity() {
 
     private fun requestPairing() {
         pairingRequested = true
+        pairingError = null
         renderContent()
         prepareUnifiedPushForPairing()
     }
@@ -489,8 +490,8 @@ class MainActivity : AppCompatActivity() {
                                     attestationChain = key.attestationChain,
                                 )
                             }
-                            // Lands in the window now on screen: this one may have been recreated meanwhile.
-                            runOnUiThread { with(currentWindow() ?: this@MainActivity) {
+                            // Lands in this window, or the one now on screen if this one was recreated meanwhile.
+                            runOnUiThread { with(this@MainActivity.takeUnless { it.isFinishing || it.isDestroyed } ?: currentWindow() ?: this@MainActivity) {
                                 pairingInProgress.set(false)
                                 val shown = !isFinishing && !isDestroyed // false only when every window has gone
                                 result.onSuccess { account ->

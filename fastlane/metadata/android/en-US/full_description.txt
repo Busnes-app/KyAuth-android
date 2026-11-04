@@ -11,7 +11,7 @@ SIGN-IN APPROVALS
 
 ONE-TIME CODES
 • Add accounts by scanning a QR code or typing the secret key, with an optional website and notes.
-• Codes are generated on the phone and stored in an encrypted vault that opens only with your biometrics or screen lock.
+• Codes are generated on the phone and stored in an encrypted vault that opens only with your biometrics, screen lock or, if you set one, KyAuth's PIN.
 • Tap a code to copy it. The copy is marked sensitive and is cleared when the code expires, if it is still on the clipboard; after you switch apps, when you next return to KyAuth.
 
 SIGN IN TO SUITE APPS
