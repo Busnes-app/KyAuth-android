@@ -47,7 +47,7 @@ class TotpVaultTest {
     }
 
     @Test fun `legacy weak records survive loading and metadata edits alongside strong records`() {
-        val mixed = entries + TotpEntry("Strong", "GEZDGNBVGY3TQOJQGEZDGNBVGY3TQOJQ")
+        val mixed = listOf(TotpEntry("Legacy", "JBSWY3DPEHPK3PX")) + entries + TotpEntry("Strong", "GEZDGNBVGY3TQOJQGEZDGNBVGY3TQOJQ")
         TotpVault.save(file, key, mixed)
         val loaded = TotpVault.load(file, key)
         assertEquals(mixed, loaded)

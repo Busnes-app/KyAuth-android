@@ -3,6 +3,7 @@ package org.kysecurity.authenticator.totp
 data class TotpDisplayState(
     val code: String?, val formattedCode: String, val remainingSeconds: Long,
     val requiresReenrolment: Boolean,
+    val shortKey: Boolean = false,
 )
 
 object TotpDisplay {
@@ -15,6 +16,7 @@ object TotpDisplay {
             else -> code
         }
         return TotpDisplayState(code, formatted, TotpGenerator.secondsRemaining(entry, nowEpochSeconds),
-            result.exceptionOrNull() is WeakTotpSecretException)
+            result.exceptionOrNull() is WeakTotpSecretException,
+            code != null && TotpGenerator.isShortSecret(entry.secretBase32))
     }
 }

@@ -30,9 +30,13 @@ object TotpGenerator {
         decodeStrongSecret(secretBase32)
     }
 
+    /** True for an accepted key below RFC 4226's 128 bits: the issuer chose it, so it works with a warning. */
+    fun isShortSecret(secretBase32: String): Boolean =
+        runCatching { base32Decode(secretBase32).size < RECOMMENDED_SECRET_BYTES }.getOrDefault(false)
+
     private fun decodeStrongSecret(secretBase32: String): ByteArray = base32Decode(secretBase32).also {
-        // RFC 4226 section 4 requires at least 128 bits, even when a different HMAC is selected.
-        if (it.size < 16) throw WeakTotpSecretException()
+        // RFC 4226's 128 bits bind the issuer; the issuer picks the length, so 80-bit keys are accepted.
+        if (it.size < MIN_SECRET_BYTES) throw WeakTotpSecretException()
     }
 
     /**
@@ -63,6 +67,8 @@ object TotpGenerator {
         return output.toByteArray()
     }
 
+    private const val MIN_SECRET_BYTES = 10
+    private const val RECOMMENDED_SECRET_BYTES = 16
     private const val BASE32 = "ABCDEFGHIJKLMNOPQRSTUVWXYZ234567"
     private val POW10 = intArrayOf(1, 10, 100, 1_000, 10_000, 100_000, 1_000_000, 10_000_000, 100_000_000)
 }

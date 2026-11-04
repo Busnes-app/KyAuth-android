@@ -54,11 +54,16 @@ class TotpUriParserTest {
     }
 
     @Test
-    fun rejectsImportsBelow128BitsIncludingLegacyExamples() {
-        for (secret in listOf("AA", "JBSWY3DPEHPK3PXP", "GEZDGNBVGY3TQOJQGEZDGNBV")) {
+    fun rejectsImportsBelow80Bits() {
+        for (secret in listOf("AA", "JBSWY3DPEHPK3PX")) {
             assertThrows(IllegalArgumentException::class.java) {
                 TotpUriParser.parse("otpauth://totp/Acme?secret=$secret")
             }
         }
+    }
+
+    @Test
+    fun acceptsAnIssuers80BitKey() {
+        assertEquals("JBSWY3DPEHPK3PXP", TotpUriParser.parse("otpauth://totp/Acme?secret=JBSWY3DPEHPK3PXP").secretBase32)
     }
 }

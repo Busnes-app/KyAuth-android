@@ -95,7 +95,7 @@ class VaultTabTest {
         val file = File(context.filesDir, "totp_vault.bin")
         val before = if (file.exists()) file.readBytes() else null
         val key = ByteArray(32) { 9 }
-        val legacy = TotpEntry("Legacy fixture", " jbsw y3dp ehpk 3pxp ", notes = "Retained notes", id = "legacy-fixture")
+        val legacy = TotpEntry("Legacy fixture", " jbsw y3dp ehpk 3px ", notes = "Retained notes", id = "legacy-fixture")
         val strong = TotpEntry("Strong fixture", "GEZDGNBVGY3TQOJQGEZDGNBVGY3TQOJQ", id = "strong-fixture")
         try {
             TotpVault.save(file, key, listOf(legacy, strong))

@@ -710,6 +710,7 @@ class MainActivity : AppCompatActivity() {
 
             card.addView(codeView)
             card.addView(timerView)
+            if (display.shortKey) card.addView(statusMessage(Status.WARNING, getString(R.string.totp_short_key), size = 13f))
             val progressView = ProgressBar(this, null, android.R.attr.progressBarStyleHorizontal).apply {
                 visibility = if (display.code == null) View.GONE else View.VISIBLE
                 progressTintList = ColorStateList.valueOf(ThemeManager.color(context, R.color.ky_cyan))

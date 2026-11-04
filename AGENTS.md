@@ -21,9 +21,11 @@ KyAuth pairs an Android device with KyIdentity. It stores TOTP entries in an enc
   and says so, and `saveTotpEntries` refuses to write a list that did not come from a successful
   load. The KDBX vault was replaced with no migration: its `totp_vault.kdbx` is deleted on load.
 - The TOTP vault uses an app-private file and an independent random vault key.
-- New QR/manual enrolments and replacement secrets require at least 16 decoded
-  bytes (RFC 4226's 128-bit minimum). Code generation enforces the same floor for
-  every HMAC algorithm. `TotpEntry` keeps structural validation so old weak vault
+- New QR/manual enrolments and replacement secrets require at least 10 decoded
+  bytes (80 bits). Code generation enforces the same floor for every HMAC algorithm.
+  Keys of 10-15 bytes work and their card shows a short-key warning: the issuer
+  chooses the length, and RFC 4226's 128-bit minimum binds the issuer (owner
+  decision, KyAuth-iOS Q1 B). `TotpEntry` keeps structural validation so old weak vault
   records still load; never discard or rewrite them to satisfy the key policy.
   Their cards show re-enrolment guidance with no code/copy countdown. Metadata edits
   preserve the unchanged secret byte-for-byte; changing it requires a strong issuer

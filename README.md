@@ -36,12 +36,15 @@ QR or enter its setup key, and confirm a generated code at that site. Pairing Ky
 not required for this path. Save that site’s recovery codes separately: KyAuth has no
 backup, export or sync.
 
-Setup keys must contain at least 128 bits (16 bytes after Base32 decoding), as
-required by RFC 4226. A short key is refused when scanned, added or substituted.
-An older entry with a short key stays in the vault with its name, website, notes
-and original secret, but shows **Unavailable** and instructions to set up two-step
-verification again with the account provider. Long-press it to edit its details;
-unchanged legacy secrets can be retained while you arrange a replacement.
+Setup keys must contain at least 80 bits (10 bytes after Base32 decoding). The
+service chooses the key length, and RFC 4226's 128-bit minimum is a requirement on
+the service, so a key of 80 to 127 bits (such as a 16-character Base32 key) is
+accepted and its card shows its codes with a short-key warning. A key under 80 bits
+is refused when scanned, added or substituted. An older entry with such a key stays
+in the vault with its name, website, notes and original secret, but shows
+**Unavailable** and instructions to set up two-step verification again with the
+account provider. Long-press it to edit its details; unchanged legacy secrets can
+be retained while you arrange a replacement.
 Use the provider's recovery/sign-in process to get a new authenticator setup and
 confirm its code there. Do not pad, extend or otherwise change a secret on your
 own: it must match the provider. No records are automatically deleted or migrated.
