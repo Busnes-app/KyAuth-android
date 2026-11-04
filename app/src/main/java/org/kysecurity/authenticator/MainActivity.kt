@@ -143,12 +143,7 @@ class MainActivity : AppCompatActivity() {
                 lockSensitiveState()
                 renderContent()
             }
-            // Another KyAuth window locked the vault after this one loaded it: drop this window's copy.
-            if (vaultLoaded && loadedLockGeneration != AppLockManager.lockGeneration) {
-                clearSensitiveState()
-                if (AppLockManager.isUnlocked()) runCatching { loadTotpEntries() }
-                renderContent()
-            }
+            dropIfLockedElsewhere()
             if (!isVaultLoading && (AppLockManager.isUnlocked() || demo) && activeTab == Tab.VAULT) {
                 updateTotpViews()
             }
@@ -172,7 +167,7 @@ class MainActivity : AppCompatActivity() {
         /** Bumped by every vault save in this process, so a window holding an older list cannot write it back. */
         @Volatile private var vaultVersion = 0
 
-        /** One pairing at a time in this process: a second one would replace the device key under the first. */
+        /** One pairing or unpairing at a time in this process: either can replace or delete the device key under the other. */
         private val pairingInProgress = java.util.concurrent.atomic.AtomicBoolean(false)
         private val TWO_DIGITS = Regex("\\d{2}")
     }
@@ -283,7 +278,20 @@ class MainActivity : AppCompatActivity() {
         totpViews.clear()
     }
 
+    /** Another KyAuth window locked the vault after this one loaded it: drop this window's copy. */
+    private fun dropIfLockedElsewhere(): Boolean {
+        if (!vaultLoaded || loadedLockGeneration == AppLockManager.lockGeneration) return false
+        clearSensitiveState()
+        if (AppLockManager.isUnlocked()) runCatching { loadTotpEntries() }.onFailure {
+            lockSensitiveState()
+            toast(VAULT_UNREADABLE)
+        }
+        renderContent()
+        return true
+    }
+
     private fun recordVaultActivity(): Boolean {
+        if (dropIfLockedElsewhere()) return false
         if (!AppLockManager.isUnlocked()) return true
         if (AppLockManager.idleLock.activity(android.os.SystemClock.elapsedRealtime(), idleTimeoutMillis())) return true
         lockSensitiveState()
@@ -392,7 +400,7 @@ class MainActivity : AppCompatActivity() {
                     reason = "Pair with $host",
                     onSuccess = {
                         if (!pairingInProgress.compareAndSet(false, true)) {
-                            error.text = "Pairing is already in progress."
+                            error.text = "Pairing or unpairing is already in progress."
                             return@authenticateWithBiometrics
                         }
                         triggerBtn?.isEnabled = false
@@ -1026,6 +1034,13 @@ class MainActivity : AppCompatActivity() {
                             notes = notes,
                         )
                     }.onSuccess { updated ->
+                        // Another window changed or deleted this account after the editor opened: never write the old form back.
+                        if (totpEntries.firstOrNull { it.id == entry.id } != entry) {
+                            toast("This account changed in another KyAuth window. Open it again to edit it.")
+                            dialog?.dismiss()
+                            renderContent()
+                            return@setOnClickListener
+                        }
                         val idx = totpEntries.indexOfFirst { it.id == entry.id }
                         if (idx >= 0) {
                             totpEntries[idx] = updated
@@ -1143,7 +1158,7 @@ class MainActivity : AppCompatActivity() {
         pendingTotpEntry?.let {
             pendingTotpEntry = null
             totpEntries.add(it)
-            saveTotpEntries()
+            if (!saveTotpEntries()) toast("Could not save the scanned account. Scan it again.")
         }
     }
 
@@ -1345,12 +1360,12 @@ class MainActivity : AppCompatActivity() {
     private fun refreshPush(account: PairedAccount, credential: PushCredential) {
         val issuedAt = System.currentTimeMillis()
         val message = runCatching { PushRefreshClient.message(account.serverUrl, account.deviceId, issuedAt, credential) }
-            .getOrElse { return toast("This pairing cannot reconnect. Pair KyAuth again.") }
+            .getOrElse { return toast("This pairing cannot reconnect. Unpair KyAuth, then pair it again.") }
         val signature = runCatching { DeviceSigningKey.initSignature() }
-            .getOrElse { return toast("Unable to use the device key. Pair KyAuth again.") }
+            .getOrElse { return toast("Unable to use the device key. Unpair KyAuth, then pair it again.") }
         VaultUnlockPrompt.showForSignature(this, "Reconnect sign-in requests", signature, onAuthenticated = { authenticated ->
             val signed = runCatching { DeviceSigningKey.sign(message, authenticated) }
-                .getOrElse { return@showForSignature toast("Unable to use the device key. Pair KyAuth again.") }
+                .getOrElse { return@showForSignature toast("Unable to use the device key. Unpair KyAuth, then pair it again.") }
             Thread {
                 val result = PushRefreshClient().refresh(account.serverUrl, account.deviceId, credential, issuedAt, signed)
                 runOnUiThread {
@@ -1404,7 +1419,7 @@ class MainActivity : AppCompatActivity() {
                 challenge.challengeId, challenge.purpose, challenge.expiresAtEpochMs, approve, digits,
             )
         }.getOrElse {
-            Toast.makeText(this, "This pairing cannot answer the request. Pair KyAuth again.", Toast.LENGTH_LONG).show()
+            Toast.makeText(this, "This pairing cannot answer the request. Unpair KyAuth, then pair it again.", Toast.LENGTH_LONG).show()
             return
         }
         val unauthorized = "Unable to authorize this request. Use your fingerprint or re-pair KyAuth."
@@ -1823,7 +1838,7 @@ class MainActivity : AppCompatActivity() {
                     loadedVaultVersion = version
                     pendingTotpEntry?.let { entry ->
                         pendingTotpEntry = null
-                        addTotpEntry(entry)
+                        if (!addTotpEntry(entry)) toast("Could not save the scanned account. Scan it again.")
                     }
                     renderContent()
                 }.onFailure {
@@ -2183,23 +2198,30 @@ class MainActivity : AppCompatActivity() {
 
     /** One prompt signs the revoke. Only KyIdentity refusing to drop a required factor keeps the pairing. */
     private fun unpairIdentity(account: PairedAccount) {
+        // A re-pair can keep the device id, so the key is what names this pairing.
+        val key = DeviceSigningKey.existingPublicKeyBase64()
         val issuedAt = System.currentTimeMillis()
         val message = runCatching { DeviceRevokeClient.message(account.serverUrl, account.deviceId, issuedAt) }.getOrNull()
         val signature = message?.let { runCatching { DeviceSigningKey.initSignature() }.getOrNull() }
-        if (message == null || signature == null) return finishUnpair(DeviceRevokeClient.Outcome.FAILED, account)
+        if (message == null || signature == null) return finishUnpair(DeviceRevokeClient.Outcome.FAILED, account, key)
         VaultUnlockPrompt.showForSignature(this, "Unpair from KyIdentity", signature, onAuthenticated = { authenticated ->
             val signed = runCatching { DeviceSigningKey.sign(message, authenticated) }.getOrNull()
-                ?: return@showForSignature finishUnpair(DeviceRevokeClient.Outcome.FAILED, account)
+                ?: return@showForSignature finishUnpair(DeviceRevokeClient.Outcome.FAILED, account, key)
+            if (!pairingInProgress.compareAndSet(false, true)) return@showForSignature toast("Pairing or unpairing is already in progress.")
             Thread {
                 val outcome = DeviceRevokeClient.revoke(account.serverUrl, account.deviceId, issuedAt, signed)
-                runOnUiThread { finishUnpair(outcome, account) }
+                runOnUiThread {
+                    pairingInProgress.set(false)
+                    finishUnpair(outcome, account, key)
+                }
             }.start()
         }, onFailed = { toast("Unlock required: $it") })
     }
 
-    private fun finishUnpair(outcome: DeviceRevokeClient.Outcome, account: PairedAccount) {
+    private fun finishUnpair(outcome: DeviceRevokeClient.Outcome, account: PairedAccount, key: String?) {
         // An answer that arrives after this pairing was already removed or replaced must not delete the current key.
         if (runCatching { store.account()?.deviceId }.getOrNull() != account.deviceId) return
+        if (key != DeviceSigningKey.existingPublicKeyBase64()) return
         if (outcome != DeviceRevokeClient.Outcome.REQUIRED_FACTOR) {
             SecurityWipe.clearPush(this)
             DeviceSigningKey.deleteKey()

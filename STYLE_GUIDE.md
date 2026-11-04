@@ -45,7 +45,7 @@ Danger, warning and success come from the active half (`ky_danger`, `ky_warning`
 - Give codes and countdowns tabular figures (`fontFeatureSettings = "tnum"`) so they don't shift as digits change.
 - Write labels, titles and captions in sentence case. No ALL-CAPS tracked labels.
 - Keep button labels readable at large system font sizes.
-- Mark copied OTP codes as sensitive and clear the app-owned clipboard entry on lock or expiry.
+- Mark copied OTP codes as sensitive and clear the app-owned clipboard entry when its code expires.
 
 ## Native behavior
 

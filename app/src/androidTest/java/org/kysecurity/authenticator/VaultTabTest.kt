@@ -421,11 +421,38 @@ class VaultTabTest {
             ActivityScenario.launch(MainActivity::class.java).use { scenario ->
                 scenario.onActivity { assertTrue(texts(it.window.decorView).contains(entry.title)) }
                 InstrumentationRegistry.getInstrumentation().runOnMainSync { AppLockManager.lock() }
-                android.os.SystemClock.sleep(1_500) // one ticker period
                 scenario.onActivity { activity ->
+                    // The next touch, before any ticker run, must already find nothing to act on.
+                    val now = android.os.SystemClock.uptimeMillis()
+                    val down = android.view.MotionEvent.obtain(now, now, android.view.MotionEvent.ACTION_DOWN, 1f, 1f, 0)
+                    assertTrue(activity.dispatchTouchEvent(down))
+                    down.recycle()
                     assertFalse(texts(activity.window.decorView).contains(entry.title))
                     val held = MainActivity::class.java.getDeclaredField("totpEntries").apply { isAccessible = true }.get(activity)
                     assertTrue((held as List<*>).isEmpty())
+                }
+            }
+        }
+    }
+
+    // An editor opened before another window changed its account must not write its old form back on retry.
+    @Test fun anEditorOpenedBeforeAnotherWindowsChangeCannotRestoreTheOldSecret() {
+        val original = TotpEntry("Editor fixture", "GEZDGNBVGY3TQOJQGEZDGNBVGY3TQOJQ", id = "editor-fixture")
+        val replaced = original.copy(secretBase32 = "JBSWY3DPEHPK3PXPJBSWY3DPEHPK3PXP")
+        withVault(listOf(original)) { file, key ->
+            ActivityScenario.launch(MainActivity::class.java).use { scenario ->
+                scenario.onActivity { activity ->
+                    MainActivity::class.java.getDeclaredMethod("showEditTotpDialog", TotpEntry::class.java)
+                        .apply { isAccessible = true }.invoke(activity, original)
+                    val open = dialog(activity)
+                    TotpVault.save(file, key, listOf(replaced))
+                    MainActivity::class.java.getDeclaredField("vaultVersion").apply { isAccessible = true }
+                        .let { it.setInt(null, it.getInt(null) + 1) }
+                    val save = views(checkNotNull(open.window).decorView).filterIsInstance<Button>().single { it.text.toString() == "Save" }
+                    save.performClick() // refused: this window's list is older; it reloads
+                    save.performClick() // refused: the reloaded account is not the one this editor opened
+                    assertFalse(open.isShowing)
+                    assertEquals(listOf(replaced), TotpVault.load(file, key))
                 }
             }
         }
