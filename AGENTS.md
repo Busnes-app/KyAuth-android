@@ -18,7 +18,7 @@ KyAuth pairs an Android device with KyIdentity. It stores TOTP entries in an enc
   (fresh per save) || AES-256-GCM ciphertext and 16-byte tag over a JSON array of every
   `TotpEntry` field; AAD is UTF-8 `kyauth-totp-v1` || version. Writes are atomic. A missing file
   is an empty vault; any other unreadable file throws `TotpVaultException`, KyAuth stays locked
-  and says so, and `saveTotpEntries` refuses to write a list that did not come from a successful
+  and says so, and `changeTotpEntries` refuses to write a list that did not come from a successful
   load. The KDBX vault was replaced with no migration: its `totp_vault.kdbx` is deleted on load.
 - The TOTP vault uses an app-private file and an independent random vault key.
 - New QR/manual enrolments and replacement secrets require at least 10 decoded

@@ -121,14 +121,21 @@ object AppLockManager {
         val vaultKey = checkNotNull(activeVaultKey) { "No vault key to protect with a PIN" }
         val wrapped = CredentialCipher.wrap(vaultKey, CredentialCipher.deriveKey(pin, vaultSalt))
 
-        val editor = getPrefs(context).edit()
+        val prefs = getPrefs(context)
+        val previous = listOf(KEY_PIN_HASH, KEY_PIN_SALT, KEY_VAULT_SALT, KEY_WRAPPED_VAULT_KEY).associateWith { prefs.getString(it, null) }
+        val wasEnabled = prefs.getBoolean(KEY_PIN_ENABLED, false)
+        val editor = prefs.edit()
             .putString(KEY_PIN_HASH, pinHash)
             .putString(KEY_PIN_SALT, Base64.getEncoder().encodeToString(pinSalt))
             .putString(KEY_VAULT_SALT, Base64.getEncoder().encodeToString(vaultSalt))
             .putString(KEY_WRAPPED_VAULT_KEY, wrapped.serialize())
             .putBoolean(KEY_PIN_ENABLED, true)
 
-        check(editor.commit()) { "storage error" }
+        if (!editor.commit()) {
+            // A failed commit still changed the in-memory prefs; the next write would persist a PIN the user was told was not saved.
+            prefs.edit().apply { previous.forEach { (key, value) -> putString(key, value) } }.putBoolean(KEY_PIN_ENABLED, wasEnabled).commit()
+            error("storage error")
+        }
         clearFailureState(context)
     }
 

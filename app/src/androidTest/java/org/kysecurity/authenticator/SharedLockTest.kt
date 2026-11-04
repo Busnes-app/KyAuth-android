@@ -135,6 +135,18 @@ class SharedLockTest {
         assertTrue(dialog.isShowing)
     }
 
+    @Suppress("UNCHECKED_CAST")
+    @Test fun anOlderEditorKeepsASecretChangedInAnotherWindow() = twoOpenWindows { _, b ->
+        call(b, "showEditTotpDialog", TotpEntry::class.java to x) // opened before the other window's change
+        val changed = x.copy(secretBase32 = "JBSWY3DPEHPK3PXPJBSWY3DPEHPK3PXP")
+        TotpVault.save(file, key, listOf(changed))
+        val dialog = (MainActivity::class.java.getDeclaredField("openDialogs").apply { isAccessible = true }.get(b) as Set<AlertDialog>).single()
+        val notes = find(checkNotNull(dialog.window).decorView) { it is android.widget.EditText && it.hint.toString() == "Notes (optional)" } as android.widget.EditText
+        notes.setText("Only the notes changed")
+        (find(checkNotNull(dialog.window).decorView) { it is Button && it.text.toString() == "Save" } as Button).performClick()
+        assertEquals(listOf(changed.copy(notes = "Only the notes changed")), TotpVault.load(file, key))
+    }
+
     private fun find(view: View, match: (View) -> Boolean): View? = when {
         match(view) -> view
         view is ViewGroup -> (0 until view.childCount).firstNotNullOfOrNull { find(view.getChildAt(it), match) }

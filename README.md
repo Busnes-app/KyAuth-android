@@ -71,7 +71,7 @@ With UnifiedPush, KyIdentity sends sign-in requests straight to your own distrib
 [ntfy](https://ntfy.sh), with no Google relay in between. Requests are end-to-end encrypted
 (RFC 8291): the distributor sees when a request is sent, never what it says.
 
-On F-Droid, install a distributor before pairing; KyAuth asks you to pick one when it opens.
+On F-Droid, install a distributor before pairing; KyAuth asks you to pick one when it shows the pairing screen.
 On Play and GitHub builds, switch in **Settings → Sign-in request delivery**.
 
 A distributor on your LAN (a private IP) needs `KYIDENTITY_ALLOW_PRIVATE_CALLBACKS=true` on the
@@ -90,7 +90,9 @@ KyIdentity server. It is off by default.
   lose it, you lose them. Recover KyIdentity access with your recovery codes or an admin MFA
   reset, and keep each site's own recovery codes.
 - **It locks itself.** KyAuth locks when it leaves the screen and after idle time (5 minutes by
-  default, set in Settings). A copied code clears from the clipboard when it expires.
+  default, set in Settings). A copied code clears from the clipboard when it expires, if it is
+  still there; after you switch apps, when you next return to KyAuth (Android hides the clipboard
+  from apps in the background).
 - **Five wrong PINs wipe it.** After the fifth failed PIN, KyAuth erases its local data and keys.
 - **Release builds** block screenshots, disable Android backup, and refuse plain HTTP.
 

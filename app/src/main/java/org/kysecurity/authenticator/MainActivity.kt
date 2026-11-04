@@ -246,6 +246,7 @@ class MainActivity : AppCompatActivity() {
         PendingAddAccount.take(intent.getStringExtra(EXTRA_ADD_ACCOUNT))?.let { addAccountResponse = it }
         windows.add(this)
         AppLockManager.onLock = { clearEveryWindow() }
+        onBackPressedDispatcher.addCallback(this, backFromPairing)
         IncomingPush.ensureChannel(this)
         handler.post(ticker)
         // A request answered by the activity this one replaced, or a new push, shows up without a resume.
@@ -356,7 +357,16 @@ class MainActivity : AppCompatActivity() {
             else -> renderDashboard(root, account)
         }
 
+        backFromPairing.isEnabled = !demo && pairingRequested && account == null
         setRootContentView(root)
+    }
+
+    /** Back from "Pair with KyIdentity" returns to the vault; enabled only while that enrolment shows. */
+    private val backFromPairing = object : androidx.activity.OnBackPressedCallback(false) {
+        override fun handleOnBackPressed() {
+            pairingRequested = false
+            renderContent()
+        }
     }
 
     /** Paired, or an unpaired phone that keeps a vault or chose to use KyAuth without KyIdentity. */
@@ -378,7 +388,7 @@ class MainActivity : AppCompatActivity() {
 
     private fun showPairingError(message: String) {
         pairingError = message
-        renderContent()
+        if (!isDestroyed) renderContent()
     }
 
     // ==========================================
@@ -482,19 +492,21 @@ class MainActivity : AppCompatActivity() {
                             // Lands in the window now on screen: this one may have been recreated meanwhile.
                             runOnUiThread { with(currentWindow() ?: this@MainActivity) {
                                 pairingInProgress.set(false)
+                                val shown = !isFinishing && !isDestroyed // false only when every window has gone
                                 result.onSuccess { account ->
                                     clearPendingChallenge()
                                     store.save(account)
                                     push?.let { pushStore.markRegistered(it) }
                                     runCatching { KyIdentityAccount.sync(this, account) }
                                     pairingRequested = false
-                                    if (answerAddAccountIfPossible()) return@onSuccess
-                                    if (AppLockManager.isUnlocked()) renderContent() else unlockWithPrompt()
+                                    if (answerAddAccountIfPossible() || !shown) return@onSuccess
+                                    renderContent()
+                                    if (!AppLockManager.isUnlocked()) unlockWithPrompt()
                                 }.onFailure {
                                     if (!keyReplaced) return@onFailure showPairingError(it.message ?: "Pairing failed")
                                     // The old key is gone, so the saved pairing cannot sign anything.
                                     clearPairing()
-                                    AlertDialog.Builder(this)
+                                    if (shown) AlertDialog.Builder(this)
                                         .setTitle(getString(R.string.pairing_title))
                                         .setMessage(getString(R.string.pairing_failed_key_replaced, (it.message ?: "unknown error").trimEnd('.')))
                                         .setPositiveButton("OK", null)
@@ -1076,19 +1088,22 @@ class MainActivity : AppCompatActivity() {
                 val url = urlInput.text.toString().trim().ifBlank { null }
                 val notes = notesInput.text.toString().trim().ifBlank { null }
                 if (title.isNotBlank() && secret.isNotBlank()) {
+                    val secretChanged = secret != entry.secretBase32
                     runCatching {
-                        if (secret != entry.secretBase32) TotpGenerator.requireStrongSecret(secret)
-                        entry.copy(
-                            title = title,
-                            secretBase32 = secret,
-                            url = url,
-                            notes = notes,
-                        )
-                    }.onSuccess { updated ->
+                        if (secretChanged) TotpGenerator.requireStrongSecret(secret)
+                        entry.copy(title = title, secretBase32 = secret, url = url, notes = notes)
+                    }.onSuccess {
                         val saved = changeTotpEntries { entries ->
                             val idx = entries.indexOfFirst { it.id == entry.id }
                             check(idx >= 0) { "the account was deleted in another KyAuth window" }
-                            entries[idx] = updated
+                            // Onto the record as stored now: another window may have changed it since this form opened.
+                            val current = entries[idx]
+                            entries[idx] = current.copy(
+                                title = title,
+                                secretBase32 = if (secretChanged) secret else current.secretBase32,
+                                url = url,
+                                notes = notes,
+                            )
                         }
                         renderContent()
                         if (saved) dialog?.dismiss()

@@ -105,6 +105,11 @@ class UnpairedVaultTest {
                 assertTrue(texts(activity.window.decorView).contains("Connect your account"))
                 button(activity.window.decorView, activity.getString(R.string.use_without_kyidentity)).performClick()
                 assertTrue(texts(activity.window.decorView).contains(activity.getString(R.string.pair_with_kyidentity)))
+
+                // Back leaves the pairing screen for the vault, as the button does.
+                button(activity.window.decorView, activity.getString(R.string.pair_with_kyidentity)).performClick()
+                activity.onBackPressedDispatcher.onBackPressed()
+                assertTrue(texts(activity.window.decorView).contains(activity.getString(R.string.pair_with_kyidentity)))
             }
         }
     }
