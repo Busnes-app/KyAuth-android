@@ -457,4 +457,24 @@ class VaultTabTest {
             }
         }
     }
+
+    // An accessibility click calls the code's click listener without dispatchTouchEvent.
+    @Test fun accessibilityClickAfterAnotherWindowsLockCopiesNothing() {
+        val entry = TotpEntry("Accessibility fixture", "GEZDGNBVGY3TQOJQGEZDGNBVGY3TQOJQ", id = "a11y-fixture")
+        withVault(listOf(entry)) { _, _ ->
+            ActivityScenario.launch(MainActivity::class.java).use { scenario ->
+                awaitWindowFocus(scenario) // clipboard reads need window focus
+                scenario.onActivity { activity ->
+                    val code = views(activity.window.decorView).filterIsInstance<TextView>()
+                        .single { it.isClickable && it.text.matches(Regex("\\d{3} \\d{3}")) }
+                    val clipboard = activity.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
+                    clipboard.setPrimaryClip(ClipData.newPlainText("Fixture", "unchanged"))
+                    AppLockManager.lock() // what another window's Lock does
+                    code.performAccessibilityAction(android.view.accessibility.AccessibilityNodeInfo.ACTION_CLICK, null)
+                    assertEquals("unchanged", clipboard.primaryClip?.getItemAt(0)?.text.toString())
+                    assertFalse(texts(activity.window.decorView).contains(entry.title))
+                }
+            }
+        }
+    }
 }

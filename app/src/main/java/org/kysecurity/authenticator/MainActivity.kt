@@ -94,6 +94,7 @@ import kotlin.math.min
 
 private const val STATE_ACTIVE_TAB = "active_tab"
 private const val STATE_DEMO = "demo"
+private const val ACCOUNT_BUSY = "Pairing or unpairing is already in progress."
 private const val VAULT_UNREADABLE = "The TOTP vault could not be read. KyAuth stays locked and has not changed it."
 
 class MainActivity : AppCompatActivity() {
@@ -400,7 +401,7 @@ class MainActivity : AppCompatActivity() {
                     reason = "Pair with $host",
                     onSuccess = {
                         if (!pairingInProgress.compareAndSet(false, true)) {
-                            error.text = "Pairing or unpairing is already in progress."
+                            error.text = ACCOUNT_BUSY
                             return@authenticateWithBiometrics
                         }
                         triggerBtn?.isEnabled = false
@@ -729,6 +730,8 @@ class MainActivity : AppCompatActivity() {
                 setTextColor(ThemeManager.color(context, R.color.ky_heading))
                 setPadding(0, 8, 0, 8)
                 setOnClickListener {
+                    // Accessibility clicks skip dispatchTouchEvent: check the shared lock here too.
+                    if (dropIfLockedElsewhere() || !(AppLockManager.isUnlocked() || demo)) return@setOnClickListener
                     val current = TotpDisplay.state(entry, System.currentTimeMillis() / 1000, getString(R.string.totp_code_unavailable))
                     val code = current.code ?: return@setOnClickListener
                     val clipboard = getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
@@ -771,7 +774,7 @@ class MainActivity : AppCompatActivity() {
             }
 
             card.setOnLongClickListener {
-                showEditOrDeleteTotpDialog(entry)
+                if (!dropIfLockedElsewhere() && (AppLockManager.isUnlocked() || demo)) showEditOrDeleteTotpDialog(entry)
                 true
             }
             cards.add(card)
@@ -2198,16 +2201,23 @@ class MainActivity : AppCompatActivity() {
 
     /** One prompt signs the revoke. Only KyIdentity refusing to drop a required factor keeps the pairing. */
     private fun unpairIdentity(account: PairedAccount) {
-        // A re-pair can keep the device id, so the key is what names this pairing.
-        val key = DeviceSigningKey.existingPublicKeyBase64()
+        // Every step that reads, creates or deletes the device key holds the pairing guard. The steps
+        // run on the UI thread, where pairings are claimed, so none can start between release and cleanup.
+        if (!pairingInProgress.compareAndSet(false, true)) return toast(ACCOUNT_BUSY)
         val issuedAt = System.currentTimeMillis()
         val message = runCatching { DeviceRevokeClient.message(account.serverUrl, account.deviceId, issuedAt) }.getOrNull()
         val signature = message?.let { runCatching { DeviceSigningKey.initSignature() }.getOrNull() }
+        // Read after initSignature, which creates a missing key. A re-pair can keep the device id, so the key names this pairing.
+        val key = DeviceSigningKey.existingPublicKeyBase64()
+        pairingInProgress.set(false)
         if (message == null || signature == null) return finishUnpair(DeviceRevokeClient.Outcome.FAILED, account, key)
         VaultUnlockPrompt.showForSignature(this, "Unpair from KyIdentity", signature, onAuthenticated = { authenticated ->
+            if (!pairingInProgress.compareAndSet(false, true)) return@showForSignature toast(ACCOUNT_BUSY)
             val signed = runCatching { DeviceSigningKey.sign(message, authenticated) }.getOrNull()
-                ?: return@showForSignature finishUnpair(DeviceRevokeClient.Outcome.FAILED, account, key)
-            if (!pairingInProgress.compareAndSet(false, true)) return@showForSignature toast("Pairing or unpairing is already in progress.")
+            if (signed == null) {
+                pairingInProgress.set(false)
+                return@showForSignature finishUnpair(DeviceRevokeClient.Outcome.FAILED, account, key)
+            }
             Thread {
                 val outcome = DeviceRevokeClient.revoke(account.serverUrl, account.deviceId, issuedAt, signed)
                 runOnUiThread {
