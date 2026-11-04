@@ -12,8 +12,10 @@ ship the fix, and credit you in the release notes unless you prefer otherwise.
 
 ## Scope
 
-TOTP imports, replacement secrets and generation enforce a 128-bit minimum decoded
-secret. Legacy weak records remain readable and editable, with code generation and
+TOTP imports, replacement secrets and generation enforce an 80-bit minimum decoded
+secret. A key of 80 to 127 bits works and its card warns that it is short: the
+service chooses the length, and RFC 4226's 128-bit minimum binds the service. Legacy
+records under 80 bits remain readable and editable, with code generation and
 copying refused until the account provider supplies a new setup. The app never
 repairs a secret by padding/hashing it or silently removes an entry; see the
 [local TOTP guidance](README.md#install-and-use-independently).

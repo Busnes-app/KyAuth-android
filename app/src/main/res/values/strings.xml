@@ -12,6 +12,8 @@
     <string name="unlock_biometrics">Unlock with Biometrics</string>
     <string name="unlock_pin">Enter PIN</string>
     <string name="unpair_account">Unpair Account</string>
+    <string name="unpair_confirm">Unpair this device from KyIdentity? Your TOTP codes stay on this phone, but KyAuth shows them only while it is paired: pair again to see them.</string>
+    <string name="fcm_unavailable">Could not get a Firebase push token (%1$s). Without Google Play services, use KyAuth\'s F-Droid build from the GitHub release, which uses UnifiedPush.</string>
     <string name="unpair_required_factor">KyIdentity needs this phone as your sign-in factor, so it is still paired. Add another factor in KyIdentity first, then unpair.</string>
     <string name="unpair_not_revoked">KyIdentity did not confirm the removal, so it may still list this phone. Remove it on your KyIdentity devices page.</string>
     <string name="reset_kyauth">Reset KyAuth</string>
@@ -31,6 +33,8 @@
     <string name="about_no_browser">No browser to open the link</string>
     <string name="totp_code_unavailable">Unavailable</string>
     <string name="totp_secret_too_short">This secret is too short. Set up two-step verification again with the account provider.</string>
+    <string name="totp_delete_confirm">This removes its secret from this phone and cannot be undone. KyAuth has no backup: without this code you will need the site\'s recovery codes to sign in.</string>
+    <string name="totp_short_key">Short key: this service issued fewer than 128 bits. Codes still work.</string>
     <string name="totp_expiry">Tap to copy  ·  expires in %1$d s</string>
     <string name="cancel">Cancel</string>
     <string name="pairing_failed_key_replaced">Pairing failed: %1$s. This phone had already replaced its device key, so it is no longer paired with KyIdentity. Pair it again.</string>

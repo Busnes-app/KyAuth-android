@@ -60,7 +60,7 @@ class SignOnActivity : AppCompatActivity() {
             return
         }
         if (!paired.canSignOn) {
-            fail(AccountManager.ERROR_CODE_BAD_REQUEST, "Sign-in was not enabled for this phone when it was paired. Pair KyAuth again after enabling sign-in on the KyIdentity devices page.")
+            fail(AccountManager.ERROR_CODE_BAD_REQUEST, "Sign-in was not enabled for this phone when it was paired. Turn it on at the KyIdentity devices page, then unpair KyAuth and pair it again.")
             return
         }
         render(request.copy(paired = paired))

@@ -26,4 +26,11 @@ class TotpDisplayTest {
         assertEquals("Unavailable", state.formattedCode)
         assertTrue(state.requiresReenrolment)
     }
+
+    @Test fun eightyBitEntryShowsItsCodeWithTheShortKeyWarning() {
+        val state = TotpDisplay.state(TotpEntry("GitHub", "GEZDGNBVGY3TQOJQ"), 150, "Unavailable")
+        assertEquals("767654", state.code)
+        assertTrue(state.shortKey)
+        assertFalse(state.requiresReenrolment)
+    }
 }

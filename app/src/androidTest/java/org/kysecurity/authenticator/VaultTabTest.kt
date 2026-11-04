@@ -95,7 +95,7 @@ class VaultTabTest {
         val file = File(context.filesDir, "totp_vault.bin")
         val before = if (file.exists()) file.readBytes() else null
         val key = ByteArray(32) { 9 }
-        val legacy = TotpEntry("Legacy fixture", " jbsw y3dp ehpk 3pxp ", notes = "Retained notes", id = "legacy-fixture")
+        val legacy = TotpEntry("Legacy fixture", " jbsw y3dp ehpk 3px ", notes = "Retained notes", id = "legacy-fixture")
         val strong = TotpEntry("Strong fixture", "GEZDGNBVGY3TQOJQGEZDGNBVGY3TQOJQ", id = "strong-fixture")
         try {
             TotpVault.save(file, key, listOf(legacy, strong))
@@ -348,6 +348,39 @@ class VaultTabTest {
                 assertNull(field.get(activity))
                 val raw = context.getSharedPreferences("mfa_push_challenge", Context.MODE_PRIVATE).getString("challenge", null)
                 assertNull(raw)
+            }
+        }
+    }
+
+    private fun withVault(entries: List<TotpEntry>, body: (File, ByteArray) -> Unit) {
+        val file = File(context.filesDir, "totp_vault.bin")
+        val before = if (file.exists()) file.readBytes() else null
+        val key = ByteArray(32) { 9 }
+        try {
+            TotpVault.save(file, key, entries)
+            body(file, key)
+        } finally {
+            if (before == null) file.delete() else file.writeBytes(before)
+        }
+    }
+
+    // There is no backup: one tap on Delete Entry must not erase a secret.
+    @Test fun deleteAsksFirstAndKeepsTheEntryUntilConfirmed() {
+        val entry = TotpEntry("Delete fixture", "GEZDGNBVGY3TQOJQGEZDGNBVGY3TQOJQ", id = "delete-fixture")
+        withVault(listOf(entry)) { file, key ->
+            ActivityScenario.launch(MainActivity::class.java).use { scenario ->
+                scenario.onActivity { activity ->
+                    MainActivity::class.java.getDeclaredMethod("showEditOrDeleteTotpDialog", TotpEntry::class.java)
+                        .apply { isAccessible = true }.invoke(activity, entry)
+                    views(checkNotNull(dialog(activity).window).decorView).filterIsInstance<Button>()
+                        .single { it.text.toString() == "Delete Entry" }.performClick()
+                    val confirm = dialog(activity)
+                    assertEquals(listOf(entry), TotpVault.load(file, key))
+                    confirm.getButton(AlertDialog.BUTTON_POSITIVE).performClick()
+                }
+                // AlertDialog runs a button's listener from a posted message.
+                InstrumentationRegistry.getInstrumentation().waitForIdleSync()
+                assertEquals(emptyList<TotpEntry>(), TotpVault.load(file, key))
             }
         }
     }

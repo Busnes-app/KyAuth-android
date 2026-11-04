@@ -21,9 +21,11 @@ KyAuth pairs an Android device with KyIdentity. It stores TOTP entries in an enc
   and says so, and `saveTotpEntries` refuses to write a list that did not come from a successful
   load. The KDBX vault was replaced with no migration: its `totp_vault.kdbx` is deleted on load.
 - The TOTP vault uses an app-private file and an independent random vault key.
-- New QR/manual enrolments and replacement secrets require at least 16 decoded
-  bytes (RFC 4226's 128-bit minimum). Code generation enforces the same floor for
-  every HMAC algorithm. `TotpEntry` keeps structural validation so old weak vault
+- New QR/manual enrolments and replacement secrets require at least 10 decoded
+  bytes (80 bits). Code generation enforces the same floor for every HMAC algorithm.
+  Keys of 10-15 bytes work and their card shows a short-key warning: the issuer
+  chooses the length, and RFC 4226's 128-bit minimum binds the issuer (owner
+  decision, KyAuth-iOS Q1 B). `TotpEntry` keeps structural validation so old weak vault
   records still load; never discard or rewrite them to satisfy the key policy.
   Their cards show re-enrolment guidance with no code/copy countdown. Metadata edits
   preserve the unchanged secret byte-for-byte; changing it requires a strong issuer
@@ -32,8 +34,8 @@ KyAuth pairs an Android device with KyIdentity. It stores TOTP entries in an enc
   (`setUserAuthenticationRequired(true)`, per-use), as `{"totp": base64}`. Wrapping needs no prompt;
   unwrapping requires a `BiometricPrompt.CryptoObject`. A device without a secure lock screen cannot
   use KyAuth.
-- The app locks when it moves to the background. It clears in-memory TOTP data and its copied code,
-  and zeroes the vault key arrays. App lock clears and dismisses open dialogs, including unsaved
+- The app locks when it moves to the background. It clears in-memory TOTP data and zeroes the vault
+  key arrays; a copied code is left to its expiry (below). App lock clears and dismisses open dialogs, including unsaved
   forms and revealed secrets.
 - The PIN is an optional second local factor. Failed PIN attempts use delays of 0, 5, 30, and 300 seconds. The fifth failure wipes local data.
 - Release builds disable screenshots and Android backup.
@@ -43,7 +45,9 @@ KyAuth pairs an Android device with KyIdentity. It stores TOTP entries in an enc
   Keystore, pairing store or push store. Edits stay in memory, Settings offers only theme, About
   and Exit demo, and the server is `demo.kyidentity.invalid`.
 - A copied TOTP code is marked sensitive (`ClipDescription.EXTRA_IS_SENSITIVE`) and clears when its
-  code period ends, or when KyAuth locks.
+  code period ends, also with KyAuth in the background: Android hides the clipboard from an unfocused
+  app, so a clip KyAuth cannot read is cleared as its own. Locking leaves it, since leaving KyAuth to
+  paste locks it.
 - TOTP entries have no backup, export or sync, by decision: losing the phone loses its TOTP
   entries. KyIdentity access recovers through recovery codes or an admin MFA reset.
 - Build flavors (dimension `channel`): `play` (default), `github`, `fdroid`. All keep applicationId `org.kysecurity.authenticator`: KyIdentity pins attestation to it and the `org.kysecurity.identity` account type has one owner. Firebase, ML Kit and `firebase.xml` live in `src/gms` (play and github only, via `gmsImplementation`); `fdroid` ships no Google Play code, scans QR with zxing (and so declares CAMERA) in `SecureCaptureActivity`, its own window, which `secureWindow` marks `FLAG_SECURE` in release like every KyAuth window that can show a secret, and has UnifiedPush only. `BuildConfig.HAS_FCM` says which. CI fails if the fdroid release runtime classpath resolves `com.google.firebase`, `com.google.android.gms` or `com.google.mlkit`.
@@ -102,7 +106,8 @@ KyAuth pairs an Android device with KyIdentity. It stores TOTP entries in an enc
   (`mayAddAccount`); its result names the account, which only they may see. It hands
   `MainActivity` a `PendingAddAccount` nonce, never the response itself, so a forged launch's
   response extra is ignored. Pairing success, or an existing pairing, completes it with the
-  account, and `onDestroy` answers `ERROR_CODE_CANCELED` if still pending.
+  account. The response is kept in a ViewModel across rotation (the nonce is single-use), and
+  when the activity finishes for good its `onCleared` answers `ERROR_CODE_CANCELED` if still pending.
 
 ## UI contract
 

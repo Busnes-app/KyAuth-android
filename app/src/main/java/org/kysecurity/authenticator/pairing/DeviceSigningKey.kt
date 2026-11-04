@@ -42,6 +42,13 @@ object DeviceSigningKey {
         return Base64.getEncoder().encodeToString(publicKey.encoded)
     }
 
+    /** The current key's public half, or null when there is none. Unlike [publicKeyBase64], never creates a key. */
+    fun existingPublicKeyBase64(): String? = runCatching {
+        val publicKey = testKeyPair?.public
+            ?: KeyStore.getInstance(ANDROID_KEY_STORE).apply { load(null) }.getCertificate(ALIAS)?.publicKey
+        publicKey?.let { Base64.getEncoder().encodeToString(it.encoded) }
+    }.getOrNull()
+
     fun initSignature(): Signature {
         val signature = Signature.getInstance("SHA256withECDSA")
         testKeyPair?.let {
