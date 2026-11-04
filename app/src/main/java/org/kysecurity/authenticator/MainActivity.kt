@@ -94,6 +94,9 @@ import kotlin.math.min
 
 private const val STATE_ACTIVE_TAB = "active_tab"
 private const val STATE_DEMO = "demo"
+private const val STATE_PAIRING_REQUESTED = "pairing_requested"
+/** In `app_lock` prefs: the user chose "Use KyAuth without KyIdentity". A wipe clears it with the rest. */
+private const val PREF_LOCAL_USE = "local_use"
 private const val ACCOUNT_BUSY = "Pairing or unpairing is already in progress."
 private const val VAULT_UNREADABLE = "The TOTP vault could not be read. KyAuth stays locked and has not changed it."
 
@@ -110,6 +113,8 @@ class MainActivity : AppCompatActivity() {
     private var activeTab = Tab.VAULT
     // Never written to storage; the demo reads and writes no stored state.
     private var demo = false
+    /** "Pair with KyIdentity" from an unpaired vault: show enrolment until paired or the user goes back. */
+    private var pairingRequested = false
     private var nextDemoPushAt = 0L
     private var pendingChallenge: MfaChallenge? = null
 
@@ -122,7 +127,6 @@ class MainActivity : AppCompatActivity() {
     private var scannedPairing: Result<String>? = null
     private var askedForDistributor = false
     private var totpEntries = mutableListOf<TotpEntry>()
-    private var copiedSensitiveLabel: String? = null
     private var isVaultLoading = false
     private var vaultLoadGeneration: Long? = null
     /** [totpEntries] came from a successful load; only then may it be saved. */
@@ -165,6 +169,34 @@ class MainActivity : AppCompatActivity() {
         /** One pairing or unpairing at a time in this process: either can replace or delete the device key under the other. */
         private val pairingInProgress = java.util.concurrent.atomic.AtomicBoolean(false)
         private val TWO_DIGITS = Regex("\\d{2}")
+
+        /** KyAuth's latest copied code, and that code once its period ended and it awaits clearing. Shared, since a window can be recreated meanwhile. */
+        private var copiedSensitiveLabel: String? = null
+        private var expiredClipLabel: String? = null
+
+        /** The last pairing failure, for the window that shows enrolment: a pairing can outlive the window that started it. */
+        private var pairingError: String? = null
+
+        /** Every created window, UI thread only. A lock anywhere clears what each one shows. */
+        private val windows = mutableSetOf<MainActivity>()
+        private val mainHandler = Handler(Looper.getMainLooper())
+
+        private fun clearEveryWindow() {
+            if (Looper.myLooper() != Looper.getMainLooper()) {
+                mainHandler.post(::clearEveryWindow)
+                return
+            }
+            windows.toList().forEach {
+                it.clearSensitiveState()
+                it.renderContent()
+            }
+        }
+
+        /** The window a background result should land in: the newest live one, resumed if any is. */
+        private fun currentWindow(): MainActivity? {
+            val live = windows.filter { !it.isFinishing && !it.isDestroyed }
+            return live.lastOrNull { it.lifecycle.currentState.isAtLeast(androidx.lifecycle.Lifecycle.State.RESUMED) } ?: live.lastOrNull()
+        }
     }
 
     /** Keeps the add-account response across a configuration change: its nonce can be taken only once. */
@@ -200,6 +232,7 @@ class MainActivity : AppCompatActivity() {
         super.onCreate(savedInstanceState)
         activeTab = Tab.restore(savedInstanceState?.getString(STATE_ACTIVE_TAB))
         demo = savedInstanceState?.getBoolean(STATE_DEMO) ?: false
+        pairingRequested = savedInstanceState?.getBoolean(STATE_PAIRING_REQUESTED) ?: false
         // Transparent bars over the root's background; setRootContentView picks icon contrast.
         enableEdgeToEdge(SystemBarStyle.dark(Color.TRANSPARENT), SystemBarStyle.dark(Color.TRANSPARENT))
         if (!BuildConfig.ALLOW_SCREENSHOTS) {
@@ -211,11 +244,16 @@ class MainActivity : AppCompatActivity() {
         qrScanner = ChannelQrScanner.create(this, ::onQrScanned)
         addAccountHolder = androidx.lifecycle.ViewModelProvider(this)[AddAccountHolder::class.java]
         PendingAddAccount.take(intent.getStringExtra(EXTRA_ADD_ACCOUNT))?.let { addAccountResponse = it }
+        windows.add(this)
+        AppLockManager.onLock = { clearEveryWindow() }
+        onBackPressedDispatcher.addCallback(this, backFromPairing)
         IncomingPush.ensureChannel(this)
         handler.post(ticker)
         // A request answered by the activity this one replaced, or a new push, shows up without a resume.
         challengeObserver = MfaPushChallengeStore(this).observe {
-            pendingChallenge = MfaPushChallengeStore(this).load()
+            val loaded = MfaPushChallengeStore(this).load()
+            if (loaded != null && loaded.challengeId != pendingChallenge?.challengeId) activeTab = Tab.VAULT // Settings never shows the card
+            pendingChallenge = loaded
             if (!isDestroyed) renderContent()
         }
     }
@@ -231,7 +269,7 @@ class MainActivity : AppCompatActivity() {
         if (!AppLockManager.isUnlocked()) {
             // A push request is answered from the lock screen with one signing prompt; a vault
             // unlock prompt first would only add a second one.
-            if (pendingChallenge == null) unlockWithPrompt(silent = true)
+            if (pendingChallenge == null && showsVault()) unlockWithPrompt(silent = true)
         } else {
             runCatching { loadTotpEntries() }.onFailure {
                 lockSensitiveState()
@@ -249,7 +287,7 @@ class MainActivity : AppCompatActivity() {
      */
     private fun prepareUnifiedPushForPairing() {
         val push = PushStore(this)
-        if (askedForDistributor || store.account() != null) return
+        if (askedForDistributor || showsVault()) return
         if (push.transport != PushCredential.UNIFIED_PUSH || push.unifiedPushCredential() != null) return
         askedForDistributor = true
         registerUnifiedPush { it?.let(::toast) }
@@ -265,6 +303,7 @@ class MainActivity : AppCompatActivity() {
 
     override fun onDestroy() {
         super.onDestroy()
+        windows.remove(this)
         challengeObserver?.let { MfaPushChallengeStore(this).stopObserving(it) }
         handler.removeCallbacks(ticker)
         vaultLoadGeneration = null
@@ -294,6 +333,7 @@ class MainActivity : AppCompatActivity() {
     override fun onSaveInstanceState(outState: Bundle) {
         outState.putString(STATE_ACTIVE_TAB, activeTab.name)
         outState.putBoolean(STATE_DEMO, demo)
+        outState.putBoolean(STATE_PAIRING_REQUESTED, pairingRequested)
         super.onSaveInstanceState(outState)
     }
 
@@ -312,12 +352,44 @@ class MainActivity : AppCompatActivity() {
                 if (totpEntries.isEmpty()) totpEntries = DemoMode.entries().toMutableList()
                 renderDashboard(root, DemoMode.account)
             }
-            account == null -> renderEnrollmentView(root)
+            !showsVault() -> renderEnrollmentView(root)
             !AppLockManager.isUnlocked() -> renderLockScreen(root, account)
             else -> renderDashboard(root, account)
         }
 
+        backFromPairing.isEnabled = !demo && pairingRequested && account == null
         setRootContentView(root)
+    }
+
+    /** Back from "Pair with KyIdentity" returns to the vault; enabled only while that enrolment shows. */
+    private val backFromPairing = object : androidx.activity.OnBackPressedCallback(false) {
+        override fun handleOnBackPressed() {
+            pairingRequested = false
+            renderContent()
+        }
+    }
+
+    /** Paired, or an unpaired phone that keeps a vault or chose to use KyAuth without KyIdentity. */
+    private fun showsVault() = store.account() != null ||
+        (!pairingRequested && addAccountResponse == null && (idlePreferences.getBoolean(PREF_LOCAL_USE, false) || vaultFile.exists()))
+
+    private fun useWithoutKyIdentity() {
+        idlePreferences.edit().putBoolean(PREF_LOCAL_USE, true).apply()
+        pairingRequested = false
+        renderContent()
+        if (!AppLockManager.isUnlocked()) unlockWithPrompt()
+    }
+
+    private fun requestPairing() {
+        pairingRequested = true
+        pairingError = null
+        renderContent()
+        prepareUnifiedPushForPairing()
+    }
+
+    private fun showPairingError(message: String) {
+        pairingError = message
+        if (!isDestroyed) renderContent()
     }
 
     // ==========================================
@@ -331,11 +403,15 @@ class MainActivity : AppCompatActivity() {
         root.addView(title("Connect your account"))
         root.addView(message("Scan the 90-second QR code from KyIdentity. The pairing credential is used once and never stored."))
 
-        val error = statusMessage(Status.DANGER)
-        val progress = ProgressBar(this).apply { visibility = ProgressBar.GONE }
+        // Rendered from shared state: a pairing started in a window rotated away still shows here.
+        val pairing = pairingInProgress.get()
+        val error = statusMessage(Status.DANGER).apply { text = pairingError.orEmpty() }
+        val progress = ProgressBar(this).apply { visibility = if (pairing) ProgressBar.VISIBLE else ProgressBar.GONE }
 
         val btnScan = primaryButton(getString(R.string.scan_qr)).apply {
+            isEnabled = !pairing
             setOnClickListener {
+                pairingError = null
                 error.text = ""
                 qrScanner.scan(ScanPurpose.PAIRING)
             }
@@ -344,12 +420,16 @@ class MainActivity : AppCompatActivity() {
             scannedPairing = null
             scanned.onFailure { error.text = getString(R.string.scan_failed) }
                 .mapCatching { QrPairingParser.parse(it) }
-                .onSuccess { showPairingConfirmation(it, btnScan, progress, error) }
+                .onSuccess { showPairingConfirmation(it) }
                 .onFailure { if (scanned.isSuccess) error.text = it.message ?: "Invalid KyIdentity QR code" }
         }
 
         val btnManual = secondaryButton("Enter code manually").apply {
-            setOnClickListener { showManualPairingDialog(progress, error) }
+            setOnClickListener { showManualPairingDialog() }
+        }
+
+        val btnLocal = secondaryButton(getString(R.string.use_without_kyidentity)).apply {
+            setOnClickListener { useWithoutKyIdentity() }
         }
 
         val btnDemo = ghostButton(getString(R.string.demo_try)).apply {
@@ -358,12 +438,13 @@ class MainActivity : AppCompatActivity() {
 
         root.addView(btnScan, fullWidthParams())
         root.addView(btnManual, fullWidthParams(top = 10))
+        if (addAccountResponse == null) root.addView(btnLocal, fullWidthParams(top = 10)) // an app asked for a pairing
         root.addView(btnDemo, fullWidthParams(top = 10))
         root.addView(progress)
         root.addView(error)
     }
 
-    private fun showPairingConfirmation(pairing: QrPairing, triggerBtn: Button?, progress: ProgressBar, error: TextView) {
+    private fun showPairingConfirmation(pairing: QrPairing) {
         val host = runCatching { URI(pairing.serverUrl).host }.getOrNull().orEmpty()
         AlertDialog.Builder(this)
             .setTitle(getString(R.string.pairing_title))
@@ -375,18 +456,18 @@ class MainActivity : AppCompatActivity() {
                 val transport = pushStore.transport
                 val unifiedPush = pushStore.unifiedPushCredential()
                 if (transport == PushCredential.UNIFIED_PUSH && unifiedPush == null) {
-                    registerUnifiedPush { error.text = it ?: getString(R.string.push_waiting_for_distributor) }
+                    registerUnifiedPush { (currentWindow() ?: this).showPairingError(it ?: getString(R.string.push_waiting_for_distributor)) }
                     return@setPositiveButton
                 }
                 authenticateWithBiometrics(
                     reason = "Pair with $host",
                     onSuccess = {
                         if (!pairingInProgress.compareAndSet(false, true)) {
-                            error.text = ACCOUNT_BUSY
+                            showPairingError(ACCOUNT_BUSY)
                             return@authenticateWithBiometrics
                         }
-                        triggerBtn?.isEnabled = false
-                        progress.visibility = ProgressBar.VISIBLE
+                        pairingError = null
+                        renderContent()
                         Thread {
                             var keyReplaced = false
                             var push: PushCredential? = null
@@ -409,40 +490,39 @@ class MainActivity : AppCompatActivity() {
                                     attestationChain = key.attestationChain,
                                 )
                             }
-                            runOnUiThread {
+                            // Lands in this window, or the one now on screen if this one was recreated meanwhile.
+                            runOnUiThread { with(this@MainActivity.takeUnless { it.isFinishing || it.isDestroyed } ?: currentWindow() ?: this@MainActivity) {
                                 pairingInProgress.set(false)
-                                progress.visibility = ProgressBar.GONE
-                                triggerBtn?.isEnabled = true
+                                val shown = !isFinishing && !isDestroyed // false only when every window has gone
                                 result.onSuccess { account ->
                                     clearPendingChallenge()
                                     store.save(account)
                                     push?.let { pushStore.markRegistered(it) }
-                                    runCatching { KyIdentityAccount.sync(this@MainActivity, account) }
-                                    if (answerAddAccountIfPossible()) return@onSuccess
-                                    unlockWithPrompt()
+                                    runCatching { KyIdentityAccount.sync(this, account) }
+                                    pairingRequested = false
+                                    if (answerAddAccountIfPossible() || !shown) return@onSuccess
+                                    renderContent()
+                                    if (!AppLockManager.isUnlocked()) unlockWithPrompt()
                                 }.onFailure {
-                                    if (!keyReplaced) {
-                                        error.text = it.message ?: "Pairing failed"
-                                        return@onFailure
-                                    }
+                                    if (!keyReplaced) return@onFailure showPairingError(it.message ?: "Pairing failed")
                                     // The old key is gone, so the saved pairing cannot sign anything.
                                     clearPairing()
-                                    AlertDialog.Builder(this@MainActivity)
+                                    if (shown) AlertDialog.Builder(this)
                                         .setTitle(getString(R.string.pairing_title))
                                         .setMessage(getString(R.string.pairing_failed_key_replaced, (it.message ?: "unknown error").trimEnd('.')))
                                         .setPositiveButton("OK", null)
                                         .showKyDialog()
                                 }
-                            }
+                            } }
                         }.start()
                     },
-                    onError = { error.text = it },
+                    onError = { showPairingError(it) },
                 )
             }
             .showKyDialog()
     }
 
-    private fun showManualPairingDialog(progress: ProgressBar, error: TextView) {
+    private fun showManualPairingDialog() {
         val container = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             setPadding(48, 24, 48, 24)
@@ -464,7 +544,7 @@ class MainActivity : AppCompatActivity() {
                 val tokenOrPin = tokenInput.text.toString().trim()
                 val userId = userInput.text.toString().trim().ifBlank { null }
                 if (serverUrl.isBlank() || tokenOrPin.isBlank()) {
-                    error.text = getString(R.string.manual_pairing_required)
+                    showPairingError(getString(R.string.manual_pairing_required))
                     return@setPositiveButton
                 }
 
@@ -473,7 +553,7 @@ class MainActivity : AppCompatActivity() {
                 } else {
                     QrPairing(serverUrl = serverUrl, pairingToken = tokenOrPin)
                 }
-                showPairingConfirmation(pairing, null, progress, error)
+                showPairingConfirmation(pairing)
             }
             .showKyDialog()
     }
@@ -482,12 +562,12 @@ class MainActivity : AppCompatActivity() {
     // 2. Lock Screen / Authentication Gate
     // ==========================================
 
-    private fun renderLockScreen(root: LinearLayout, account: PairedAccount) {
+    private fun renderLockScreen(root: LinearLayout, account: PairedAccount?) {
         root.gravity = Gravity.CENTER
 
         root.addView(kyAuthWordmark(textSize = 34f, iconSizeDp = 64, centered = true))
         // The request is signed by the device key, never the vault key, so it needs no unlock.
-        if (renderPendingChallenge(root, account)) {
+        if (account != null && renderPendingChallenge(root, account)) {
             root.addView(secondaryButton(getString(R.string.unlock_biometrics)).apply {
                 setOnClickListener { unlockWithPrompt() }
             }, fullWidthParams(top = 8))
@@ -510,7 +590,7 @@ class MainActivity : AppCompatActivity() {
             setTextColor(ThemeManager.color(context, R.color.ky_heading))
         })
         root.addView(TextView(this).apply {
-            text = getString(R.string.paired_to, account.serverUrl)
+            text = if (account != null) getString(R.string.paired_to, account.serverUrl) else getString(R.string.unlock_unpaired)
             textSize = 15f
             gravity = Gravity.CENTER
             setTextColor(ThemeManager.color(context, R.color.ky_muted))
@@ -594,7 +674,7 @@ class MainActivity : AppCompatActivity() {
     // 3. Main Dashboard & Tabs
     // ==========================================
 
-    private fun renderDashboard(root: LinearLayout, account: PairedAccount) {
+    private fun renderDashboard(root: LinearLayout, account: PairedAccount?) {
         val header = kyAuthWordmark(textSize = 32f, iconSizeDp = 56).apply {
             setPadding(0, dp(12), 0, dp(28))
         }
@@ -621,7 +701,7 @@ class MainActivity : AppCompatActivity() {
         orientation = LinearLayout.VERTICAL
     }
 
-    private fun renderActiveTab(container: LinearLayout, account: PairedAccount) {
+    private fun renderActiveTab(container: LinearLayout, account: PairedAccount?) {
         when (activeTab) {
             Tab.VAULT -> renderTotpTab(container, account)
             Tab.SETTINGS -> renderSettingsTab(container, account)
@@ -632,7 +712,7 @@ class MainActivity : AppCompatActivity() {
     // Vault
     // ==========================================
 
-    private fun renderTotpTab(container: LinearLayout, account: PairedAccount) {
+    private fun renderTotpTab(container: LinearLayout, account: PairedAccount?) {
         totpViews.clear()
         val headerRow = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
@@ -664,9 +744,9 @@ class MainActivity : AppCompatActivity() {
         }
         headerRow.addView(headerTitle)
         headerRow.addView(addButton)
-        if (!demo) renderPushBanner(container, account)
+        if (!demo && account != null) renderPushBanner(container, account)
         container.addView(headerRow)
-        renderPendingChallenge(container, account)
+        if (account != null) renderPendingChallenge(container, account)
 
         if (totpEntries.isEmpty()) {
             container.addView(emptyState("No codes yet", "Tap + to scan a QR code or add an account by hand."))
@@ -711,6 +791,7 @@ class MainActivity : AppCompatActivity() {
                 setTextColor(ThemeManager.color(context, R.color.ky_heading))
                 setPadding(0, 8, 0, 8)
                 setOnClickListener {
+                    if (!vaultOpen()) return@setOnClickListener
                     val current = TotpDisplay.state(entry, System.currentTimeMillis() / 1000, getString(R.string.totp_code_unavailable))
                     val code = current.code ?: return@setOnClickListener
                     val clipboard = getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
@@ -939,6 +1020,7 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun showEditTotpDialog(entry: TotpEntry) {
+        if (!vaultOpen()) return
         val form = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             setPadding(dp(24), dp(24), dp(24), dp(20))
@@ -1007,22 +1089,23 @@ class MainActivity : AppCompatActivity() {
                 val url = urlInput.text.toString().trim().ifBlank { null }
                 val notes = notesInput.text.toString().trim().ifBlank { null }
                 if (title.isNotBlank() && secret.isNotBlank()) {
+                    val secretChanged = secret != entry.secretBase32
                     runCatching {
-                        if (secret != entry.secretBase32) TotpGenerator.requireStrongSecret(secret)
-                        entry.copy(
-                            title = title,
-                            secretBase32 = secret,
-                            url = url,
-                            notes = notes,
-                        )
-                    }.onSuccess { updated ->
-                        val idx = totpEntries.indexOfFirst { it.id == entry.id }
-                        if (idx >= 0) {
-                            totpEntries[idx] = updated
-                        } else {
-                            totpEntries.add(updated)
+                        if (secretChanged) TotpGenerator.requireStrongSecret(secret)
+                        entry.copy(title = title, secretBase32 = secret, url = url, notes = notes)
+                    }.onSuccess {
+                        val saved = changeTotpEntries { entries ->
+                            val idx = entries.indexOfFirst { it.id == entry.id }
+                            check(idx >= 0) { "the account was deleted in another KyAuth window" }
+                            // Onto the record as stored now: another window may have changed it since this form opened.
+                            val current = entries[idx]
+                            entries[idx] = current.copy(
+                                title = title,
+                                secretBase32 = if (secretChanged) secret else current.secretBase32,
+                                url = url,
+                                notes = notes,
+                            )
                         }
-                        val saved = saveTotpEntries()
                         renderContent()
                         if (saved) dialog?.dismiss()
                     }.onFailure {
@@ -1051,6 +1134,7 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun showEditOrDeleteTotpDialog(entry: TotpEntry) {
+        if (!vaultOpen()) return
         val container = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             setPadding(dp(24), dp(24), dp(24), dp(20))
@@ -1101,8 +1185,7 @@ class MainActivity : AppCompatActivity() {
                     .setMessage(getString(R.string.totp_delete_confirm))
                     .setNegativeButton("Cancel", null)
                     .setPositiveButton("Delete") { _, _ ->
-                        totpEntries.removeAll { it.id == entry.id }
-                        saveTotpEntries()
+                        changeTotpEntries { entries -> entries.removeAll { it.id == entry.id } }
                         renderContent()
                     }
                     .showKyDialog()
@@ -1121,35 +1204,47 @@ class MainActivity : AppCompatActivity() {
             .showKyDialog()
     }
 
+    private fun vaultOpen() = demo || AppLockManager.isUnlocked()
+
     private fun loadTotpEntries() {
         if (demo) return
         val vaultKey = AppLockManager.getVaultKey() ?: return
         totpEntries = TotpVault.load(vaultFile, vaultKey).toMutableList()
         vaultLoaded = true
-        pendingTotpEntry?.let {
+        pendingTotpEntry?.let { entry ->
             pendingTotpEntry = null
-            totpEntries.add(it)
-            if (!saveTotpEntries()) toast("Could not save the scanned account. Scan it again.")
+            if (!changeTotpEntries { it.add(entry) }) toast("Could not save the scanned account. Scan it again.")
         }
     }
 
-    /** Writes the list and returns true. If the write fails, the list on disk is shown again and false is returned. */
-    private fun saveTotpEntries(): Boolean {
-        if (demo) return true
+    /**
+     * Applies [change] to the vault file's list, not this window's copy (another window may have
+     * saved since), writes it and keeps the result. If that fails, the list on disk is shown
+     * again and false is returned.
+     */
+    private fun changeTotpEntries(change: (MutableList<TotpEntry>) -> Unit): Boolean {
+        if (demo) {
+            change(totpEntries)
+            return true
+        }
         val vaultKey = AppLockManager.getVaultKey()
         if (vaultKey == null || !vaultLoaded) {
             toast("TOTP vault is not open. The change was not saved.")
             return false
         }
-        val failure = runCatching { TotpVault.save(vaultFile, vaultKey, totpEntries) }.exceptionOrNull() ?: return true
+        val failure = runCatching {
+            val entries = TotpVault.load(vaultFile, vaultKey).toMutableList()
+            change(entries)
+            TotpVault.save(vaultFile, vaultKey, entries)
+            totpEntries = entries
+        }.exceptionOrNull() ?: return true
         toast("The change was not saved: ${failure.message ?: "storage error"}")
         runCatching { loadTotpEntries() }.onFailure { lockSensitiveState() }
         return false
     }
 
     private fun addTotpEntry(entry: TotpEntry): Boolean {
-        totpEntries.add(entry)
-        val saved = saveTotpEntries()
+        val saved = changeTotpEntries { it.add(entry) }
         renderContent()
         return saved
     }
@@ -1236,6 +1331,8 @@ class MainActivity : AppCompatActivity() {
         val countdown = requestCountdown ?: return
         val seconds = MfaPushChallengeStore(this).secondsRemaining(countdown.challenge)
         countdown.expiry.text = RequestCardText.expiry(seconds)
+        // On the lock screen the card replaces the unlock controls, PIN included: drop it once expired.
+        if (seconds <= 0 && !demo && !AppLockManager.isUnlocked()) return renderContent()
         if (seconds <= 0 && countdown.approve.isEnabled) {
             countdown.approve.isEnabled = false
             countdown.approve.alpha = 0.5f // the custom background has no disabled state of its own
@@ -1429,7 +1526,7 @@ class MainActivity : AppCompatActivity() {
     // Settings & Security
     // ==========================================
 
-    private fun renderSettingsTab(container: LinearLayout, account: PairedAccount) {
+    private fun renderSettingsTab(container: LinearLayout, account: PairedAccount?) {
         val sections = mutableListOf<View>()
 
         val appearanceSection = settingsCard()
@@ -1451,6 +1548,60 @@ class MainActivity : AppCompatActivity() {
             return
         }
 
+        if (account == null) {
+            sections.add(settingsCard().apply {
+                addView(title("KyIdentity"))
+                addView(message(getString(R.string.pair_with_kyidentity_message)))
+                addView(primaryButton(getString(R.string.pair_with_kyidentity)).apply {
+                    setOnClickListener { requestPairing() }
+                }, fullWidthParams())
+            })
+        } else {
+            sections.add(accountSection(account))
+            sections.add(pushDeliverySection())
+        }
+
+        val securitySection = settingsCard()
+        securitySection.addView(title("Security & App Lock"))
+        val pinSwitch = Switch(this).apply {
+            text = getString(R.string.enable_pin)
+            isChecked = AppLockManager.isPinEnabled(this@MainActivity)
+            setTextColor(ThemeManager.color(context, R.color.ky_text))
+            setOnCheckedChangeListener { _, isChecked ->
+                if (isChecked && !AppLockManager.hasPinSet(this@MainActivity)) {
+                    showSetPinDialog()
+                } else {
+                    AppLockManager.setPinEnabled(this@MainActivity, isChecked)
+                }
+            }
+        }
+        securitySection.addView(secondaryButton("Auto-lock after ${idleMinutes()} minutes").apply {
+            setOnClickListener {
+                AlertDialog.Builder(this@MainActivity).setTitle("Auto-lock when inactive")
+                    .setItems(IdleLock.minutes.map { "$it minutes" }.toTypedArray()) { _, index ->
+                        idlePreferences.edit().putInt("idle_lock_minutes", IdleLock.minutes[index]).apply()
+                        AppLockManager.idleLock.reset()
+                        renderContent()
+                    }.showKyDialog()
+            }
+        }, fullWidthParams(bottom = 8))
+        securitySection.addView(pinSwitch)
+        securitySection.addView(message(getString(R.string.enable_pin_explained)))
+
+        val btnChangePin = secondaryButton(getString(R.string.change_pin)).apply {
+            setOnClickListener { showSetPinDialog() }
+        }
+        securitySection.addView(btnChangePin, fullWidthParams())
+
+        securitySection.addView(message("Auto-wipe policy: After 5 consecutive failed PIN attempts, all vault keys, accounts, and pairing data will be automatically wiped."))
+        sections.add(securitySection)
+
+        sections.add(aboutSection())
+
+        addAdaptiveCards(container, sections)
+    }
+
+    private fun accountSection(account: PairedAccount): View {
         val accountSection = settingsCard()
         accountSection.addView(title("Paired Account"))
         accountSection.addView(message("Server: ${account.serverUrl}\nDevice ID: ${account.deviceId}\nDevice Name: ${account.deviceName}\nUser ID: ${account.userId ?: "N/A"}"))
@@ -1489,47 +1640,8 @@ class MainActivity : AppCompatActivity() {
             }
         }
         accountSection.addView(btnUnpair, fullWidthParams())
-        sections.add(accountSection)
 
-        sections.add(pushDeliverySection())
-
-        val securitySection = settingsCard()
-        securitySection.addView(title("Security & App Lock"))
-        val pinSwitch = Switch(this).apply {
-            text = getString(R.string.enable_pin)
-            isChecked = AppLockManager.isPinEnabled(this@MainActivity)
-            setTextColor(ThemeManager.color(context, R.color.ky_text))
-            setOnCheckedChangeListener { _, isChecked ->
-                if (isChecked && !AppLockManager.hasPinSet(this@MainActivity)) {
-                    showSetPinDialog()
-                } else {
-                    AppLockManager.setPinEnabled(this@MainActivity, isChecked)
-                }
-            }
-        }
-        securitySection.addView(secondaryButton("Auto-lock after ${idleMinutes()} minutes").apply {
-            setOnClickListener {
-                AlertDialog.Builder(this@MainActivity).setTitle("Auto-lock when inactive")
-                    .setItems(IdleLock.minutes.map { "$it minutes" }.toTypedArray()) { _, index ->
-                        idlePreferences.edit().putInt("idle_lock_minutes", IdleLock.minutes[index]).apply()
-                        AppLockManager.idleLock.reset()
-                        renderContent()
-                    }.showKyDialog()
-            }
-        }, fullWidthParams(bottom = 8))
-        securitySection.addView(pinSwitch)
-
-        val btnChangePin = secondaryButton(getString(R.string.change_pin)).apply {
-            setOnClickListener { showSetPinDialog() }
-        }
-        securitySection.addView(btnChangePin, fullWidthParams())
-
-        securitySection.addView(message("Auto-wipe policy: After 5 consecutive failed PIN attempts, all vault keys, accounts, and pairing data will be automatically wiped."))
-        sections.add(securitySection)
-
-        sections.add(aboutSection())
-
-        addAdaptiveCards(container, sections)
+        return accountSection
     }
 
     private fun aboutSection() = settingsCard().apply {
@@ -1609,7 +1721,8 @@ class MainActivity : AppCompatActivity() {
         AlertDialog.Builder(this)
             .setTitle(getString(R.string.change_pin))
             .setView(container)
-            .setNegativeButton("Cancel", null)
+            .setOnCancelListener { renderContent() }
+            .setNegativeButton("Cancel") { _, _ -> renderContent() }
             .setPositiveButton("Set PIN") { _, _ ->
                 val pin = pinInput.text.toString().trim()
                 val validation = PinPolicy.validate(pin)
@@ -1624,6 +1737,7 @@ class MainActivity : AppCompatActivity() {
                     renderContent()
                 } else {
                     Toast.makeText(this, (validation as PinPolicy.ValidationResult.Error).message, Toast.LENGTH_LONG).show()
+                    renderContent()
                 }
             }
             .showKyDialog()
@@ -2227,8 +2341,10 @@ class MainActivity : AppCompatActivity() {
         MfaPushChallengeStore(this).clear()
     }
 
-    private fun lockSensitiveState() {
-        AppLockManager.lock()
+    /** Locks KyAuth; [AppLockManager.onLock] then clears every window, this one included. */
+    private fun lockSensitiveState() = AppLockManager.lock()
+
+    private fun clearSensitiveState() {
         isVaultLoading = false
         vaultLoadGeneration = null
         vaultLoaded = false
@@ -2252,15 +2368,32 @@ class MainActivity : AppCompatActivity() {
             }
         }
         copiedSensitiveLabel = label
+        expiredClipLabel = null
         targetClipboard.setPrimaryClip(clip)
         handler.postDelayed({
-            // Android hides the clipboard from an unfocused app (the description reads null), and
-            // pasting the code elsewhere is the normal case, so a clip KyAuth cannot read is cleared as its own.
-            val current = targetClipboard.primaryClipDescription
-            if (copiedSensitiveLabel == label && (current == null || current.label == label)) {
-                targetClipboard.clearPrimaryClip()
-                copiedSensitiveLabel = null
+            if (copiedSensitiveLabel == label) {
+                expiredClipLabel = label
+                clearExpiredClip()
             }
         }, clearAfterSeconds * 1_000)
+    }
+
+    /**
+     * Clears the expired code only if it is still the clip, so something copied later stays. Android
+     * hides the clipboard from an unfocused app (the description reads null): then KyAuth waits for
+     * its next window focus.
+     */
+    private fun clearExpiredClip() {
+        val label = expiredClipLabel ?: return
+        val clipboard = getSystemService(ClipboardManager::class.java)
+        val current = clipboard.primaryClipDescription ?: return
+        if (current.label == label) clipboard.clearPrimaryClip()
+        expiredClipLabel = null
+        if (copiedSensitiveLabel == label) copiedSensitiveLabel = null
+    }
+
+    override fun onWindowFocusChanged(hasFocus: Boolean) {
+        super.onWindowFocusChanged(hasFocus)
+        if (hasFocus) clearExpiredClip()
     }
 }

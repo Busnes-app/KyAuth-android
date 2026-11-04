@@ -4,7 +4,7 @@ KyAuth is the native Android authenticator for the KySecurity suite.
 
 ## Purpose
 
-KyAuth pairs an Android device with KyIdentity. It stores TOTP entries in an encrypted local AES-256-GCM vault file. It also provides a local biometric and optional PIN lock.
+KyAuth pairs an Android device with KyIdentity. It stores TOTP entries in an encrypted local AES-256-GCM vault file, with or without a pairing. It also provides a local biometric lock and an optional PIN unlock.
 
 ## Current product contract
 
@@ -18,7 +18,7 @@ KyAuth pairs an Android device with KyIdentity. It stores TOTP entries in an enc
   (fresh per save) || AES-256-GCM ciphertext and 16-byte tag over a JSON array of every
   `TotpEntry` field; AAD is UTF-8 `kyauth-totp-v1` || version. Writes are atomic. A missing file
   is an empty vault; any other unreadable file throws `TotpVaultException`, KyAuth stays locked
-  and says so, and `saveTotpEntries` refuses to write a list that did not come from a successful
+  and says so, and `changeTotpEntries` refuses to write a list that did not come from a successful
   load. The KDBX vault was replaced with no migration: its `totp_vault.kdbx` is deleted on load.
 - The TOTP vault uses an app-private file and an independent random vault key.
 - New QR/manual enrolments and replacement secrets require at least 10 decoded
@@ -36,18 +36,22 @@ KyAuth pairs an Android device with KyIdentity. It stores TOTP entries in an enc
   use KyAuth.
 - The app locks when it moves to the background. It clears in-memory TOTP data and zeroes the vault
   key arrays; a copied code is left to its expiry (below). App lock clears and dismisses open dialogs, including unsaved
-  forms and revealed secrets.
-- The PIN is an optional second local factor. Failed PIN attempts use delays of 0, 5, 30, and 300 seconds. The fifth failure wipes local data.
+  forms and revealed secrets, in every open KyAuth window (`AppLockManager.onLock`), not only the one that locked.
+  Each vault change is applied to the list read from the file at that moment, never to a window's
+  older copy, so one window cannot overwrite another's change; editing an entry deleted elsewhere is refused.
+  A notification tap reuses an open KyAuth (`FLAG_ACTIVITY_SINGLE_TOP`).
+- The PIN ("Allow PIN unlock") is an optional alternative unlock, not a second factor: biometrics or the device credential still unlock on their own, and the PIN alone unlocks too (it wraps a second copy of the vault key under PBKDF2 over the PIN). Failed PIN attempts use delays of 0, 5, 30, and 300 seconds. The fifth failure wipes local data.
+- KyAuth works without KyIdentity. The enrolment screen offers "Use KyAuth without KyIdentity" (`local_use` in `app_lock` prefs, cleared only by a wipe). An unpaired phone with a vault file, or that choice, gets the lock screen, Vault and Settings; the pairing-only parts (push requests and their banner, delivery settings, sign-on, Unpair) are replaced by a Settings card "Pair with KyIdentity", which shows enrolment until paired or the user goes back. Unpair keeps the vault and its key, so the codes stay reachable. The automatic unlock prompt and UnifiedPush distributor request run only for the screen they serve: the prompt where the vault shows, the distributor request on enrolment.
 - Release builds disable screenshots and Android backup.
-- Demo mode (`DemoMode`, for Play review) is offered only on the unpaired enrollment screen and ends
+- Demo mode (`DemoMode`, for Play review) is offered only on the enrollment screen and ends
   if a pairing exists. It shows fixed demo TOTP entries and, while the app is in the foreground,
   raises a simulated push every 15 s that shows its own match number. It uses no network, vault,
   Keystore, pairing store or push store. Edits stay in memory, Settings offers only theme, About
   and Exit demo, and the server is `demo.kyidentity.invalid`.
 - A copied TOTP code is marked sensitive (`ClipDescription.EXTRA_IS_SENSITIVE`) and clears when its
-  code period ends, also with KyAuth in the background: Android hides the clipboard from an unfocused
-  app, so a clip KyAuth cannot read is cleared as its own. Locking leaves it, since leaving KyAuth to
-  paste locks it.
+  code period ends, only if it is still the clip: something copied later stays. Android hides the
+  clipboard from an unfocused app, so with KyAuth in the background the clear waits for KyAuth's next
+  window focus. Locking leaves it, since leaving KyAuth to paste locks it.
 - TOTP entries have no backup, export or sync, by decision: losing the phone loses its TOTP
   entries. KyIdentity access recovers through recovery codes or an admin MFA reset.
 - Build flavors (dimension `channel`): `play` (default), `github`, `fdroid`. All keep applicationId `org.kysecurity.authenticator`: KyIdentity pins attestation to it and the `org.kysecurity.identity` account type has one owner. Firebase, ML Kit and `firebase.xml` live in `src/gms` (play and github only, via `gmsImplementation`); `fdroid` ships no Google Play code, scans QR with zxing (and so declares CAMERA) in `SecureCaptureActivity`, its own window, which `secureWindow` marks `FLAG_SECURE` in release like every KyAuth window that can show a secret, and has UnifiedPush only. `BuildConfig.HAS_FCM` says which. CI fails if the fdroid release runtime classpath resolves `com.google.firebase`, `com.google.android.gms` or `com.google.mlkit`.
@@ -124,7 +128,7 @@ KyAuth pairs an Android device with KyIdentity. It stores TOTP entries in an enc
 - `pairing/`: QR parsing, endpoint validation, pairing network client, device key, `AttestationChallenge`, the pairing store (plain app-private prefs), `PushCredential`, `PushKeys` (FCM RFC 8291 keys), `PushStore`, `PushRefreshClient`, and `UnifiedPushRegistrar`.
 - Per-flavor seams with one implementation in `src/gms` and one in `src/fdroid`: `ChannelPush` (FCM credential; fdroid fails) and `ChannelQrScanner` (ML Kit or zxing, created in `onCreate`). A scan carries a `ScanPurpose` (pairing or TOTP); zxing keeps it in saved state so a result returning to a recreated activity still routes. `MainActivity.onQrScanned` only stashes a result until the activity is resumed: a TOTP entry goes to `pendingTotpEntry` for `loadTotpEntries`, never into the unloaded list, which a save would write over the vault.
 - `mfa/`: push challenge model, `IncomingPush` (the one receive path and its notifications), `WebPush` (RFC 8291 decryption of sealed FCM pushes, pinned to RFC 8291 appendix A and to KyIdentity's sealed relay output in `WebPushTest`), the UnifiedPush service, signed payload, and response client. The FCM service is in `src/gms`.
-- `security/`: lock state, PIN policy, `VaultKek` authentication-bound key wrapping, `PushKeyWrap` (FCM push keys at rest), `VaultUnlockPrompt`, atomic file writes, `RemovedPasskey` (deletes the removed passkey's keys and prefs), and local wipe (clears pairing, legacy prefs files including the removed passkey's, and the androidx master key; `clearPush`, also run by Unpair, unregisters UnifiedPush through the connector, which deletes the instance's registration and WebPush keys and its distributor, then deletes the `push` and `mfa_push_challenge` prefs and cancels notifications. Never delete the `unifiedpush-connector` database by file: the connector keeps it open as a process-wide singleton, so later registrations would write to the unlinked file and lose their keys at the next start).
+- `security/`: lock state, PIN policy, `VaultKek` authentication-bound key wrapping, `PushKeyWrap` (FCM push keys at rest), `VaultUnlockPrompt`, atomic file writes, `RemovedPasskey` (deletes the removed passkey's keys and prefs), and local wipe (clears pairing, legacy prefs files including the removed passkey's, and the androidx master key; `clearPush`, also run by Unpair, unregisters UnifiedPush through the connector, which deletes the instance's registration and WebPush keys and its distributor, then deletes the `push` prefs, clears the `mfa_push_challenge` prefs (cleared, not deleted, so an open window's observer keeps seeing new requests) and cancels notifications. Never delete the `unifiedpush-connector` database by file: the connector keeps it open as a process-wide singleton, so later registrations would write to the unlinked file and lose their keys at the next start).
 - `totp/`: TOTP parsing, generation, and `TotpVault` persistence.
 - `signon/`: `DeviceAssertion` (assertion builder), `TrustedConsumers` (caller pins),
   `KyIdentityAccount` (system account lifecycle), `KyIdentityAuthenticator` + service,

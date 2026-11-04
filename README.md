@@ -31,7 +31,7 @@ or a signed APK from a published [GitHub release](https://github.com/Busnes-app/
 For a GitHub APK, check the release’s certificate digest and SHA-256 provenance. KyAuth is not
 on F-Droid yet, although the repository has an F-Droid build. Keep the same channel/signer for updates.
 
-To use local TOTP, set a secure device lock, open **Vault**, scan the site’s authenticator
+To use local TOTP, set a secure device lock, tap **Use KyAuth without KyIdentity**, unlock, then on **Vault** scan the site’s authenticator
 QR or enter its setup key, and confirm a generated code at that site. Pairing KyIdentity is
 not required for this path. Save that site’s recovery codes separately: KyAuth has no
 backup, export or sync.
@@ -71,7 +71,7 @@ With UnifiedPush, KyIdentity sends sign-in requests straight to your own distrib
 [ntfy](https://ntfy.sh), with no Google relay in between. Requests are end-to-end encrypted
 (RFC 8291): the distributor sees when a request is sent, never what it says.
 
-On F-Droid, install a distributor before pairing; KyAuth asks you to pick one when it opens.
+On F-Droid, install a distributor before pairing; KyAuth asks you to pick one when it shows the pairing screen.
 On Play and GitHub builds, switch in **Settings → Sign-in request delivery**.
 
 A distributor on your LAN (a private IP) needs `KYIDENTITY_ALLOW_PRIVATE_CALLBACKS=true` on the
@@ -90,7 +90,9 @@ KyIdentity server. It is off by default.
   lose it, you lose them. Recover KyIdentity access with your recovery codes or an admin MFA
   reset, and keep each site's own recovery codes.
 - **It locks itself.** KyAuth locks when it leaves the screen and after idle time (5 minutes by
-  default, set in Settings). A copied code clears from the clipboard when it expires.
+  default, set in Settings). A copied code clears from the clipboard when it expires, if it is
+  still there; after you switch apps, when you next return to KyAuth (Android hides the clipboard
+  from apps in the background).
 - **Five wrong PINs wipe it.** After the fifth failed PIN, KyAuth erases its local data and keys.
 - **Release builds** block screenshots, disable Android backup, and refuse plain HTTP.
 
