@@ -351,4 +351,83 @@ class VaultTabTest {
             }
         }
     }
+
+    private fun withVault(entries: List<TotpEntry>, body: (File, ByteArray) -> Unit) {
+        val file = File(context.filesDir, "totp_vault.bin")
+        val before = if (file.exists()) file.readBytes() else null
+        val key = ByteArray(32) { 9 }
+        try {
+            TotpVault.save(file, key, entries)
+            body(file, key)
+        } finally {
+            if (before == null) file.delete() else file.writeBytes(before)
+        }
+    }
+
+    // There is no backup: one tap on Delete Entry must not erase a secret.
+    @Test fun deleteAsksFirstAndKeepsTheEntryUntilConfirmed() {
+        val entry = TotpEntry("Delete fixture", "GEZDGNBVGY3TQOJQGEZDGNBVGY3TQOJQ", id = "delete-fixture")
+        withVault(listOf(entry)) { file, key ->
+            ActivityScenario.launch(MainActivity::class.java).use { scenario ->
+                scenario.onActivity { activity ->
+                    MainActivity::class.java.getDeclaredMethod("showEditOrDeleteTotpDialog", TotpEntry::class.java)
+                        .apply { isAccessible = true }.invoke(activity, entry)
+                    views(checkNotNull(dialog(activity).window).decorView).filterIsInstance<Button>()
+                        .single { it.text.toString() == "Delete Entry" }.performClick()
+                    val confirm = dialog(activity)
+                    assertEquals(listOf(entry), TotpVault.load(file, key))
+                    confirm.getButton(AlertDialog.BUTTON_POSITIVE).performClick()
+                }
+                // AlertDialog runs a button's listener from a posted message.
+                InstrumentationRegistry.getInstrumentation().waitForIdleSync()
+                assertEquals(emptyList<TotpEntry>(), TotpVault.load(file, key))
+            }
+        }
+    }
+
+    // A second KyAuth window saved after this one loaded: this window's older list must not overwrite it.
+    @Test fun aWindowHoldingAnOlderListCannotWriteItBack() {
+        val first = TotpEntry("First fixture", "GEZDGNBVGY3TQOJQGEZDGNBVGY3TQOJQ", id = "first-fixture")
+        val other = TotpEntry("Other window fixture", "GEZDGNBVGY3TQOJQGEZDGNBVGY3TQOJQ", id = "other-fixture")
+        withVault(listOf(first)) { file, key ->
+            ActivityScenario.launch(MainActivity::class.java).use { scenario ->
+                scenario.onActivity { activity ->
+                    TotpVault.save(file, key, listOf(first, other))
+                    MainActivity::class.java.getDeclaredField("vaultVersion").apply { isAccessible = true }
+                        .let { it.setInt(null, it.getInt(null) + 1) } // what the other window's save does
+                    MainActivity::class.java.getDeclaredMethod("showAddTotpDialog").apply { isAccessible = true }.invoke(activity)
+                    val open = dialog(activity)
+                    val form = views(checkNotNull(open.window).decorView)
+                    form.filterIsInstance<EditText>().single { it.hint.toString() == "Account Name (e.g. GitHub)" }
+                        .setText("Added fixture")
+                    form.filterIsInstance<EditText>().single { it.hint.toString() == "Secret Key (Base32)" }
+                        .setText("GEZDGNBVGY3TQOJQGEZDGNBVGY3TQOJQ")
+                    val save = form.filterIsInstance<Button>().single { it.text.toString() == "Save" }
+                    save.performClick()
+                    assertTrue(open.isShowing)
+                    assertEquals(listOf(first, other), TotpVault.load(file, key))
+                    save.performClick() // now against the reloaded list
+                    assertFalse(open.isShowing)
+                    assertEquals(listOf("First fixture", "Other window fixture", "Added fixture"), TotpVault.load(file, key).map { it.title })
+                }
+            }
+        }
+    }
+
+    // Lock in another KyAuth window zeroes the shared key; this window must drop its decrypted copy too.
+    @Test fun lockFromAnotherWindowClearsThisOne() {
+        val entry = TotpEntry("Other lock fixture", "GEZDGNBVGY3TQOJQGEZDGNBVGY3TQOJQ", id = "other-lock-fixture")
+        withVault(listOf(entry)) { _, _ ->
+            ActivityScenario.launch(MainActivity::class.java).use { scenario ->
+                scenario.onActivity { assertTrue(texts(it.window.decorView).contains(entry.title)) }
+                InstrumentationRegistry.getInstrumentation().runOnMainSync { AppLockManager.lock() }
+                android.os.SystemClock.sleep(1_500) // one ticker period
+                scenario.onActivity { activity ->
+                    assertFalse(texts(activity.window.decorView).contains(entry.title))
+                    val held = MainActivity::class.java.getDeclaredField("totpEntries").apply { isAccessible = true }.get(activity)
+                    assertTrue((held as List<*>).isEmpty())
+                }
+            }
+        }
+    }
 }

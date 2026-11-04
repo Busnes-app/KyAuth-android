@@ -45,7 +45,9 @@ KyAuth pairs an Android device with KyIdentity. It stores TOTP entries in an enc
   Keystore, pairing store or push store. Edits stay in memory, Settings offers only theme, About
   and Exit demo, and the server is `demo.kyidentity.invalid`.
 - A copied TOTP code is marked sensitive (`ClipDescription.EXTRA_IS_SENSITIVE`) and clears when its
-  code period ends, or when KyAuth locks.
+  code period ends, also with KyAuth in the background: Android hides the clipboard from an unfocused
+  app, so a clip KyAuth cannot read is cleared as its own. Locking leaves it, since leaving KyAuth to
+  paste locks it.
 - TOTP entries have no backup, export or sync, by decision: losing the phone loses its TOTP
   entries. KyIdentity access recovers through recovery codes or an admin MFA reset.
 - Build flavors (dimension `channel`): `play` (default), `github`, `fdroid`. All keep applicationId `org.kysecurity.authenticator`: KyIdentity pins attestation to it and the `org.kysecurity.identity` account type has one owner. Firebase, ML Kit and `firebase.xml` live in `src/gms` (play and github only, via `gmsImplementation`); `fdroid` ships no Google Play code, scans QR with zxing (and so declares CAMERA) in `SecureCaptureActivity`, its own window, which `secureWindow` marks `FLAG_SECURE` in release like every KyAuth window that can show a secret, and has UnifiedPush only. `BuildConfig.HAS_FCM` says which. CI fails if the fdroid release runtime classpath resolves `com.google.firebase`, `com.google.android.gms` or `com.google.mlkit`.

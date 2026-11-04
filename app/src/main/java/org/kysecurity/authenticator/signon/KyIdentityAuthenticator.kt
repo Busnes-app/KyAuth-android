@@ -27,7 +27,7 @@ internal fun decideSignOn(caller: TrustedCaller?, authTokenType: String?, rawOri
         return SignOnRequest.Refuse(AccountManager.ERROR_CODE_BAD_REQUEST, "Pair KyAuth with KyIdentity first.")
     }
     if (!paired.canSignOn) {
-        return SignOnRequest.Refuse(AccountManager.ERROR_CODE_BAD_REQUEST, "Sign-in was not enabled for this phone when it was paired. Pair KyAuth again after enabling sign-in on the KyIdentity devices page.")
+        return SignOnRequest.Refuse(AccountManager.ERROR_CODE_BAD_REQUEST, "Sign-in was not enabled for this phone when it was paired. Turn it on at the KyIdentity devices page, then unpair KyAuth and pair it again.")
     }
     return SignOnRequest.Proceed(caller, authTokenType!!, origin, paired)
 }
