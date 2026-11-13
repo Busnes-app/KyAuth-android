@@ -69,9 +69,24 @@ jobs:
           name: play-bundle
           path: play/
           retention-days: 7
+      # One attestation over every file the release publishes. Its Sigstore bundle is attached to
+      # the release as well: a copy only in the attestations API is invisible on the Releases page.
       - uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
+        id: attest
         with:
-          subject-path: dist/*.apk
+          subject-path: |
+            dist/*.apk
+            dist/SHA256SUMS
+      - name: Stage and check the provenance bundle
+        env:
+          GH_TOKEN: ${{ github.token }}
+          BUNDLE: ${{ steps.attest.outputs.bundle-path }}
+        run: |
+          cp "$BUNDLE" "$RUNNER_TEMP/kyauth-$GITHUB_REF_NAME.intoto.jsonl"
+          for file in dist/*; do
+            gh attestation verify "$file" --repo "$GITHUB_REPOSITORY" --bundle "$RUNNER_TEMP/kyauth-$GITHUB_REF_NAME.intoto.jsonl"
+          done
+          mv "$RUNNER_TEMP/kyauth-$GITHUB_REF_NAME.intoto.jsonl" dist/
       - name: Publish release
         env:
           GH_TOKEN: ${{ github.token }}

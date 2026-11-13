@@ -24,8 +24,12 @@ commit, and how to rebuild it from source and compare.
   APK through GitHub's Sigstore integration. There is no long-lived key to download. The
   attestation is tied to a workflow identity, and that identity is what you check:
   `https://github.com/Busnes-app/KyAuth-android/.github/workflows/release.yml@refs/tags/v<version>`.
-- **`SHA256SUMS`** is not signed or attested. It catches a damaged download. The signature and the
-  attestation are what prove where the APK came from.
+  Releases after v0.6.0 also attach the attestation's Sigstore bundle as
+  `kyauth-vX.Y.Z.intoto.jsonl`, so it can be checked without GitHub's attestation store
+  (`gh attestation verify <file> --bundle kyauth-vX.Y.Z.intoto.jsonl ...`).
+- **`SHA256SUMS`** is not signed. It catches a damaged download. From the release after v0.6.0 it
+  is a subject of the same attestation, but the signature and the APKs' own attestation are what
+  prove where the APK came from.
 - **Google Play builds** are re-signed by Google under Play App Signing and carry a different
   certificate. Nothing on this page applies to them; Play verifies its own installs.
 
