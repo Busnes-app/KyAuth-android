@@ -159,6 +159,13 @@ Run unit tests, lint, the debug build, and compile device tests:
 ./gradlew -q :app:dependencies --configuration fdroidReleaseRuntimeClasspath | grep -E 'com\.google\.(firebase|android\.gms|mlkit)'  # must print nothing
 ```
 
+Unit tests run on the JUnit Platform (JUnit 4 tests through the vintage engine) for
+`TotpUriParserFuzzTest`, a Jazzer `@FuzzTest` over the `otpauth://` QR parser. It is Java because
+OpenSSF Scorecard detects Jazzer only in `.java` files. A normal run replays its seeds in
+`app/src/test/resources/org/kysecurity/authenticator/totp/TotpUriParserFuzzTestInputs/parse/`.
+Fuzz for 60 s with `JAZZER_FUZZ=1 ./gradlew testPlayDebugUnitTest --tests '*TotpUriParserFuzzTest*' --rerun`;
+a finding lands in that directory as `crash-*`: rename it for what it is and keep it as a seed.
+
 Native TLS instrumentation uses explicitly generated `tlsFixtureDir` debug resources
 and the `tlsFixtureControl` instrumentation argument. The normal Android trust
 manager evaluates the fixture anchors; trust/hostname checks stay enabled.
