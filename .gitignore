@@ -63,3 +63,6 @@ node_modules/
 
 # Python fixture-evidence tooling
 __pycache__/
+
+# Jazzer's working corpus from a local JAZZER_FUZZ=1 run; keep findings under app/src/test/resources.
+.cifuzz-corpus/

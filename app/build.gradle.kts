@@ -143,7 +143,18 @@ dependencies {
 
     testImplementation("junit:junit:4.13.2")
     testImplementation("org.json:json:20260814")
+    // Fuzz tests (TotpUriParserFuzzTest). Jazzer's @FuzzTest is JUnit 5, so unit tests run on the
+    // JUnit Platform and the JUnit 4 tests on the vintage engine. A plain run replays the seeds.
+    testImplementation(platform("org.junit:junit-bom:5.14.4"))
+    testImplementation("com.code-intelligence:jazzer-junit:0.30.0")
+    testRuntimeOnly("org.junit.jupiter:junit-jupiter-engine")
+    testRuntimeOnly("org.junit.vintage:junit-vintage-engine")
+    testRuntimeOnly("org.junit.platform:junit-platform-launcher")
     androidTestImplementation("androidx.test:core:1.7.0")
     androidTestImplementation("androidx.test.ext:junit:1.3.0")
     androidTestImplementation("androidx.test:runner:1.7.0")
+}
+
+tasks.withType<Test>().configureEach {
+    useJUnitPlatform()
 }
