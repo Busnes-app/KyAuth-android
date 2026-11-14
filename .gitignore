@@ -60,6 +60,8 @@ node_modules/
 
 # Disposable native TLS public resources and runtime results
 .tls-fixtures/
+# A bare `go build` in scripts/tls-fixtures writes this executable beside its source.
+/scripts/tls-fixtures/kyauth-android-tls-fixtures
 
 # Python fixture-evidence tooling
 __pycache__/
