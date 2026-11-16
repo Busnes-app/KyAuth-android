@@ -12,6 +12,7 @@ class PendingSignOnTest {
     private val req = SignOnHandoff(
         SignOnRequest.Proceed(
             TrustedCaller("org.kysecurity.mail", "KyPost"), "kypost", "https://mail.example.com",
+            "Wnp4zKSg9CDZvGK7Zpw8J1njn3I9OuENy-DwgVoH7NQ",
             PairedAccount("https://id.example.com", "d", "P", "alice", "u1", canSignOn = true),
         ),
         response = null,

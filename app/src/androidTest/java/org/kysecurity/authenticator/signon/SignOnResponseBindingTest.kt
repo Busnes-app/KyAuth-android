@@ -47,7 +47,7 @@ class SignOnResponseBindingTest {
         val bound = Spy()
         val injected = Spy()
         val request = SignOnRequest.Proceed(
-            TrustedCaller("org.kysecurity.mail", "KyPost"), "kypost", "https://mail.example.com",
+            TrustedCaller("org.kysecurity.mail", "KyPost"), "kypost", "https://mail.example.com", null,
             PairedAccount("https://id.example.com", "d", "P", "alice", "u1", canSignOn = true),
         )
         val nonce = PendingSignOn.issue(SignOnHandoff(request, bound.response()))
