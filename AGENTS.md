@@ -228,6 +228,8 @@ Recorded so it is not mistaken for done:
 
 ## Child DOX Index
 
+- `docs/AGENTS.md` — mdBook manual, chapter ownership and documentation checks.
+
 - `scripts/tls-fixtures/` — native TLS peers, public debug resources and host calibration.
 
 ## Product icon
