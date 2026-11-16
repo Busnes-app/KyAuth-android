@@ -63,9 +63,8 @@ KyAuth open. Both are inside every boundary here. Server-side issues belong to
    | MFA response (`MfaResponseClient`) | Yes: origin, user, device, challenge, purpose, expiry, decision, digits | Block or delay an answer, show a false result. Never an approval |
    | Push refresh (`PushRefreshClient`) | Yes: origin, device, time, transport, token hash, keys | Stop pushes. The UnifiedPush endpoint and keys it carries |
    | Device revoke (`DeviceRevokeClient`) | Yes: origin, device, time | Block the revoke, report a false result |
-   | Sign-on (`TokenClient`) | Yes: RFC 7523 assertion, 120 s, single-use `jti` | **The returned ID token, a bearer the consumer accepts as its whole credential** |
+   | Sign-on (`TokenClient`) | Yes: RFC 7523 assertion, 120 s, single-use `jti` | An ID token it cannot use: it names the consumer's proof key (`cnf`), which KyPost-Server requires proof of |
 
-   The last row is open; see Residual risk.
 2. **Push services → KyAuth.** Both push services hand data only to `mfa/IncomingPush.kt`. A sealed
    FCM push is decrypted with RFC 8291 (`mfa/WebPush.kt`) using keys only this pairing holds. A
    plaintext FCM push is accepted only while the pairing has no keys
@@ -143,12 +142,6 @@ These are recorded, not hidden ([AGENTS.md, Outstanding security work](../AGENTS
 - A pairing made before KyAuth sent push keys stays plaintext over FCM until its next Reconnect
   or re-pair.
 - The GitHub build of KyPost is not pinned, so it cannot sign on through KyAuth.
-- **Open:** an attacker with a phone-trusted certificate for the KyIdentity host can read the
-  sign-on ID token and redeem it at KyPost first, pairing their own device to the user's mailbox
-  without device approval and around KyPost's certificate pin. The fix binds the token to a key
-  the consumer holds (owner, 2026-11-16; six PRs in review, KyPost-Server deploys last); open until
-  all ship
-  ([AGENTS.md](../AGENTS.md#outstanding-security-work)).
 - The same attacker present during the 90 s pairing can enrol its own key; nothing checks the key
   out of band.
 - Pairing trusts the QR code. Whoever controls the QR controls which server KyAuth pairs with.
