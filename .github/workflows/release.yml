@@ -10,6 +10,7 @@ permissions:
 jobs:
   release:
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     # Signing secrets live in this environment; give it a required reviewer.
     environment: release
     permissions:
@@ -98,6 +99,7 @@ jobs:
   play:
     needs: release
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     environment: release
     permissions: {}
     # Job-level `if` cannot read secrets, so each step checks this instead.
