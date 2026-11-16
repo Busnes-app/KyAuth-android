@@ -140,8 +140,9 @@ These are recorded, not hidden ([AGENTS.md, Outstanding security work](../AGENTS
 - The GitHub build of KyPost is not pinned, so it cannot sign on through KyAuth.
 - **Open:** an attacker with a phone-trusted certificate for the KyIdentity host can read the
   sign-on ID token and redeem it at KyPost first, pairing their own device to the user's mailbox
-  without device approval and around KyPost's certificate pin. The fix (binding the token to the
-  consumer, or pinning KyIdentity) awaits an owner decision
+  without device approval and around KyPost's certificate pin. The fix binds the token to a key
+  the consumer holds (owner, 2026-11-16; six PRs in review, KyPost-Server deploys last); open until
+  all ship
   ([AGENTS.md](../AGENTS.md#outstanding-security-work)).
 - The same attacker present during the 90 s pairing can enrol its own key; nothing checks the key
   out of band.
