@@ -11,7 +11,7 @@ class AttestationChallengeTest {
     @Test
     fun tokenPath_usesHashOfPairingToken() {
         val p = QrPairing(serverUrl = "https://id.example", pairingToken = "abc123")
-        val cred = "pair1:" + sha("abc123").joinToString("") { "%02x".format(it) }
+        val cred = "pair1:" + PairingProof.key("abc123").joinToString("") { "%02x".format(it) }
         assertEquals(cred, AttestationChallenge.credential(p))
         assertArrayEquals(sha("kyidentity-attest-v1|$cred"), AttestationChallenge.forPairing(p))
     }

@@ -6,6 +6,7 @@ import org.junit.Assert.assertFalse
 import org.junit.Assert.assertThrows
 import org.junit.Assert.assertTrue
 import org.junit.Test
+import java.security.MessageDigest
 
 /** Golden vector from the pairing proof v1 spec; KyIdentity pins the same values. */
 class PairingProofTest {
@@ -15,8 +16,8 @@ class PairingProofTest {
         """{"userId":"user-1","deviceName":"Pixel","deviceIdentifier":"inst-1","platform":"android","publicKey":"BAAA","pushToken":"tok","pushTransport":"fcm"}"""
             .toByteArray()
     private val response = "{\"success\":true,\"deviceId\":\"dev-1\",\"device\":{\"id\":\"dev-1\"}}\n".toByteArray()
-    private val requestProof = "NbMaNQG2rujfajtoYLf01p2YnmfAW3EFm3_26roCDUc"
-    private val replyProof = "zANXKOlyO1yxqAb2W4QqpkPWmL37PaXBKqaPjOlrJgY"
+    private val requestProof = "mJoloQsGw4y-mlo2Lo3pMsesJrVna3FPQN4DuV5HaTs"
+    private val replyProof = "QsV0h3Srdjg805wx19o-D3Ee1KhzmKAz1RqP4Zu0Q-Y"
     private val pairing = QrPairing(serverUrl = "https://ID.example.com:443/", pairingToken = token, userId = "user-1")
 
     private fun reply(body: ByteArray = response, vararg proof: String) =
@@ -27,15 +28,21 @@ class PairingProofTest {
     @Test
     fun goldenVector() {
         val key = PairingProof.key(token)
-        assertEquals("6b374db4159ffa3ad74bcc886b8d70a0c421952f0dddb887820093e27044d8d4", key.joinToString("") { "%02x".format(it) })
+        assertEquals("8f7bb6e4f056bb6d1846aa7544964867c93afdd56ec29c73c46aac8ebd8f8d76", key.joinToString("") { "%02x".format(it) })
         assertEquals(requestProof, PairingProof.requestProof(key, origin, request))
         assertEquals("cykwj-49G__TJq22JeLvRDBE4qzm3_BRgfznUMMoiag", PairingProof.requestHash(request))
         assertEquals(replyProof, PairingProof.replyProof(key, origin, request, response))
-        assertEquals("pair1:6b374db4159ffa3ad74bcc886b8d70a0c421952f0dddb887820093e27044d8d4", AttestationChallenge.credential(pairing))
+        assertEquals("pair1:8f7bb6e4f056bb6d1846aa7544964867c93afdd56ec29c73c46aac8ebd8f8d76", AttestationChallenge.credential(pairing))
         assertEquals(
-            "379da028f9790e6806c88f8dba9bef682507ef5c65f71de3f22f0429507af8ca",
+            "d15e7280b1406114c113bd5019d7b8a11f06f575938872fa2bb82a450208e4e7",
             AttestationChallenge.forPairing(pairing).joinToString("") { "%02x".format(it) },
         )
+    }
+
+    @Test
+    fun keyIsNotTheStoredTokenHash() {
+        val tokenHash = MessageDigest.getInstance("SHA-256").digest(token.toByteArray())
+        assertFalse(PairingProof.key(token).contentEquals(tokenHash))
     }
 
     @Test

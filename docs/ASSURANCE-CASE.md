@@ -59,7 +59,7 @@ KyAuth open. Both are inside every boundary here. Server-side issues belong to
 
    | Request | Device-signed | Attacker gains |
    |---|---|---|
-   | Pairing by QR/token (`PairingClient`, `PairingProof`) | No: it enrols the key. Request and reply carry an HMAC under SHA-256(token) over the exact bytes and origin; the token is never sent | Block the pairing. Never the token, an altered request or a forged reply |
+   | Pairing by QR/token (`PairingClient`, `PairingProof`) | No: it enrols the key. Request and reply carry an HMAC under a key derived from the token (not its stored hash) over the exact bytes and origin; the token is never sent | Block the pairing. Never the token, an altered request or a forged reply |
    | Pairing by PIN (`PairingClient`) | No | Its own key enrolled, or the PIN spent; forged reply fields. Trust on first use |
    | MFA response (`MfaResponseClient`) | Yes: origin, user, device, challenge, purpose, expiry, decision, digits | Block or delay an answer, show a false result. Never an approval |
    | Push refresh (`PushRefreshClient`) | Yes: origin, device, time, transport, token hash, keys | Stop pushes. The UnifiedPush endpoint and keys it carries |
@@ -121,7 +121,7 @@ KyAuth open. Both are inside every boundary here. Server-side issues belong to
 | Undersized TLS certificate keys | Native trust validation followed by a full evaluated-chain key floor, including roots omitted from the wire; no hostname or pin override | `pairing/ServerTls.kt`; `ServerHttpTLSDeviceTest`; [native evidence and limits](native-tls-evidence.md) |
 | Resource exhaustion from a hostile server | 64 KiB response cap, 10 s timeouts, 30 s overall deadline | `pairing/ServerHttp.kt` (`readBounded`) |
 | Forged or replayed push request | RFC 8291 sealed FCM, plaintext refused once keys are registered, device and account must match, expiry at most 10 minutes ahead | `mfa/WebPush.kt`, `mfa/IncomingPush.kt`, `pairing/PushStore.kt` |
-| Pairing token read or reply forged in transit | Pairing proof v1: HMAC under SHA-256(token) over origin and exact request bytes, and over the request hash and exact reply bytes; the reply is checked in constant time before parsing | `pairing/PairingProof.kt`, `pairing/PairingClient.kt`; `PairingProofTest`; KyIdentity enforces |
+| Pairing token read or reply forged in transit | Pairing proof v1: HMAC under K = HMAC-SHA256(token, `kyidentity-pair-key/1`), which a read of the stored `token_hash` does not give, over origin and exact request bytes, and over the request hash and exact reply bytes; the reply is checked in constant time before parsing | `pairing/PairingProof.kt`, `pairing/PairingClient.kt`; `PairingProofTest`; KyIdentity enforces |
 | Approval signed for the wrong context | The signed message binds origin, user, device, challenge, purpose and expiry | `mfa/MfaChallenge.kt` |
 | Token theft by another app | Caller pinned by package and full signing history; single-use 120 s nonce; origin normalised before any prompt | `signon/TrustedConsumers.kt`, `signon/PendingSignOn.kt`, `signon/DeviceAssertion.kt` |
 | ID token read in transit and redeemed first | Token bound to the consumer's key (`cnf`); KyPost-Server requires proof of that key | `signon/DeviceAssertion.kt`, `signon/KyIdentityAuthenticator.kt`; KyIdentity and KyPost-Server enforce |

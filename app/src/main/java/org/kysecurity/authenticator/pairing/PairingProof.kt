@@ -7,15 +7,17 @@ import javax.crypto.spec.SecretKeySpec
 
 /**
  * KyAuth pairing proof v1 (wire contract with KyIdentity). The QR token never crosses the wire:
- * both sides MAC the exact bytes they send under K = SHA-256(token), which KyIdentity stores.
+ * both sides MAC the exact bytes they send under K = HMAC-SHA256(token, "kyidentity-pair-key/1").
+ * K is deliberately not SHA-256(token), which is KyIdentity's stored `token_hash`.
  */
 object PairingProof {
     const val HEADER = "KyIdentity-Pairing-Proof"
+    private const val KEY = "kyidentity-pair-key/1"
     private const val REQUEST = "kyidentity-pair/1\n"
     private const val REPLY = "kyidentity-pair-reply/1\n"
     private val b64 = Base64.getUrlEncoder().withoutPadding()
 
-    fun key(pairingToken: String): ByteArray = sha256(pairingToken.toByteArray(Charsets.UTF_8))
+    fun key(pairingToken: String): ByteArray = hmac(pairingToken.toByteArray(Charsets.UTF_8), KEY.toByteArray())
 
     /** The attestation credential on the proof path: `pair1:` + hex(K). */
     fun attestationCredential(pairingToken: String): String =
