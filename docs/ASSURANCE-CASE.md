@@ -30,7 +30,7 @@ TOTP secrets and signs suite apps in. Its security requirements:
 | Attacker | Can | Wants |
 |---|---|---|
 | Hostile or spoofed KyIdentity server (from a crafted QR) | Answer KyAuth's requests | Hang or crash the app, steer it to another host, get a signature for another server |
-| Network attacker | Read and alter traffic | Read or forge pairing, approvals or tokens |
+| Network attacker | Read and alter traffic; possibly hold a certificate the phone trusts for the KyIdentity host | Read or forge pairing, approvals or tokens |
 | Push relay, Google FCM, UnifiedPush distributor | See and send push messages | Learn who signs in where, or forge a sign-in request |
 | Another app on the phone | Call KyAuth's exported components and AccountManager | Get an ID token, read TOTP secrets, start a sign-in |
 | Someone holding the phone, locked | Guess PINs, take screenshots or backups | Open the vault or approve a sign-in |
@@ -52,6 +52,20 @@ KyAuth open. Both are inside every boundary here. Server-side issues belong to
    inspects the complete evaluated chain, including its anchor, for actual RSA-2048
    or EC-256 minimum keys. Unknown keys or an unavailable verified chain fail closed.
    This factory applies to app-owned requests only; SDK transports keep their own TLS.
+
+   **No certificate pin, by decision.** The attacker it would stop holds a certificate the phone
+   trusts for the KyIdentity host (mis-issued, or obtained by hijacking DNS or domain validation)
+   and sits on the phone's path. What that attacker gets, request by request:
+
+   | Request | Device-signed | Attacker gains |
+   |---|---|---|
+   | Pairing (`PairingClient`) | No: it enrols the key | Its own key enrolled, or the token spent; forged reply fields. Trust on first use |
+   | MFA response (`MfaResponseClient`) | Yes: origin, user, device, challenge, purpose, expiry, decision, digits | Block or delay an answer, show a false result. Never an approval |
+   | Push refresh (`PushRefreshClient`) | Yes: origin, device, time, transport, token hash, keys | Stop pushes. The UnifiedPush endpoint and keys it carries |
+   | Device revoke (`DeviceRevokeClient`) | Yes: origin, device, time | Block the revoke, report a false result |
+   | Sign-on (`TokenClient`) | Yes: RFC 7523 assertion, 120 s, single-use `jti` | **The returned ID token, a bearer the consumer accepts as its whole credential** |
+
+   The last row is open; see Residual risk.
 2. **Push services → KyAuth.** Both push services hand data only to `mfa/IncomingPush.kt`. A sealed
    FCM push is decrypted with RFC 8291 (`mfa/WebPush.kt`) using keys only this pairing holds. A
    plaintext FCM push is accepted only while the pairing has no keys
@@ -124,6 +138,13 @@ These are recorded, not hidden ([AGENTS.md, Outstanding security work](../AGENTS
 - A pairing made before KyAuth sent push keys stays plaintext over FCM until its next Reconnect
   or re-pair.
 - The GitHub build of KyPost is not pinned, so it cannot sign on through KyAuth.
+- **Open:** an attacker with a phone-trusted certificate for the KyIdentity host can read the
+  sign-on ID token and redeem it at KyPost first, pairing their own device to the user's mailbox
+  without device approval and around KyPost's certificate pin. The fix (binding the token to the
+  consumer, or pinning KyIdentity) awaits an owner decision
+  ([AGENTS.md](../AGENTS.md#outstanding-security-work)).
+- The same attacker present during the 90 s pairing can enrol its own key; nothing checks the key
+  out of band.
 - Pairing trusts the QR code. Whoever controls the QR controls which server KyAuth pairs with.
   The server enforces the pairing token's 90-second lifetime. The client also refuses a QR whose
   `expiresAt` has passed, but it accepts one that has no `expiresAt`.
