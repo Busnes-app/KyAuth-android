@@ -20,7 +20,7 @@ class PairingClientTest {
             ),
         )
 
-        assertEquals("pair-token", request.getString("pairingToken"))
+        assertEquals(false, request.has("pairingToken"))
         assertEquals("SM-F971U1", request.getString("deviceName"))
         assertEquals("install-id", request.getString("deviceIdentifier"))
         assertEquals("android", request.getString("platform"))

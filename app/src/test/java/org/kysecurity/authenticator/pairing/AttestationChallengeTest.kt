@@ -9,10 +9,11 @@ class AttestationChallengeTest {
     private fun sha(s: String) = MessageDigest.getInstance("SHA-256").digest(s.toByteArray(Charsets.UTF_8))
 
     @Test
-    fun tokenPath_usesPairingToken() {
+    fun tokenPath_usesHashOfPairingToken() {
         val p = QrPairing(serverUrl = "https://id.example", pairingToken = "abc123")
-        assertEquals("abc123", AttestationChallenge.credential(p))
-        assertArrayEquals(sha("kyidentity-attest-v1|abc123"), AttestationChallenge.forPairing(p))
+        val cred = "pair1:" + sha("abc123").joinToString("") { "%02x".format(it) }
+        assertEquals(cred, AttestationChallenge.credential(p))
+        assertArrayEquals(sha("kyidentity-attest-v1|$cred"), AttestationChallenge.forPairing(p))
     }
 
     @Test
@@ -25,7 +26,7 @@ class AttestationChallengeTest {
     @Test
     fun tokenWinsWhenBothPresent() {
         val p = QrPairing(serverUrl = "https://id.example", pairingToken = "tok", pinCode = "123456", userId = "u1")
-        assertEquals("tok", AttestationChallenge.credential(p))
+        assertEquals(PairingProof.attestationCredential("tok"), AttestationChallenge.credential(p))
     }
 
     @Test

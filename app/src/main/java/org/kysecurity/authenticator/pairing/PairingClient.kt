@@ -2,8 +2,11 @@ package org.kysecurity.authenticator.pairing
 
 import org.json.JSONArray
 import org.json.JSONObject
+import org.kysecurity.authenticator.mfa.MfaMessage
 
 private val LEVELS = setOf("none", "tee", "strongbox")
+internal const val REPLY_UNVERIFIED = "The server's pairing reply could not be verified."
+internal const val NEEDS_USER_ID = "Pairing with a token needs the user ID. Scan the QR code, or enter the user ID."
 
 class PairingClient {
     fun register(
@@ -20,17 +23,38 @@ class PairingClient {
 
         val endpoint = PairingEndpoint.validatedRegistrationUrl(pairing.serverUrl, pairing.registrationUrl)
         val request = registrationRequestJson(pairing, deviceName, deviceIdentifier, push, publicKeyBase64, attestationChain)
+            .toByteArray(Charsets.UTF_8)
+        val reply = ServerHttp.send(endpoint, "POST", "application/json", request, proofHeaders(pairing, request))
+        return accept(pairing, request, reply, deviceName, attestationChain)
+    }
 
-        val reply = ServerHttp.send(endpoint, "POST", "application/json", request)
-        val response = JSONObject(reply.body.ifBlank { "{}" })
-        if (!reply.ok || !response.optBoolean("success")) {
-            val errorMsg = response.optString(
-                "error_description",
-                response.optString("error", "Pairing failed (${reply.status})"),
+    /** The proof header for a QR/token pairing over the exact [request] bytes; none for PIN pairing. */
+    internal fun proofHeaders(pairing: QrPairing, request: ByteArray): Map<String, String> {
+        val token = pairing.pairingToken?.takeIf { it.isNotBlank() } ?: return emptyMap()
+        require(!pairing.userId.isNullOrBlank()) { NEEDS_USER_ID }
+        return mapOf(PairingProof.HEADER to PairingProof.requestProof(PairingProof.key(token), MfaMessage.origin(pairing.serverUrl), request))
+    }
+
+    /** Verifies a token pairing's reply over its exact bytes before anything is parsed. */
+    internal fun accept(
+        pairing: QrPairing,
+        request: ByteArray,
+        reply: ServerHttp.Response,
+        deviceName: String,
+        attestationChain: List<String> = emptyList(),
+    ): PairedAccount {
+        if (!reply.ok) throw IllegalStateException(reply.error("Pairing failed"))
+        val token = pairing.pairingToken?.takeIf { it.isNotBlank() }
+        if (token != null && !PairingProof.replyVerified(
+                PairingProof.key(token), MfaMessage.origin(pairing.serverUrl), request, reply.bytes,
+                reply.singleHeader(PairingProof.HEADER),
             )
-            throw IllegalStateException(errorMsg)
+        ) {
+            throw IllegalStateException(REPLY_UNVERIFIED)
         }
-        return parseRegistration(reply.body, pairing, deviceName, attestationChain)
+        val body = reply.body
+        if (!JSONObject(body.ifBlank { "{}" }).optBoolean("success")) throw IllegalStateException(reply.error("Pairing failed"))
+        return parseRegistration(body, pairing, deviceName, attestationChain)
     }
 
     internal fun parseRegistration(
@@ -69,10 +93,8 @@ class PairingClient {
         publicKeyBase64: String,
         attestationChain: List<String> = emptyList(),
     ): String = JSONObject().apply {
-        if (!pairing.pairingToken.isNullOrBlank()) {
-            put("pairingToken", pairing.pairingToken)
-        }
-        if (!pairing.pinCode.isNullOrBlank()) {
+        // A token pairing proves the token in a header instead (PairingProof); only PIN pairing sends its secret.
+        if (pairing.pairingToken.isNullOrBlank() && !pairing.pinCode.isNullOrBlank()) {
             put("pinCode", pairing.pinCode)
         }
         if (!pairing.userId.isNullOrBlank()) {

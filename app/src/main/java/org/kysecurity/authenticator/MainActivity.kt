@@ -55,6 +55,7 @@ import org.kysecurity.authenticator.mfa.MfaResponseClient
 import org.kysecurity.authenticator.mfa.MfaResponseResult
 import org.kysecurity.authenticator.mfa.RequestCardText
 import org.kysecurity.authenticator.pairing.AttestationChallenge
+import org.kysecurity.authenticator.pairing.NEEDS_USER_ID
 import org.kysecurity.authenticator.pairing.attestationSummary
 import org.kysecurity.authenticator.pairing.DeviceSigningKey
 import org.kysecurity.authenticator.pairing.PairedAccount
@@ -445,6 +446,8 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun showPairingConfirmation(pairing: QrPairing) {
+        // Checked before the device key is touched: the proof request needs it.
+        if (!pairing.pairingToken.isNullOrBlank() && pairing.userId.isNullOrBlank()) return showPairingError(NEEDS_USER_ID)
         val host = runCatching { URI(pairing.serverUrl).host }.getOrNull().orEmpty()
         AlertDialog.Builder(this)
             .setTitle(getString(R.string.pairing_title))
@@ -529,7 +532,7 @@ class MainActivity : AppCompatActivity() {
         }
         val serverInput = EditText(this).apply { hint = "Server URL (e.g. https://auth.example.com)"; styleInput(this) }
         val tokenInput = EditText(this).apply { hint = "Pairing Token or PIN"; styleInput(this); noKeyboardLearning() }
-        val userInput = EditText(this).apply { hint = "User ID (optional if using token)"; styleInput(this) }
+        val userInput = EditText(this).apply { hint = "User ID"; styleInput(this) }
 
         container.addView(serverInput)
         container.addView(tokenInput)
@@ -551,7 +554,7 @@ class MainActivity : AppCompatActivity() {
                 val pairing = if (tokenOrPin.length == 6 && tokenOrPin.all { it.isDigit() } && userId != null) {
                     QrPairing(serverUrl = serverUrl, pinCode = tokenOrPin, userId = userId)
                 } else {
-                    QrPairing(serverUrl = serverUrl, pairingToken = tokenOrPin)
+                    QrPairing(serverUrl = serverUrl, pairingToken = tokenOrPin, userId = userId)
                 }
                 showPairingConfirmation(pairing)
             }
