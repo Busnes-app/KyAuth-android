@@ -17,8 +17,14 @@ object ServerHttp {
     private const val TIMEOUT_MS = 10_000
     private const val DEADLINE_MS = 30_000L
 
-    class Response(val status: Int, val body: String) {
+    class Response(val status: Int, val bytes: ByteArray, private val headers: Map<String, List<String>> = emptyMap()) {
+        constructor(status: Int, body: String) : this(status, body.toByteArray(Charsets.UTF_8))
+
         val ok get() = status in 200..299
+        val body: String get() = String(bytes, Charsets.UTF_8)
+
+        /** The header's value if it was sent exactly once, else null. */
+        fun singleHeader(name: String): String? = headers[name.lowercase()]?.singleOrNull()
 
         /** KyIdentity's `error_description` or `error`, else [fallback] with the status. */
         fun error(fallback: String): String {
@@ -29,7 +35,10 @@ object ServerHttp {
         }
     }
 
-    fun send(url: URI, method: String, contentType: String, body: String): Response {
+    fun send(url: URI, method: String, contentType: String, body: String): Response =
+        send(url, method, contentType, body.toByteArray(Charsets.UTF_8))
+
+    fun send(url: URI, method: String, contentType: String, body: ByteArray, headers: Map<String, String> = emptyMap()): Response {
         val connection = (url.toURL().openConnection() as HttpURLConnection).apply {
             // PairingEndpoint requires HTTPS in release; HTTP is debug-loopback only.
             if (this is HttpsURLConnection) {
@@ -44,12 +53,15 @@ object ServerHttp {
             instanceFollowRedirects = false
             setRequestProperty("Content-Type", contentType)
             setRequestProperty("Accept", "application/json")
+            headers.forEach { (name, value) -> setRequestProperty(name, value) }
         }
         try {
-            connection.outputStream.bufferedWriter(Charsets.UTF_8).use { it.write(body) }
+            connection.outputStream.use { it.write(body) }
             val status = connection.responseCode
             val stream = if (status in 200..299) connection.inputStream else connection.errorStream
-            return Response(status, stream?.use { readBounded(it) }.orEmpty())
+            val received = connection.headerFields.orEmpty()
+                .mapNotNull { (name, values) -> name?.let { it.lowercase() to values.orEmpty() } }.toMap()
+            return Response(status, stream?.use { readBounded(it) } ?: ByteArray(0), received)
         } finally {
             connection.disconnect()
         }
@@ -60,7 +72,7 @@ object ServerHttp {
         limit: Int = MAX_BODY_BYTES,
         deadlineMs: Long = DEADLINE_MS,
         nowMs: () -> Long = { System.nanoTime() / 1_000_000 },
-    ): String {
+    ): ByteArray {
         val end = nowMs() + deadlineMs
         val out = ByteArrayOutputStream()
         val buffer = ByteArray(8 * 1024)
@@ -71,6 +83,6 @@ object ServerHttp {
             if (out.size() > limit) throw IOException("The server's response is too large")
             if (nowMs() > end) throw IOException("The server took too long to respond")
         }
-        return out.toString(Charsets.UTF_8.name())
+        return out.toByteArray()
     }
 }

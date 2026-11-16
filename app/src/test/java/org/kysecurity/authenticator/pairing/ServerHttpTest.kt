@@ -11,7 +11,7 @@ class ServerHttpTest {
     @Test
     fun readsABodyUpToTheCap() {
         val body = "x".repeat(ServerHttp.MAX_BODY_BYTES)
-        assertEquals(body, ServerHttp.readBounded(ByteArrayInputStream(body.toByteArray())))
+        assertEquals(body, String(ServerHttp.readBounded(ByteArrayInputStream(body.toByteArray()))))
     }
 
     @Test
@@ -35,5 +35,13 @@ class ServerHttpTest {
         assertEquals("nope", ServerHttp.Response(400, """{"error":"bad","error_description":"nope"}""").error("Failed"))
         assertEquals("bad", ServerHttp.Response(400, """{"error":"bad"}""").error("Failed"))
         assertEquals("Failed (502)", ServerHttp.Response(502, "<html>").error("Failed"))
+    }
+
+    @Test
+    fun singleHeaderRefusesARepeatedValue() {
+        val r = ServerHttp.Response(200, ByteArray(0), mapOf("x-one" to listOf("a"), "x-two" to listOf("a", "b")))
+        assertEquals("a", r.singleHeader("X-One"))
+        assertEquals(null, r.singleHeader("X-Two"))
+        assertEquals(null, r.singleHeader("X-Missing"))
     }
 }

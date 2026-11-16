@@ -10,7 +10,8 @@ object AttestationChallenge {
     private const val PREFIX = "kyidentity-attest-v1|"
 
     internal fun credential(pairing: QrPairing): String =
-        pairing.pairingToken?.takeIf { it.isNotBlank() } ?: "${pairing.userId}|${pairing.pinCode}"
+        pairing.pairingToken?.takeIf { it.isNotBlank() }?.let(PairingProof::attestationCredential)
+            ?: "${pairing.userId}|${pairing.pinCode}"
 
     fun forPairing(pairing: QrPairing): ByteArray =
         MessageDigest.getInstance("SHA-256").digest((PREFIX + credential(pairing)).toByteArray(Charsets.UTF_8))
