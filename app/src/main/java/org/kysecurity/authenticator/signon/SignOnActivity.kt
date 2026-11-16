@@ -124,6 +124,7 @@ class SignOnActivity : AppCompatActivity() {
             serverUrl = paired.serverUrl,
             clientId = request.clientId,
             origin = request.origin,
+            cnf = request.cnf,
             nowEpochSeconds = System.currentTimeMillis() / 1000,
             jti = UUID.randomUUID().toString(),
         )

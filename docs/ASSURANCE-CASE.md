@@ -62,7 +62,11 @@ KyAuth open. Both are inside every boundary here. Server-side issues belong to
    signing-certificate SHA-256. Every certificate in the caller's signing history must be pinned
    (`containsAll`), and a package with multiple signers is refused. `SignOnActivity` is exported,
    but it acts only on a single-use nonce that expires after 120 s (`signon/PendingSignOn.kt`). The
-   requested origin must be plain `https://host[:port]` (`DeviceAssertion.relayOrigin`).
+   requested origin must be plain `https://host[:port]` (`DeviceAssertion.relayOrigin`). When the
+   consumer sends `org.kysecurity.identity.cnf` (the SHA-256 thumbprint of a key only it holds), the
+   assertion carries it as `cnf`, KyIdentity binds the ID token to that key, and KyPost-Server
+   refuses the token without a proof signed by it, so a token read in transit cannot be redeemed.
+   A malformed `cnf` is refused before any prompt (`DeviceAssertion.isValidCnf`).
 4. **KyAuth → its own storage.** TOTP entries are AES-256-GCM encrypted in `totp_vault.bin`. The
    vault key is wrapped by an RSA-OAEP Keystore key that needs user authentication for every
    unwrap (`security/VaultKek.kt`).
@@ -104,6 +108,7 @@ KyAuth open. Both are inside every boundary here. Server-side issues belong to
 | Forged or replayed push request | RFC 8291 sealed FCM, plaintext refused once keys are registered, device and account must match, expiry at most 10 minutes ahead | `mfa/WebPush.kt`, `mfa/IncomingPush.kt`, `pairing/PushStore.kt` |
 | Approval signed for the wrong context | The signed message binds origin, user, device, challenge, purpose and expiry | `mfa/MfaChallenge.kt` |
 | Token theft by another app | Caller pinned by package and full signing history; single-use 120 s nonce; origin normalised before any prompt | `signon/TrustedConsumers.kt`, `signon/PendingSignOn.kt`, `signon/DeviceAssertion.kt` |
+| ID token read in transit and redeemed first | Token bound to the consumer's key (`cnf`); KyPost-Server requires proof of that key | `signon/DeviceAssertion.kt`, `signon/KyIdentityAuthenticator.kt`; KyIdentity and KyPost-Server enforce |
 | Secrets at rest | AES-256-GCM vault, fresh 12-byte nonce from `SecureRandom` per save, AAD `kyauth-totp-v1`; vault key wrapped by an auth-bound RSA-2048 OAEP Keystore key | `totp/TotpVault.kt`, `security/VaultKek.kt` |
 | Device key extraction | P-256 key in the Keystore, StrongBox first, then TEE; needs user authentication; attestation chain sent to KyIdentity | `pairing/DeviceSigningKey.kt` |
 | PIN guessing | PBKDF2-HMAC-SHA-256 with 150,000 iterations and a 16-byte random salt, peppered with a Keystore HMAC key usable only while the phone is unlocked; delays of 0, 5, 30 and 300 s; wipe after the fifth failure | `security/CredentialCipher.kt`, `security/PinFailurePolicy.kt`, `security/AppLockManager.kt` |

@@ -87,16 +87,22 @@ KyAuth pairs an Android device with KyIdentity. It stores TOTP entries in an enc
   with `ERROR_CODE_BAD_ARGUMENTS` before any prompt. Input over 256 characters or an explicit port
   outside 1..65535 is refused. The binding is per origin: two relays sharing host and port but with
   different paths are one trust domain. Relay names must be ASCII/punycode.
-  `decideSignOn` checks in order: caller pin, client id, origin, pairing. The assertion carries it as
+  `decideSignOn` checks in order: caller pin, client id, origin, cnf, pairing. The assertion carries it as
   the `origin` claim; KyIdentity checks it against the client's registered redirect-URI origins, so
   a pinned consumer cannot obtain a token for another relay's `client_id`.
+- The consumer may pass `org.kysecurity.identity.cnf`: base64url (no padding) SHA-256 of the SPKI DER
+  of an ephemeral P-256 key it holds, exactly `^[A-Za-z0-9_-]{43}$`. A present but malformed String is refused with `ERROR_CODE_BAD_ARGUMENTS` ("Invalid key binding") after the origin
+  check and before any prompt; absent (or a non-String, which `getString` reads as absent) stays absent; the relay enforces. It travels inside the `PendingSignOn` handoff, never
+  as an intent extra. The assertion then carries `"cnf": {"spki#S256": thumb}`; KyIdentity copies it into
+  the ID token and KyPost-Server requires proof of that key, so a token read off the wire is useless
+  without the consumer's key. Wire contract: `signon-binding` v1 (KyIdentity, KyAuth, KyPost apps, KyPost-Server).
 - `SignOnActivity` is exported because AccountManager starts it from the requesting app's process.
   `getAuthToken` verifies the caller, then puts only the authenticator response and a single-use 120 s
   `PendingSignOn` nonce in the intent; no caller-describing extras exist. The activity takes the nonce
   once and, without one, answers the response with `ERROR_CODE_CANCELED` ("Sign-in request expired") and finishes with no UI, re-reads the pairing, shows "<app> at <relay host[:port]> wants to sign in as <user> at <KyIdentity host>.", takes one
   biometric through `VaultUnlockPrompt.showForSignature` on `DeviceSigningKey` (no vault key, so it
   works while locked), signs an RFC 7523 assertion (`DeviceAssertion`, `aud` is the trimmed
-  `server_url` + `/oauth/token`; 8 claims including `origin`), redeems it (`TokenClient`) and returns the ID token once.
+  `server_url` + `/oauth/token`; 8 claims including `origin`, 9 with `cnf`), redeems it (`TokenClient`) and returns the ID token once.
 - KyIdentity side (shipped): the grant needs both `canSignOn` and MFA-approver on the device; an admin
   MFA reset ends sign-on; `device_signon_disabled` and `signon_not_permitted` (policy refuses: organisation MFA on an unattested device, app factor
   or fresh-password policy, or no app access) are returned only after the signature verifies. KyIdentity decides on every
