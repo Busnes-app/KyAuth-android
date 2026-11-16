@@ -40,6 +40,37 @@ class DeviceAssertionTest {
     }
 
     @Test
+    fun signingInput_cnf_absentByDefault_exactWhenGiven() {
+        fun claims(cnf: String?) = String(b64url(DeviceAssertion.signingInput(
+            deviceId = "dev-1", userId = "user-1", serverUrl = "https://id.example.com",
+            clientId = "kypost", origin = "https://mail.example.com", nowEpochSeconds = 1000, jti = "j-1", cnf = cnf,
+        ).split(".")[1]))
+        val without = claims(null)
+        assertFalse(without.contains("cnf"))
+        assertEquals(8, JSONObject(without).length())
+
+        val thumb = "Wnp4zKSg9CDZvGK7Zpw8J1njn3I9OuENy-DwgVoH7NQ"
+        val with = claims(thumb)
+        assertTrue(with, with.contains("\"cnf\":{\"spki#S256\":\"$thumb\"}"))
+        val obj = JSONObject(with)
+        assertEquals(9, obj.length())
+        assertEquals(1, obj.getJSONObject("cnf").length())
+        // The other eight claims are unchanged by the binding.
+        val base = JSONObject(without)
+        for (k in base.keys()) assertEquals(k, base.get(k).toString(), obj.get(k).toString())
+    }
+
+    @Test
+    fun isValidCnf_isExactly43Base64UrlChars() {
+        val thumb = "Wnp4zKSg9CDZvGK7Zpw8J1njn3I9OuENy-DwgVoH7NQ"
+        assertTrue(DeviceAssertion.isValidCnf(thumb))
+        assertTrue(DeviceAssertion.isValidCnf("_".repeat(43)))
+        for (bad in listOf(null, "", thumb.dropLast(1), thumb + "Q", thumb.dropLast(1) + "+", thumb.dropLast(1) + "/", thumb.dropLast(1) + "=")) {
+            assertFalse("cnf $bad", DeviceAssertion.isValidCnf(bad))
+        }
+    }
+
+    @Test
     fun relayOrigin_normalisesHttpsAndRefusesEverythingElse() {
         val cases = mapOf(
             "https://mail.example.com/" to "https://mail.example.com",
