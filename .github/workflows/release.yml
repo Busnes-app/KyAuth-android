@@ -46,7 +46,7 @@ jobs:
       # proves the signature and prints the certificate digest for the notes.
       - name: Verify and stage
         run: |
-          apksigner=$(ls -d "$ANDROID_HOME"/build-tools/* | sort -V | tail -1)/apksigner
+          apksigner=$(find "$ANDROID_HOME/build-tools" -name apksigner -type f | sort -V | tail -1)
           mkdir dist
           for channel in github fdroid; do
             cp "app/build/outputs/apk/$channel/release/app-$channel-release.apk" "dist/kyauth-$GITHUB_REF_NAME-$channel.apk"
@@ -55,7 +55,7 @@ jobs:
           digest=$("$apksigner" verify --print-certs dist/kyauth-"$GITHUB_REF_NAME"-github.apk | grep -oP 'SHA-256 digest: \K\w+' | head -1)
           [[ -n "$digest" ]]
           echo "DIGEST=$digest" >> "$GITHUB_ENV"
-          (cd dist && sha256sum *.apk > SHA256SUMS)
+          (cd dist && sha256sum -- ./*.apk > SHA256SUMS)
       # jarsigner exits 0 on an unsigned bundle, so match its verdict.
       - name: Verify and stage the Play bundle
         run: |
@@ -88,12 +88,26 @@ jobs:
             gh attestation verify "$file" --repo "$GITHUB_REPOSITORY" --bundle "$RUNNER_TEMP/kyauth-$GITHUB_REF_NAME.intoto.jsonl"
           done
           mv "$RUNNER_TEMP/kyauth-$GITHUB_REF_NAME.intoto.jsonl" dist/
+      - name: Retain verified release assets
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: release-assets
+          path: dist/
+          retention-days: 7
+          if-no-files-found: error
       - name: Publish release
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          gh release create "$GITHUB_REF_NAME" dist/* --repo "$GITHUB_REPOSITORY" --verify-tag --generate-notes \
-            --notes "Signing certificate SHA-256: \`$DIGEST\`. Play builds are signed by Google Play and carry a different certificate."
+          set -euo pipefail
+          # An operator may already have created the release. Keep its notes/status;
+          # upload without --clobber so existing artifacts are never replaced.
+          if gh release view "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            gh release upload "$GITHUB_REF_NAME" dist/* --repo "$GITHUB_REPOSITORY"
+          else
+            gh release create "$GITHUB_REF_NAME" dist/* --repo "$GITHUB_REPOSITORY" --verify-tag --generate-notes \
+              --notes "Signing certificate SHA-256: \`$DIGEST\`. Play builds are signed by Google Play and carry a different certificate."
+          fi
 
   # Its own job, so a failed upload re-runs alone instead of re-publishing the GitHub release.
   play:

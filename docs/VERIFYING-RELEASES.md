@@ -18,7 +18,8 @@ commit, and how to rebuild it from source and compare.
   | Subject | `CN=KyAuth Release, OU=KySecurity, O=KySecurity, C=US` |
   | SHA-256 | `52f61684029401fcb0137b334ad41907f83948fa1ec1377834f3b4291765fd7b` |
 
-  Each release's notes repeat this digest. If the notes and this page ever disagree, do not install
+  Workflow-created release notes repeat this digest; an operator-created release keeps its notes.
+  If the notes and this page ever disagree, do not install
   the APK; report it as described in [SECURITY.md](../SECURITY.md).
 - **Build provenance.** The same workflow publishes a SLSA build-provenance attestation for each
   APK through GitHub's Sigstore integration. There is no long-lived key to download. The

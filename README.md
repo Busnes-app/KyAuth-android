@@ -127,6 +127,11 @@ the `release` environment's secrets: `KYAUTH_KEYSTORE_BASE64` (`base64 -w0` of t
 `KYAUTH_STORE_PASSWORD`, `KYAUTH_KEY_ALIAS` and `KYAUTH_KEY_PASSWORD`. F-Droid notes are in
 [docs/f-droid.md](docs/f-droid.md).
 
+If you already created the GitHub release, the workflow attaches its verified assets to that
+release and keeps its notes and publication status. Existing assets are never overwritten;
+an asset-name collision fails publication. The run retains verified APKs, checksums and provenance
+as the `release-assets` artifact for seven days, so a publication failure need not lose the build.
+
 The same run builds the Play bundle, signed with that keystore as the Play upload key, and a
 second `play` job uploads it to the internal track with `PLAY_SERVICE_ACCOUNT_JSON` (a service
 account with Release permission on this app). Promote it to testing or production in Play Console.
