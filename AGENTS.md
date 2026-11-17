@@ -239,3 +239,8 @@ App/launcher assets use the Busnes.app-site Systems stamp family. Regenerate pla
 ## Release notes
 
 - `CHANGELOG.md` owns pending application release notes and upgrade impact. A version bump alone does not publish a release.
+- `release.yml` attaches verified assets to an existing release without changing its notes or
+  draft status; asset collisions fail without overwriting. A new release stays published.
+  Verified distribution files are retained as `release-assets` for seven days before publication.
+- `python3 scripts/test-release-publication.py` exercises existing/new releases and collision
+  refusal through the actual publication shell block; Android CI runs it before Gradle.
