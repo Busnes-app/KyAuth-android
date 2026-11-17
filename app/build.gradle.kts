@@ -145,7 +145,7 @@ dependencies {
     testImplementation("org.json:json:20260814")
     // Fuzz tests (TotpUriParserFuzzTest). Jazzer's @FuzzTest is JUnit 5, so unit tests run on the
     // JUnit Platform and the JUnit 4 tests on the vintage engine. A plain run replays the seeds.
-    testImplementation(platform("org.junit:junit-bom:5.14.4"))
+    testImplementation(platform("org.junit:junit-bom:6.1.3"))
     testImplementation("com.code-intelligence:jazzer-junit:0.30.0")
     testRuntimeOnly("org.junit.jupiter:junit-jupiter-engine")
     testRuntimeOnly("org.junit.vintage:junit-vintage-engine")
