@@ -235,3 +235,7 @@ Recorded so it is not mistaken for done:
 ## Product icon
 
 App/launcher assets use the Busnes.app-site Systems stamp family. Regenerate platform sizes from the matching master in `../Busnes.app-site`; preserve resource names and adaptive foreground safe margins. Header and lock-screen artwork use `icons/kypost.png` as `kypost_hero`; launcher assets remain KyAuth.
+
+## Release notes
+
+- `CHANGELOG.md` owns pending application release notes and upgrade impact. A version bump alone does not publish a release.
