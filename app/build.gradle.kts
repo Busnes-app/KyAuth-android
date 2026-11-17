@@ -37,8 +37,8 @@ android {
         applicationId = "org.kysecurity.authenticator"
         minSdk = 31
         targetSdk = 36
-        versionCode = 9
-        versionName = "0.6.1"
+        versionCode = 10
+        versionName = "0.6.1.1"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         buildConfigField("boolean", "ALLOW_SCREENSHOTS", "false")
     }
