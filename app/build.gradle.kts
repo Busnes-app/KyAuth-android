@@ -37,8 +37,8 @@ android {
         applicationId = "org.kysecurity.authenticator"
         minSdk = 31
         targetSdk = 36
-        versionCode = 8
-        versionName = "0.6.0"
+        versionCode = 9
+        versionName = "0.6.1"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         buildConfigField("boolean", "ALLOW_SCREENSHOTS", "false")
     }
@@ -135,7 +135,7 @@ dependencies {
     implementation("com.google.android.material:material:1.14.0")
     implementation("androidx.biometric:biometric:1.1.0")
     gmsImplementation("com.google.android.gms:play-services-code-scanner:16.1.0")
-    gmsImplementation("com.google.firebase:firebase-messaging:26.0.1")
+    gmsImplementation("com.google.firebase:firebase-messaging:26.0.2")
     "fdroidImplementation"("com.journeyapps:zxing-android-embedded:4.3.0")
     implementation("org.unifiedpush.android:connector:3.3.5")
     // WebPush HKDF. Already shipped by the connector (runtime scope); same version, so no new code in the APK.

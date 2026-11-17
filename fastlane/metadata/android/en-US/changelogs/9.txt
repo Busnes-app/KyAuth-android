@@ -1,0 +1,1 @@
+Update compatible Android and build dependencies. Version 0.6.1 keeps existing accounts, keys and local data; no migration is required.
