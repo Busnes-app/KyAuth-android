@@ -41,7 +41,7 @@ GOOD TO KNOW
 • Your codes have no backup, export or sync, by design: they exist only on this phone. Keep each site's recovery codes somewhere safe, and keep your KyIdentity recovery codes in case you lose the phone.
 • KyAuth is not a password manager.
 • Requires Android 12 or newer and a screen lock (PIN, pattern or password).
-• Choose from 17 themes, light and dark.
+• Choose from six theme pairs, in light, dark, or following your system.
 
 KyAuth is open source under the MIT license.
 ```

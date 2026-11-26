@@ -2,7 +2,7 @@
 
 ## TOTP
 
-Add accounts by scanning their setup QR codes or entering setup details. Unlock the vault to view/copy codes and verify an initial code with each service. Store recovery codes away from this phone.
+Add accounts by scanning their setup QR codes or entering setup details. Unlock the vault to view or copy codes and verify an initial code with each service. Store recovery codes away from this phone.
 
 ## Sign-in approvals
 
@@ -10,7 +10,7 @@ Approve or deny a KyIdentity request and match the browser's two-digit number. P
 
 ## Delivery and suite sign-on
 
-On Play/GitHub builds, Settings → Sign-in request delivery switches Firebase/UnifiedPush. A private-network distributor needs the explicit server opt-in documented in the product reference. Supported suite apps use the Android account sign-on service, with authentication for each sign-in.
+On Play and GitHub builds, **Settings → Sign-in request delivery** switches between Firebase and UnifiedPush. A private-network distributor needs the explicit server opt-in documented in the product reference. Supported suite apps use the Android account sign-on service, with authentication for each sign-in.
 
 ## Device changes
 
