@@ -143,38 +143,20 @@ Google Play re-signs what it installs. KyIdentity servers grade attestation agai
 (Play Console, Test and release → App integrity → App signing) as well as the GitHub release
 digest, lowercase hex without colons.
 
-## Contributing and security
+## Documentation and contributing
 
-- [CONTRIBUTING.md](CONTRIBUTING.md) covers setup and the rules a change must keep.
-- [AGENTS.md](AGENTS.md) is the product and security contract. Read it before you change
-  behaviour.
-- Report vulnerabilities privately as described in [SECURITY.md](SECURITY.md), not in a public
-  issue.
-- [Verifying releases](docs/VERIFYING-RELEASES.md) checks an APK's signing certificate and build
-  provenance, and rebuilds it from source to compare.
-- [Assurance case](docs/ASSURANCE-CASE.md) covers the threat model, the trust boundaries and why the
-  security requirements hold.
+- [User manual](https://busnes.app/manuals/kyauth-android/) ([Markdown sources](docs/src/introduction.md)) — build and check locally with `mdbook build docs` and `python3 docs/check-links.py`, then open `docs/book/index.html`. The documentation workflow also uploads a `documentation-book` artifact.
+- [Verifying releases](docs/VERIFYING-RELEASES.md) — check an APK's signing certificate and build provenance, and rebuild from source.
+- [F-Droid](docs/f-droid.md) — F-Droid metadata layout and `fdroiddata` packaging recipe.
+- [TLS key-floor evidence](docs/native-tls-evidence.md) — native runtime measurements behind Android's certificate-key minimums.
+- [Assurance case](docs/ASSURANCE-CASE.md) — threat model, trust boundaries, and why the security requirements hold.
+- [Style guide](STYLE_GUIDE.md) — brand, themes, layout, and visual conventions.
+- [AGENTS.md](AGENTS.md) — product and security contract; read before changing behaviour.
+- [CONTRIBUTING.md](CONTRIBUTING.md) — contribution workflow, prerequisites, and required checks.
+- [SECURITY.md](SECURITY.md) — security model and private vulnerability reporting route.
 
 ## License
 
 [MIT](LICENSE.txt)
 
 [![OctoCounts](https://api.octocounts.com/badge/Busnes-app/KyAuth-android/branch/main)](https://octocounts.com/github/Busnes-app/KyAuth-android/tree/main)
-
-## Documentation
-
-- [Verifying releases](docs/VERIFYING-RELEASES.md) — check a release APK's signature and source.
-- [F-Droid](docs/f-droid.md) — how the F-Droid listing is produced.
-- [TLS key-floor evidence](docs/native-tls-evidence.md) — the investigation behind Android's certificate-key minimums.
-- [Assurance case](docs/ASSURANCE-CASE.md) — threat model, trust boundaries, and why the security requirements are met.
-- [Contributing](CONTRIBUTING.md) — how to propose a change and what it must pass.
-- [Security policy](SECURITY.md) — how to report a vulnerability privately.
-
-## User manual
-
-Read the [online manual](https://busnes.app/manuals/kyauth-android/) or browse its
-[Markdown sources](docs/src/introduction.md).
-
-Build and check it with `mdbook build docs` and `python3 docs/check-links.py`,
-then open `docs/book/index.html`. The documentation workflow also provides a
-downloadable `documentation-book` artifact.

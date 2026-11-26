@@ -2,7 +2,7 @@
 
 ## Contributing
 
-Read [CONTRIBUTING.md](https://github.com/Busnes-app/kyauth-android/blob/main/CONTRIBUTING.md) before changing the product.
+Read [CONTRIBUTING.md](https://github.com/Busnes-app/KyAuth-android/blob/main/CONTRIBUTING.md) before changing the product.
 It owns the contribution process, build prerequisites and required product checks.
 Read the repository's AGENTS.md chain when working with an agent. Native builds and tests
 require their documented operating systems, SDKs and devices.

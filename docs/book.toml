@@ -11,8 +11,8 @@ create-missing = false
 [output.html]
 default-theme = "light"
 preferred-dark-theme = "coal"
-git-repository-url = "https://github.com/Busnes-app/kyauth-android"
-edit-url-template = "https://github.com/Busnes-app/kyauth-android/edit/main/docs/{path}"
+git-repository-url = "https://github.com/Busnes-app/KyAuth-android"
+edit-url-template = "https://github.com/Busnes-app/KyAuth-android/edit/main/docs/{path}"
 
 [output.html.search]
 enable = true
